@@ -2356,15 +2356,18 @@
               morphing: true,
               /** skin / skeleton */
               skinning: true,
-              /** KHR_materials_clearcoat */
-              clearcoat: true,
-              /** KHR_materials_sheen */
-              sheen: true,
-              /** KHR_materials_transmission */
-              transmission: true,
-              /** KHR_materials_ior makes the index of refraction configurable */
-              ior: true,
+
               enabledExtensions: {
+                  /** KHR_materials_clearcoat */
+                  KHR_materials_clearcoat: true,
+                  /** KHR_materials_sheen */
+                  KHR_materials_sheen: true,
+                  /** KHR_materials_transmission */
+                  KHR_materials_transmission: true,
+                  /** KHR_materials_volume */
+                  KHR_materials_volume: true,
+                  /** KHR_materials_ior makes the index of refraction configurable */
+                  KHR_materials_ior: true,
                   /** KHR_materials_specular allows configuring specular color (f0 color) and amount of specular reflection */
                   KHR_materials_specular: true,
               },
@@ -3718,7 +3721,7 @@
           }
 
           if(transmissionSampleTexture !== undefined && (state.renderingParameters.useIBL || state.renderingParameters.usePunctual)
-                      && state.environment && state.renderingParameters.transmission)
+                      && state.environment && state.renderingParameters.enabledExtensions.KHR_materials_transmission)
           {
               this.webGl.context.activeTexture(GL.TEXTURE0 + textureCount);
               this.webGl.context.bindTexture(this.webGl.context.TEXTURE_2D, this.opaqueRenderTexture);
@@ -15778,23 +15781,23 @@
       {
           const defines = Array.from(this.defines);
 
-          if (this.hasClearcoat && renderingParameters.clearcoat)
+          if (this.hasClearcoat && renderingParameters.enabledExtensions.KHR_materials_clearcoat)
           {
               defines.push("MATERIAL_CLEARCOAT 1");
           }
-          if (this.hasSheen && renderingParameters.sheen)
+          if (this.hasSheen && renderingParameters.enabledExtensions.KHR_materials_sheen)
           {
               defines.push("MATERIAL_SHEEN 1");
           }
-          if (this.hasTransmission && renderingParameters.transmission)
+          if (this.hasTransmission && renderingParameters.enabledExtensions.KHR_materials_transmission)
           {
               defines.push("MATERIAL_TRANSMISSION 1");
           }
-          if (this.hasVolume && renderingParameters.transmission)
+          if (this.hasVolume && renderingParameters.enabledExtensions.KHR_materials_volume)
           {
               defines.push("MATERIAL_VOLUME 1");
           }
-          if(this.hasIOR && renderingParameters.ior)
+          if(this.hasIOR && renderingParameters.enabledExtensions.KHR_materials_ior)
           {
               defines.push("MATERIAL_IOR 1");
           }
@@ -21707,6 +21710,12 @@
           this.clearcoatEnabled = app.clearcoatChanged$.pipe(pluck("event", "msg"));
           this.sheenEnabled = app.sheenChanged$.pipe(pluck("event", "msg"));
           this.transmissionEnabled = app.transmissionChanged$.pipe(pluck("event", "msg"));
+          this.volumeEnabled = app.$watchAsObservable('volumeEnabled').pipe(
+                                              map( ({ newValue, oldValue }) => newValue));
+          this.iorEnabled = app.$watchAsObservable('iorEnabled').pipe(
+                                              map( ({ newValue, oldValue }) => newValue));
+          this.specularEnabled = app.$watchAsObservable('specularEnabled').pipe(
+                                              map( ({ newValue, oldValue }) => newValue));
           this.iblEnabled = app.iblChanged$.pipe(pluck("event", "msg"));
           this.punctualLightsEnabled = app.punctualLightsChanged$.pipe(pluck("event", "msg"));
           this.renderEnvEnabled = app.$watchAsObservable('renderEnv').pipe(
@@ -22487,13 +22496,18 @@
               clearcoatEnabled: true,
               sheenEnabled: true,
               transmissionEnabled: true,
+              volumeEnabled: true,
+              iorEnabled: true,
+              specularEnabled: true,
 
               activeTab: 0,
               loadingComponent: {},
               showDropDownOverlay: false,
               uploadedHDR: undefined,
-              // this is a helper to reset the ui when image based lighting is reenabled
+
+              // these are handls for certain ui change related things
               environmentVisiblePrefState: true,
+              volumeEnabledPrefState: true,
           };
       },
       mounted: function()
@@ -22517,6 +22531,17 @@
               }
               else {
                   this.renderEnv = this.environmentVisiblePrefState;
+              }
+          },
+          transmissionTriggered: function(value)
+          {
+              if(this.transmissionEnabled == false)
+              {
+                  this.volumeEnabledPrefState = this.volumeEnabled;
+                  this.volumeEnabled = false;
+              }
+              else {
+                  this.volumeEnabled = this.volumeEnabledPrefState;
               }
           },
           warn(message) {
@@ -24522,13 +24547,22 @@
       });
 
       uiModel.clearcoatEnabled.subscribe( clearcoatEnabled => {
-          state.renderingParameters.clearcoat = clearcoatEnabled;
+          state.renderingParameters.enabledExtensions.KHR_materials_clearcoat = clearcoatEnabled;
       });
       uiModel.sheenEnabled.subscribe( sheenEnabled => {
-          state.renderingParameters.sheen = sheenEnabled;
+          state.renderingParameters.enabledExtensions.KHR_materials_sheen = sheenEnabled;
       });
       uiModel.transmissionEnabled.subscribe( transmissionEnabled => {
-          state.renderingParameters.transmission = transmissionEnabled;
+          state.renderingParameters.enabledExtensions.KHR_materials_transmission = transmissionEnabled;
+      });
+      uiModel.volumeEnabled.subscribe( volumeEnabled => {
+          state.renderingParameters.enabledExtensions.KHR_materials_volume = volumeEnabled;
+      });
+      uiModel.iorEnabled.subscribe( iorEnabled => {
+          state.renderingParameters.enabledExtensions.KHR_materials_ior = iorEnabled;
+      });
+      uiModel.specularEnabled.subscribe( specularEnabled => {
+          state.renderingParameters.enabledExtensions.KHR_materials_specular = specularEnabled;
       });
 
       uiModel.iblEnabled.subscribe( iblEnabled => {
