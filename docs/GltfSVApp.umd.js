@@ -2386,7 +2386,9 @@
                * -X = 180 
                * -Z = 270
                */
-              environmentRotation: 90.0
+              environmentRotation: 90.0,
+              /** If this is set to true, directional lights will be generated if IBL is disabled */
+              useDirectionalLightsWithDisabledIBL: false
           };
 
           // retain a reference to the view with which the state was created, so that it can be validated
@@ -3144,6 +3146,157 @@
 
   var cubemapFragShader = "precision highp float;\n#define GLSLIFY 1\n\n#include <tonemapping.glsl>\n\nuniform samplerCube u_specularEnvSampler;\nuniform float u_envBlurNormalized;\nuniform int u_MipCount;\n\nout vec4 FragColor;\nin vec3 TexCoords;\n\nvoid main()\n{\n    vec4 color = textureLod(u_specularEnvSampler, TexCoords, u_envBlurNormalized * float(u_MipCount - 1));\n    FragColor = vec4(toneMap(color.rgb), color.a);\n}\n"; // eslint-disable-line
 
+  class gltfLight extends GltfObject
+  {
+      constructor(
+          type = "directional",
+          color = [1, 1, 1],
+          intensity = 1,
+          innerConeAngle = 0,
+          outerConeAngle = Math.PI / 4,
+          range = -1,
+          name = undefined,
+          node = undefined)
+      {
+          super();
+          this.type = type;
+          this.color = color;
+          this.intensity = intensity;
+          this.innerConeAngle = innerConeAngle;
+          this.outerConeAngle = outerConeAngle;
+          this.range = range;
+          this.name = name;
+          // non gltf
+          this.node = node;
+          //Can be used to overwrite direction from node
+          this.direction = undefined;
+      }
+
+      initGl(gltf, webGlContext)
+      {
+          super.initGl(gltf, webGlContext);
+
+          for (let i = 0; i < gltf.nodes.length; i++)
+          {
+              const nodeExtensions = gltf.nodes[i].extensions;
+              if (nodeExtensions === undefined)
+              {
+                  continue;
+              }
+
+              const lightsExtension = nodeExtensions.KHR_lights_punctual;
+              if (lightsExtension === undefined)
+              {
+                  continue;
+              }
+
+              const lightIndex = lightsExtension.light;
+              if (gltf.lights[lightIndex] === this)
+              {
+                  this.node = i;
+                  break;
+              }
+          }
+      }
+
+      fromJson(jsonLight)
+      {
+          super.fromJson(jsonLight);
+
+          if(jsonLight.spot !== undefined)
+          {
+              fromKeys(this, jsonLight.spot);
+          }
+      }
+
+      toUniform(gltf)
+      {
+          const uLight = new UniformLight();
+
+          if (this.node !== undefined)
+          {
+              const matrix = gltf.nodes[this.node].worldTransform;
+
+              var scale = fromValues(1, 1, 1);
+              getScaling(scale, matrix);
+
+              // To extract a correct rotation, the scaling component must be eliminated.
+              const mn = create$1();
+              for(const col of [0, 1, 2])
+              {
+                  mn[col] = matrix[col] / scale[0];
+                  mn[col + 4] = matrix[col + 4] / scale[1];
+                  mn[col + 8] = matrix[col + 8] / scale[2];
+              }
+              var rotation = create$4();
+              getRotation(rotation, mn);
+              normalize$2(rotation, rotation);
+
+              const alongNegativeZ = fromValues(0, 0, -1);
+              transformQuat(uLight.direction, alongNegativeZ, rotation);
+
+              var translation = fromValues(0, 0, 0);
+              getTranslation(translation, matrix);
+              uLight.position = translation;
+          }
+
+          if (this.direction !== undefined)
+          {
+              uLight.direction = this.direction;
+          }
+
+          uLight.range = this.range;
+          uLight.color = jsToGl(this.color);
+          uLight.intensity = this.intensity;
+
+          uLight.innerConeCos = Math.cos(this.innerConeAngle);
+          uLight.outerConeCos = Math.cos(this.outerConeAngle);
+
+          switch(this.type)
+          {
+          case "spot":
+              uLight.type = Type_Spot;
+              break;
+          case "point":
+              uLight.type = Type_Point;
+              break;
+          case "directional":
+          default:
+              uLight.type = Type_Directional;
+              break;
+          }
+
+          return uLight;
+      }
+  }
+
+  const Type_Directional = 0;
+  const Type_Point = 1;
+  const Type_Spot = 2;
+
+  class UniformLight extends UniformStruct
+  {
+      constructor()
+      {
+          super();
+
+          const defaultDirection = fromValues(-0.7399, -0.6428, -0.1983);
+          this.direction = defaultDirection;
+          this.range = -1;
+
+          this.color = jsToGl([1, 1, 1]);
+          this.intensity = 1;
+
+          this.position = jsToGl([0, 0, 0]);
+          this.innerConeCos = 0.0;
+
+          this.outerConeCos = Math.PI / 4;
+          this.type = Type_Directional;
+          this.padding1 = 0.0;
+          this.padding2 = 0.0;
+      }
+  }
+
   class gltfRenderer
   {
       constructor(context)
@@ -3191,6 +3344,24 @@
           this.viewProjectionMatrix = create$1();
 
           this.currentCameraPosition = create$2();
+
+          this.lightKey = new gltfLight();
+          this.lightFill = new gltfLight();
+          this.lightFill.intensity = 0.5;
+          const quatKey = fromValues$2(
+              -0.3535534,
+              -0.353553385,
+              -0.146446586,
+              0.8535534);
+          const quatFill = fromValues$2(
+              -0.8535534,
+              0.146446645,
+              -0.353553325,
+              -0.353553444);
+          this.lightKey.direction = create$2();
+          this.lightFill.direction = create$2();
+          transformQuat(this.lightKey.direction, [0, 0, -1], quatKey);
+          transformQuat(this.lightFill.direction, [0, 0, -1], quatFill);
 
           this.init();
 
@@ -3297,6 +3468,12 @@
           this.currentCameraPosition = currentCamera.getPosition(state.gltf);
 
           this.visibleLights = this.getVisibleLights(state.gltf, scene);
+          if (this.visibleLights.length === 0 && !state.renderingParameters.useIBL &&
+              state.renderingParameters.useDirectionalLightsWithDisabledIBL)
+          {
+              this.visibleLights.push(this.lightKey);
+              this.visibleLights.push(this.lightFill);
+          }
 
           multiply$1(this.viewProjectionMatrix, this.projMatrix, this.viewMatrix);
 
@@ -15396,150 +15573,6 @@
       }
   }
 
-  class gltfLight extends GltfObject
-  {
-      constructor(
-          type = "directional",
-          color = [1, 1, 1],
-          intensity = 1,
-          innerConeAngle = 0,
-          outerConeAngle = Math.PI / 4,
-          range = -1,
-          name = undefined,
-          node = undefined)
-      {
-          super();
-          this.type = type;
-          this.color = color;
-          this.intensity = intensity;
-          this.innerConeAngle = innerConeAngle;
-          this.outerConeAngle = outerConeAngle;
-          this.range = range;
-          this.name = name;
-          // non gltf
-          this.node = node;
-      }
-
-      initGl(gltf, webGlContext)
-      {
-          super.initGl(gltf, webGlContext);
-
-          for (let i = 0; i < gltf.nodes.length; i++)
-          {
-              const nodeExtensions = gltf.nodes[i].extensions;
-              if (nodeExtensions === undefined)
-              {
-                  continue;
-              }
-
-              const lightsExtension = nodeExtensions.KHR_lights_punctual;
-              if (lightsExtension === undefined)
-              {
-                  continue;
-              }
-
-              const lightIndex = lightsExtension.light;
-              if (gltf.lights[lightIndex] === this)
-              {
-                  this.node = i;
-                  break;
-              }
-          }
-      }
-
-      fromJson(jsonLight)
-      {
-          super.fromJson(jsonLight);
-
-          if(jsonLight.spot !== undefined)
-          {
-              fromKeys(this, jsonLight.spot);
-          }
-      }
-
-      toUniform(gltf)
-      {
-          const uLight = new UniformLight();
-
-          if (this.node !== undefined)
-          {
-              const matrix = gltf.nodes[this.node].worldTransform;
-
-              var scale = fromValues(1, 1, 1);
-              getScaling(scale, matrix);
-
-              // To extract a correct rotation, the scaling component must be eliminated.
-              const mn = create$1();
-              for(const col of [0, 1, 2])
-              {
-                  mn[col] = matrix[col] / scale[0];
-                  mn[col + 4] = matrix[col + 4] / scale[1];
-                  mn[col + 8] = matrix[col + 8] / scale[2];
-              }
-              var rotation = create$4();
-              getRotation(rotation, mn);
-              normalize$2(rotation, rotation);
-
-              const alongNegativeZ = fromValues(0, 0, -1);
-              transformQuat(uLight.direction, alongNegativeZ, rotation);
-
-              var translation = fromValues(0, 0, 0);
-              getTranslation(translation, matrix);
-              uLight.position = translation;
-          }
-
-          uLight.range = this.range;
-          uLight.color = jsToGl(this.color);
-          uLight.intensity = this.intensity;
-
-          uLight.innerConeCos = Math.cos(this.innerConeAngle);
-          uLight.outerConeCos = Math.cos(this.outerConeAngle);
-
-          switch(this.type)
-          {
-          case "spot":
-              uLight.type = Type_Spot;
-              break;
-          case "point":
-              uLight.type = Type_Point;
-              break;
-          case "directional":
-          default:
-              uLight.type = Type_Directional;
-              break;
-          }
-
-          return uLight;
-      }
-  }
-
-  const Type_Directional = 0;
-  const Type_Point = 1;
-  const Type_Spot = 2;
-
-  class UniformLight extends UniformStruct
-  {
-      constructor()
-      {
-          super();
-
-          const defaultDirection = fromValues(-0.7399, -0.6428, -0.1983);
-          this.direction = defaultDirection;
-          this.range = -1;
-
-          this.color = jsToGl([1, 1, 1]);
-          this.intensity = 1;
-
-          this.position = jsToGl([0, 0, 0]);
-          this.innerConeCos = 0.0;
-
-          this.outerConeCos = Math.PI / 4;
-          this.type = Type_Directional;
-          this.padding1 = 0.0;
-          this.padding2 = 0.0;
-      }
-  }
-
   // https://github.com/KhronosGroup/glTF/blob/khr_ktx2_ibl/extensions/2.0/Khronos/KHR_lights_image_based/schema/imageBasedLight.schema.json
 
   class ImageBasedLight extends GltfObject
@@ -24269,6 +24302,7 @@
       const view = new GltfView(context);
       const resourceLoader = view.createResourceLoader();
       const state = view.createState();
+      state.renderingParameters.useDirectionalLightsWithDisabledIBL = true;
 
       const pathProvider = new gltfModelPathProvider('assets/models/2.0/model-index.json');
       await pathProvider.initialize();
