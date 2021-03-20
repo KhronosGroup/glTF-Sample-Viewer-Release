@@ -21660,7 +21660,7 @@
 
           const dropdownGltfChanged = app.modelChanged$.pipe(
               pluck("event", "msg"),
-              startWith("FlightHelmet"),
+              startWith("DamagedHelmet"),
               map(value => {
                   app.flavours = this.pathProvider.getModelFlavours(value);
                   app.selectedFlavour = "glTF";
@@ -22458,7 +22458,7 @@
           return {
               fullheight: true,
               right: true,
-              models: ["FlightHelmet"],
+              models: ["DamagedHelmet"],
               flavours: ["glTF", "glTF-Binary", "glTF-Quantized", "glTF-Draco", "glTF-pbrSpecularGlossiness"],
               scenes: [{title: "0"}, {title: "1"}],
               cameras: [{title: "User Camera", index: -1}],
@@ -22470,7 +22470,7 @@
               xmp: [{title: "xmp"}],
               statistics: [],
 
-              selectedModel: "FlightHelmet",
+              selectedModel: "DamagedHelmet",
               selectedFlavour: "",
               selectedScene: {},
               selectedCamera: {},
