@@ -22515,6 +22515,14 @@
           // remove input class from color picker (added by default by buefy)
           const colorPicker = document.getElementById("clearColorPicker");
           colorPicker.classList.remove("input");
+
+          // test if webgl is present
+          const context = canvas.getContext("webgl2", { alpha: false, antialias: true });
+          if (context === undefined || context === null) {
+              this.error("The sample viewer requires WebGL 2.0, which is not supported by this browser or device. " + 
+              "Please try again with another browser, or check https://get.webgl.org/webgl2/ " +
+              "if you believe you are seeing this message in error.", 15000);
+          }
       },
       methods:
       {
@@ -22550,11 +22558,11 @@
                   type: 'is-warning'
               });
           },
-          error(message) {
+          error(message, duration = 5000) {
               this.$buefy.toast.open({
                   message: message,
                   type: 'is-danger',
-                  duration: 5000
+                  duration: duration
               });
           },
           goToLoadingState() {
