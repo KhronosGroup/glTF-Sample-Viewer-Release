@@ -20557,7 +20557,14 @@
       if (result instanceof Observable) {
           return result.subscribe(innerSubscriber);
       }
-      return subscribeTo(result)(innerSubscriber);
+      var subscription;
+      try {
+          subscription = subscribeTo(result)(innerSubscriber);
+      }
+      catch (error) {
+          innerSubscriber.error(error);
+      }
+      return subscription;
   }
 
   /** PURE_IMPORTS_START tslib,_map,_observable_from,_innerSubscribe PURE_IMPORTS_END */
@@ -33026,7 +33033,9 @@
             o = o.substring(1);
           }
 
-          return a[o] > b[o] ? dir : a[o] < b[o] ? -dir : 0;
+          var aValue = getValueByPath(a, o);
+          var bValue = getValueByPath(b, o);
+          return aValue > bValue ? dir : aValue < bValue ? -dir : 0;
         }).reduce(function (p, n) {
           return p || n;
         }, 0);
@@ -33056,7 +33065,7 @@
 
     var dtf = new Intl.DateTimeFormat(locale, {
       month: format,
-      timezome: 'UTC'
+      timeZone: 'UTC'
     });
     return dates.map(function (d) {
       return dtf.format(d);
@@ -33084,7 +33093,7 @@
 
     var dtf = new Intl.DateTimeFormat(locale, {
       weekday: format,
-      timezome: 'UTC'
+      timeZone: 'UTC'
     });
     return dates.map(function (d) {
       return dtf.format(d);
@@ -33199,6 +33208,7 @@
     defaultTrapFocus: true,
     defaultAutoFocus: true,
     defaultButtonRounded: false,
+    defaultSwitchRounded: true,
     defaultCarouselInterval: 3500,
     defaultTabsExpanded: false,
     defaultTabsAnimated: true,
@@ -33702,7 +33712,8 @@
         default: ''
       },
       iconRight: String,
-      iconRightClickable: Boolean
+      iconRightClickable: Boolean,
+      iconRightType: String
     },
     data: function data() {
       return {
@@ -33751,7 +33762,7 @@
         if (this.passwordReveal) {
           return 'is-primary';
         } else if (this.iconRight) {
-          return null;
+          return this.iconRightType || null;
         }
 
         return this.statusType;
@@ -34194,10 +34205,16 @@
       /**
        * Select first option if "keep-first
        */
-      data: function data(value) {
+      data: function data() {
+        var _this3 = this;
+
         // Keep first option always pre-selected
         if (this.keepFirst) {
-          this.selectFirstOption(this.computedData);
+          this.$nextTick(function () {
+            if (_this3.isActive) {
+              _this3.selectFirstOption(_this3.computedData);
+            }
+          });
         }
       }
     },
@@ -34215,7 +34232,7 @@
        * update input value and close dropdown.
        */
       setSelected: function setSelected(option) {
-        var _this3 = this;
+        var _this4 = this;
 
         var closeDropdown = arguments.length > 1 && arguments[1] !== undefined ? arguments[1] : true;
         var event = arguments.length > 2 && arguments[2] !== undefined ? arguments[2] : undefined;
@@ -34229,7 +34246,7 @@
         }
 
         closeDropdown && this.$nextTick(function () {
-          _this3.isActive = false;
+          _this4.isActive = false;
         });
         this.checkValidity();
       },
@@ -34238,24 +34255,26 @@
        * Select first option
        */
       selectFirstOption: function selectFirstOption(element) {
-        var _this4 = this;
+        var _this5 = this;
 
         this.$nextTick(function () {
           if (element.length) {
             // If has visible data or open on focus, keep updating the hovered
             var option = element[0].items[0];
 
-            if (_this4.openOnFocus || _this4.newValue !== '' && _this4.hovered !== option) {
-              _this4.setHovered(option);
+            if (_this5.openOnFocus || _this5.newValue !== '' && _this5.hovered !== option) {
+              _this5.setHovered(option);
             }
           } else {
-            _this4.setHovered(null);
+            _this5.setHovered(null);
           }
         });
       },
       keydown: function keydown(event) {
         var key = event.key; // cannot destructure preventDefault (https://stackoverflow.com/a/49616808/2774496)
-        // Close dropdown on Tab & no hovered
+        // prevent emit submit event
+
+        if (key === 'Enter') event.preventDefault(); // Close dropdown on Tab & no hovered
 
         this.isActive = key !== 'Tab';
         if (this.hovered === null) return;
@@ -34274,7 +34293,14 @@
        */
       clickedOutside: function clickedOutside(event) {
         var target = isCustomElement(this) ? event.composedPath()[0] : event.target;
-        if (!this.hasFocus && this.whiteList.indexOf(target) < 0) this.isActive = false;
+
+        if (!this.hasFocus && this.whiteList.indexOf(target) < 0) {
+          if (this.keepFirst && this.hovered) {
+            this.setSelected(this.hovered, true);
+          } else {
+            this.isActive = false;
+          }
+        }
       },
 
       /**
@@ -34306,21 +34332,21 @@
        * otherwise it is openened upwards.
        */
       calcDropdownInViewportVertical: function calcDropdownInViewportVertical() {
-        var _this5 = this;
+        var _this6 = this;
 
         this.$nextTick(function () {
           /**
            * this.$refs.dropdown may be undefined
            * when Autocomplete is conditional rendered
            */
-          if (_this5.$refs.dropdown === undefined) return;
+          if (_this6.$refs.dropdown === undefined) return;
 
-          var rect = _this5.$refs.dropdown.getBoundingClientRect();
+          var rect = _this6.$refs.dropdown.getBoundingClientRect();
 
-          _this5.isListInViewportVertically = rect.top >= 0 && rect.bottom <= (window.innerHeight || document.documentElement.clientHeight);
+          _this6.isListInViewportVertically = rect.top >= 0 && rect.bottom <= (window.innerHeight || document.documentElement.clientHeight);
 
-          if (_this5.appendToBody) {
-            _this5.updateAppendToBody();
+          if (_this6.appendToBody) {
+            _this6.updateAppendToBody();
           }
         });
       },
@@ -34405,11 +34431,11 @@
         }
       },
       checkValidity: function checkValidity() {
-        var _this6 = this;
+        var _this7 = this;
 
         if (this.useHtml5Validation) {
           this.$nextTick(function () {
-            _this6.checkHtml5Validity();
+            _this7.checkHtml5Validity();
           });
         }
       },
@@ -34461,12 +34487,12 @@
       }
     },
     mounted: function mounted() {
-      var _this7 = this;
+      var _this8 = this;
 
       if (this.checkInfiniteScroll && this.$refs.dropdown && this.$refs.dropdown.querySelector('.dropdown-content')) {
         var list = this.$refs.dropdown.querySelector('.dropdown-content');
         list.addEventListener('scroll', function () {
-          return _this7.checkIfReachedTheEndOfScroll(list);
+          return _this8.checkIfReachedTheEndOfScroll(list);
         });
       }
 
@@ -34971,6 +34997,10 @@
           this.timer = null;
         }
       },
+      restartTimer: function restartTimer() {
+        this.pauseTimer();
+        this.startTimer();
+      },
       checkPause: function checkPause() {
         if (this.pauseHover && this.autoplay) {
           this.pauseTimer();
@@ -34994,6 +35024,7 @@
           this.$emit('input', newIndex);
         }
 
+        this.restartTimer();
         this.$emit('change', newIndex); // BC
       },
       // Indicator trigger when change active item.
@@ -35319,7 +35350,7 @@
       },
       checkAsIndicator: function checkAsIndicator(value, event) {
         if (!this.asIndicator) return;
-        var dragEndX = event.touches ? event.touches[0].clientX : event.clientX;
+        var dragEndX = event.changedTouches ? event.changedTouches[0].clientX : event.clientX;
         if (this.hold - Date.now() > 2000 || Math.abs(this.dragX - dragEndX) > 10) return;
         this.dragX = false;
         this.hold = 0;
@@ -35339,7 +35370,7 @@
       },
       dragMove: function dragMove(event) {
         if (!this.dragging) return;
-        var dragEndX = event.touches ? event.touches[0].clientX : event.clientX;
+        var dragEndX = event.touches ? (event.changedTouches[0] || event.touches[0]).clientX : event.clientX;
         this.delta = this.dragX - dragEndX;
 
         if (!event.touches) {
@@ -35925,8 +35956,7 @@
           hour: this.localeOptions.hour || 'numeric',
           minute: this.localeOptions.minute || 'numeric',
           second: this.enableSeconds ? this.localeOptions.second || 'numeric' : undefined,
-          hour12: !this.isHourFormat24,
-          timezome: 'UTC'
+          hour12: !this.isHourFormat24
         });
       },
       newHourFormat: function newHourFormat() {
@@ -36622,20 +36652,22 @@
     },
     methods: {
       /**
-      * Click listener from DropdownItem.
-      *   1. Set new selected item.
-      *   2. Emit input event to update the user v-model.
-      *   3. Close the dropdown.
-      */
+       * Click listener from DropdownItem.
+       *   1. Set new selected item.
+       *   2. Emit input event to update the user v-model.
+       *   3. Close the dropdown.
+       */
       selectItem: function selectItem(value) {
         if (this.multiple) {
           if (this.selected) {
-            var index = this.selected.indexOf(value);
-
-            if (index === -1) {
-              this.selected.push(value);
+            if (this.selected.indexOf(value) === -1) {
+              // Add value
+              this.selected = [].concat(_toConsumableArray(this.selected), [value]);
             } else {
-              this.selected.splice(index, 1);
+              // Remove value
+              this.selected = this.selected.filter(function (val) {
+                return val !== value;
+              });
             }
           } else {
             this.selected = [value];
@@ -37732,7 +37764,7 @@
   const __vue_script__$1$4 = script$1$4;
 
   /* template */
-  var __vue_render__$1$3 = function () {var _vm=this;var _h=_vm.$createElement;var _c=_vm._self._c||_h;return _c('div',{staticClass:"b-clockpicker control",class:[_vm.size, _vm.type, {'is-expanded': _vm.expanded}]},[(!_vm.isMobile || _vm.inline)?_c('b-dropdown',{ref:"dropdown",attrs:{"position":_vm.position,"disabled":_vm.disabled,"inline":_vm.inline,"append-to-body":_vm.appendToBody,"append-to-body-copy-parent":""},on:{"active-change":_vm.onActiveChange},scopedSlots:_vm._u([(!_vm.inline)?{key:"trigger",fn:function(){return [_vm._t("trigger",[_c('b-input',_vm._b({ref:"input",attrs:{"slot":"trigger","autocomplete":"off","value":_vm.formatValue(_vm.computedValue),"placeholder":_vm.placeholder,"size":_vm.size,"icon":_vm.icon,"icon-pack":_vm.iconPack,"loading":_vm.loading,"disabled":_vm.disabled,"readonly":!_vm.editable,"rounded":_vm.rounded,"use-html5-validation":_vm.useHtml5Validation},on:{"focus":_vm.handleOnFocus,"blur":function($event){_vm.onBlur() && _vm.checkHtml5Validity();}},nativeOn:{"click":function($event){$event.stopPropagation();return _vm.toggle(true)},"keyup":function($event){if(!$event.type.indexOf('key')&&_vm._k($event.keyCode,"enter",13,$event.key,"Enter")){ return null; }return _vm.toggle(true)},"change":function($event){return _vm.onChange($event.target.value)}},slot:"trigger"},'b-input',_vm.$attrs,false))])]},proxy:true}:null],null,true)},[_c('div',{staticClass:"card",attrs:{"disabled":_vm.disabled,"custom":""}},[(_vm.inline)?_c('header',{staticClass:"card-header"},[_c('div',{staticClass:"b-clockpicker-header card-header-title"},[_c('div',{staticClass:"b-clockpicker-time"},[_c('span',{staticClass:"b-clockpicker-btn",class:{ active: _vm.isSelectingHour },on:{"click":function($event){_vm.isSelectingHour = true;}}},[_vm._v(_vm._s(_vm.hoursDisplay))]),_c('span',[_vm._v(_vm._s(_vm.hourLiteral))]),_c('span',{staticClass:"b-clockpicker-btn",class:{ active: !_vm.isSelectingHour },on:{"click":function($event){_vm.isSelectingHour = false;}}},[_vm._v(_vm._s(_vm.minutesDisplay))])]),(!_vm.isHourFormat24)?_c('div',{staticClass:"b-clockpicker-period"},[_c('div',{staticClass:"b-clockpicker-btn",class:{
+  var __vue_render__$1$3 = function () {var _vm=this;var _h=_vm.$createElement;var _c=_vm._self._c||_h;return _c('div',{staticClass:"b-clockpicker control",class:[_vm.size, _vm.type, {'is-expanded': _vm.expanded}]},[(!_vm.isMobile || _vm.inline)?_c('b-dropdown',{ref:"dropdown",attrs:{"position":_vm.position,"disabled":_vm.disabled,"inline":_vm.inline,"append-to-body":_vm.appendToBody,"append-to-body-copy-parent":""},on:{"active-change":_vm.onActiveChange},scopedSlots:_vm._u([(!_vm.inline)?{key:"trigger",fn:function(){return [_vm._t("trigger",[_c('b-input',_vm._b({ref:"input",attrs:{"slot":"trigger","autocomplete":"off","value":_vm.formatValue(_vm.computedValue),"placeholder":_vm.placeholder,"size":_vm.size,"icon":_vm.icon,"icon-pack":_vm.iconPack,"loading":_vm.loading,"disabled":_vm.disabled,"readonly":!_vm.editable,"rounded":_vm.rounded,"use-html5-validation":_vm.useHtml5Validation},on:{"focus":_vm.handleOnFocus,"blur":function($event){return _vm.checkHtml5Validity()}},nativeOn:{"click":function($event){$event.stopPropagation();return _vm.toggle(true)},"keyup":function($event){if(!$event.type.indexOf('key')&&_vm._k($event.keyCode,"enter",13,$event.key,"Enter")){ return null; }return _vm.toggle(true)},"change":function($event){return _vm.onChange($event.target.value)}},slot:"trigger"},'b-input',_vm.$attrs,false))])]},proxy:true}:null],null,true)},[_c('div',{staticClass:"card",attrs:{"disabled":_vm.disabled,"custom":""}},[(_vm.inline)?_c('header',{staticClass:"card-header"},[_c('div',{staticClass:"b-clockpicker-header card-header-title"},[_c('div',{staticClass:"b-clockpicker-time"},[_c('span',{staticClass:"b-clockpicker-btn",class:{ active: _vm.isSelectingHour },on:{"click":function($event){_vm.isSelectingHour = true;}}},[_vm._v(_vm._s(_vm.hoursDisplay))]),_c('span',[_vm._v(_vm._s(_vm.hourLiteral))]),_c('span',{staticClass:"b-clockpicker-btn",class:{ active: !_vm.isSelectingHour },on:{"click":function($event){_vm.isSelectingHour = false;}}},[_vm._v(_vm._s(_vm.minutesDisplay))])]),(!_vm.isHourFormat24)?_c('div',{staticClass:"b-clockpicker-period"},[_c('div',{staticClass:"b-clockpicker-btn",class:{
                                   active: _vm.meridienSelected === _vm.amString || _vm.meridienSelected === _vm.AM
                               },on:{"click":function($event){return _vm.onMeridienClick(_vm.amString)}}},[_vm._v(_vm._s(_vm.amString))]),_c('div',{staticClass:"b-clockpicker-btn",class:{
                                   active: _vm.meridienSelected === _vm.pmString || _vm.meridienSelected === _vm.PM
@@ -37782,7 +37814,7 @@
     inheritAttrs: false,
     props: {
       value: {
-        type: [String, Number, Boolean, Object, Array, Function],
+        type: [String, Number, Boolean, Object, Array, Function, Date],
         default: null
       },
       placeholder: String,
@@ -37904,6 +37936,13 @@
   //
   //
   //
+  //
+  //
+  //
+  //
+  //
+  //
+  //
   var script$c = {
     name: 'BDatepickerTableRow',
     inject: {
@@ -37931,9 +37970,9 @@
       minDate: Date,
       maxDate: Date,
       disabled: Boolean,
-      unselectableDates: Array,
+      unselectableDates: [Array, Function],
       unselectableDaysOfWeek: Array,
-      selectableDates: Array,
+      selectableDates: [Array, Function],
       events: Array,
       indicators: String,
       dateCreator: Function,
@@ -38032,21 +38071,33 @@
         }
 
         if (this.selectableDates) {
-          for (var i = 0; i < this.selectableDates.length; i++) {
-            var enabledDate = this.selectableDates[i];
-
-            if (day.getDate() === enabledDate.getDate() && day.getFullYear() === enabledDate.getFullYear() && day.getMonth() === enabledDate.getMonth()) {
+          if (typeof this.selectableDates === 'function') {
+            if (this.selectableDates(day)) {
               return true;
             } else {
               validity.push(false);
+            }
+          } else {
+            for (var i = 0; i < this.selectableDates.length; i++) {
+              var enabledDate = this.selectableDates[i];
+
+              if (day.getDate() === enabledDate.getDate() && day.getFullYear() === enabledDate.getFullYear() && day.getMonth() === enabledDate.getMonth()) {
+                return true;
+              } else {
+                validity.push(false);
+              }
             }
           }
         }
 
         if (this.unselectableDates) {
-          for (var _i = 0; _i < this.unselectableDates.length; _i++) {
-            var disabledDate = this.unselectableDates[_i];
-            validity.push(day.getDate() !== disabledDate.getDate() || day.getFullYear() !== disabledDate.getFullYear() || day.getMonth() !== disabledDate.getMonth());
+          if (typeof this.unselectableDates === 'function') {
+            validity.push(!this.unselectableDates(day));
+          } else {
+            for (var _i = 0; _i < this.unselectableDates.length; _i++) {
+              var disabledDate = this.unselectableDates[_i];
+              validity.push(day.getDate() !== disabledDate.getDate() || day.getFullYear() !== disabledDate.getFullYear() || day.getMonth() !== disabledDate.getMonth());
+            }
           }
         }
 
@@ -38115,7 +38166,7 @@
           return dateOne > dates[0] && dateOne < dates[1];
         }
 
-        return {
+        return _defineProperty({
           'is-selected': dateMatch(day, this.selectedDate) || dateWithin(day, this.selectedDate, this.multiple),
           'is-first-selected': dateMatch(day, Array.isArray(this.selectedDate) && this.selectedDate[0], this.multiple),
           'is-within-selected': dateWithin(day, this.selectedDate, this.multiple),
@@ -38128,19 +38179,27 @@
           'is-selectable': this.selectableDate(day) && !this.disabled,
           'is-unselectable': !this.selectableDate(day) || this.disabled,
           'is-invisible': !this.nearbyMonthDays && day.getMonth() !== this.month,
-          'is-nearby': this.nearbySelectableMonthDays && day.getMonth() !== this.month
-        };
+          'is-nearby': this.nearbySelectableMonthDays && day.getMonth() !== this.month,
+          'has-event': this.eventsDateMatch(day)
+        }, this.indicators, this.eventsDateMatch(day));
       },
       setRangeHoverEndDate: function setRangeHoverEndDate(day) {
         if (this.range) {
           this.$emit('rangeHoverEndDate', day);
         }
       },
-      manageKeydown: function manageKeydown(_ref, weekDay) {
-        var key = _ref.key;
-
+      manageKeydown: function manageKeydown(event, weekDay) {
         // https://developer.mozilla.org/fr/docs/Web/API/KeyboardEvent/key/Key_Values#Navigation_keys
+        var key = event.key;
+        var preventDefault = true;
+
         switch (key) {
+          case 'Tab':
+            {
+              preventDefault = false;
+              break;
+            }
+
           case ' ':
           case 'Space':
           case 'Spacebar':
@@ -38178,15 +38237,20 @@
               break;
             }
         }
+
+        if (preventDefault) {
+          event.preventDefault();
+        }
       },
       changeFocus: function changeFocus(day, inc) {
-        var nextDay = day;
+        var nextDay = new Date(day.getTime());
         nextDay.setDate(day.getDate() + inc);
 
         while ((!this.minDate || nextDay > this.minDate) && (!this.maxDate || nextDay < this.maxDate) && !this.selectableDate(nextDay)) {
           nextDay.setDate(day.getDate() + Math.sign(inc));
         }
 
+        this.setRangeHoverEndDate(nextDay);
         this.$emit('change-focus', nextDay);
       }
     }
@@ -38196,7 +38260,7 @@
   const __vue_script__$c = script$c;
 
   /* template */
-  var __vue_render__$b = function () {var _vm=this;var _h=_vm.$createElement;var _c=_vm._self._c||_h;return _c('div',{staticClass:"datepicker-row"},[(_vm.showWeekNumber)?_c('a',{staticClass:"datepicker-cell is-week-number",class:{'is-clickable': _vm.weekNumberClickable },on:{"click":function($event){$event.preventDefault();_vm.clickWeekNumber(_vm.getWeekNumber(_vm.week[6]));}}},[_c('span',[_vm._v(_vm._s(_vm.getWeekNumber(_vm.week[6])))])]):_vm._e(),_vm._l((_vm.week),function(weekDay,index){return [(_vm.selectableDate(weekDay) && !_vm.disabled)?_c('a',{key:index,ref:("day-" + (weekDay.getMonth()) + "-" + (weekDay.getDate())),refInFor:true,staticClass:"datepicker-cell",class:[_vm.classObject(weekDay), {'has-event': _vm.eventsDateMatch(weekDay)}, _vm.indicators],attrs:{"role":"button","href":"#","disabled":_vm.disabled,"tabindex":_vm.day === weekDay.getDate() ? null : -1},on:{"click":function($event){$event.preventDefault();return _vm.emitChosenDate(weekDay)},"mouseenter":function($event){return _vm.setRangeHoverEndDate(weekDay)},"keydown":function($event){$event.preventDefault();return _vm.manageKeydown($event, weekDay)}}},[_c('span',[_vm._v(_vm._s(weekDay.getDate()))]),(_vm.eventsDateMatch(weekDay))?_c('div',{staticClass:"events"},_vm._l((_vm.eventsDateMatch(weekDay)),function(event,index){return _c('div',{key:index,staticClass:"event",class:event.type})}),0):_vm._e()]):_c('div',{key:index,staticClass:"datepicker-cell",class:_vm.classObject(weekDay)},[_c('span',[_vm._v(_vm._s(weekDay.getDate()))])])]})],2)};
+  var __vue_render__$b = function () {var _vm=this;var _h=_vm.$createElement;var _c=_vm._self._c||_h;return _c('div',{staticClass:"datepicker-row"},[(_vm.showWeekNumber)?_c('a',{staticClass:"datepicker-cell is-week-number",class:{'is-clickable': _vm.weekNumberClickable },on:{"click":function($event){$event.preventDefault();_vm.clickWeekNumber(_vm.getWeekNumber(_vm.week[6]));}}},[_c('span',[_vm._v(_vm._s(_vm.getWeekNumber(_vm.week[6])))])]):_vm._e(),_vm._l((_vm.week),function(weekDay,index){return [(_vm.selectableDate(weekDay) && !_vm.disabled)?_c('a',{key:index,ref:("day-" + (weekDay.getMonth()) + "-" + (weekDay.getDate())),refInFor:true,staticClass:"datepicker-cell",class:_vm.classObject(weekDay),attrs:{"role":"button","href":"#","disabled":_vm.disabled,"tabindex":_vm.day === weekDay.getDate() ? null : -1},on:{"click":function($event){$event.preventDefault();return _vm.emitChosenDate(weekDay)},"mouseenter":function($event){return _vm.setRangeHoverEndDate(weekDay)},"keydown":function($event){return _vm.manageKeydown($event, weekDay)}}},[_c('span',[_vm._v(_vm._s(weekDay.getDate()))]),(_vm.eventsDateMatch(weekDay))?_c('div',{staticClass:"events"},_vm._l((_vm.eventsDateMatch(weekDay)),function(event,index){return _c('div',{key:index,staticClass:"event",class:event.type})}),0):_vm._e()]):_c('div',{key:index,staticClass:"datepicker-cell",class:_vm.classObject(weekDay)},[_c('span',[_vm._v(_vm._s(weekDay.getDate()))]),(_vm.eventsDateMatch(weekDay))?_c('div',{staticClass:"events"},_vm._l((_vm.eventsDateMatch(weekDay)),function(event,index){return _c('div',{key:index,staticClass:"event",class:event.type})}),0):_vm._e()])]})],2)};
   var __vue_staticRenderFns__$b = [];
 
     /* style */
@@ -38241,9 +38305,9 @@
       focused: Object,
       disabled: Boolean,
       dateCreator: Function,
-      unselectableDates: Array,
+      unselectableDates: [Array, Function],
       unselectableDaysOfWeek: Array,
-      selectableDates: Array,
+      selectableDates: [Array, Function],
       nearbyMonthDays: Boolean,
       nearbySelectableMonthDays: Boolean,
       showWeekNumber: Boolean,
@@ -38256,11 +38320,18 @@
       return {
         selectedBeginDate: undefined,
         selectedEndDate: undefined,
-        hoveredEndDate: undefined,
-        multipleSelectedDates: this.multiple && this.value ? this.value : []
+        hoveredEndDate: undefined
       };
     },
     computed: {
+      multipleSelectedDates: {
+        get: function get() {
+          return this.multiple && this.value ? this.value : [];
+        },
+        set: function set(value) {
+          this.$emit('input', value);
+        }
+      },
       visibleDayNames: function visibleDayNames() {
         var visibleDayNames = [];
         var index = this.firstDayOfWeek;
@@ -38394,10 +38465,8 @@
             return selectedDate.getDate() !== date.getDate() || selectedDate.getFullYear() !== date.getFullYear() || selectedDate.getMonth() !== date.getMonth();
           });
         } else {
-          this.multipleSelectedDates.push(date);
+          this.multipleSelectedDates = [].concat(_toConsumableArray(this.multipleSelectedDates), [date]);
         }
-
-        this.$emit('input', this.multipleSelectedDates);
       },
 
       /*
@@ -38468,21 +38537,33 @@
         }
 
         if (this.selectableDates) {
-          for (var i = 0; i < this.selectableDates.length; i++) {
-            var enabledDate = this.selectableDates[i];
-
-            if (day.getDate() === enabledDate.getDate() && day.getFullYear() === enabledDate.getFullYear() && day.getMonth() === enabledDate.getMonth()) {
+          if (typeof this.selectableDates === 'function') {
+            if (this.selectableDates(day)) {
               return true;
             } else {
               validity.push(false);
+            }
+          } else {
+            for (var i = 0; i < this.selectableDates.length; i++) {
+              var enabledDate = this.selectableDates[i];
+
+              if (day.getDate() === enabledDate.getDate() && day.getFullYear() === enabledDate.getFullYear() && day.getMonth() === enabledDate.getMonth()) {
+                return true;
+              } else {
+                validity.push(false);
+              }
             }
           }
         }
 
         if (this.unselectableDates) {
-          for (var _i = 0; _i < this.unselectableDates.length; _i++) {
-            var disabledDate = this.unselectableDates[_i];
-            validity.push(day.getDate() !== disabledDate.getDate() || day.getFullYear() !== disabledDate.getFullYear() || day.getMonth() !== disabledDate.getMonth());
+          if (typeof this.unselectableDates === 'function') {
+            validity.push(!this.unselectableDates(day));
+          } else {
+            for (var _i = 0; _i < this.unselectableDates.length; _i++) {
+              var disabledDate = this.unselectableDates[_i];
+              validity.push(day.getDate() !== disabledDate.getDate() || day.getFullYear() !== disabledDate.getFullYear() || day.getMonth() !== disabledDate.getMonth());
+            }
           }
         }
 
@@ -38566,9 +38647,9 @@
       focused: Object,
       disabled: Boolean,
       dateCreator: Function,
-      unselectableDates: Array,
+      unselectableDates: [Array, Function],
       unselectableDaysOfWeek: Array,
-      selectableDates: Array,
+      selectableDates: [Array, Function],
       range: Boolean,
       multiple: Boolean
     },
@@ -38688,21 +38769,33 @@
         validity.push(day.getFullYear() === this.focused.year);
 
         if (this.selectableDates) {
-          for (var i = 0; i < this.selectableDates.length; i++) {
-            var enabledDate = this.selectableDates[i];
-
-            if (day.getFullYear() === enabledDate.getFullYear() && day.getMonth() === enabledDate.getMonth()) {
+          if (typeof this.selectableDates === 'function') {
+            if (this.selectableDates(day)) {
               return true;
             } else {
               validity.push(false);
+            }
+          } else {
+            for (var i = 0; i < this.selectableDates.length; i++) {
+              var enabledDate = this.selectableDates[i];
+
+              if (day.getFullYear() === enabledDate.getFullYear() && day.getMonth() === enabledDate.getMonth()) {
+                return true;
+              } else {
+                validity.push(false);
+              }
             }
           }
         }
 
         if (this.unselectableDates) {
-          for (var _i = 0; _i < this.unselectableDates.length; _i++) {
-            var disabledDate = this.unselectableDates[_i];
-            validity.push(day.getFullYear() !== disabledDate.getFullYear() || day.getMonth() !== disabledDate.getMonth());
+          if (typeof this.unselectableDates === 'function') {
+            validity.push(!this.unselectableDates(day));
+          } else {
+            for (var _i = 0; _i < this.unselectableDates.length; _i++) {
+              var disabledDate = this.unselectableDates[_i];
+              validity.push(day.getFullYear() !== disabledDate.getFullYear() || day.getMonth() !== disabledDate.getMonth());
+            }
           }
         }
 
@@ -39029,14 +39122,14 @@
       editable: Boolean,
       disabled: Boolean,
       horizontalTimePicker: Boolean,
-      unselectableDates: Array,
+      unselectableDates: [Array, Function],
       unselectableDaysOfWeek: {
         type: Array,
         default: function _default() {
           return config$2.defaultUnselectableDaysOfWeek;
         }
       },
-      selectableDates: Array,
+      selectableDates: [Array, Function],
       dateFormatter: {
         type: Function,
         default: function _default(date, vm) {
@@ -39074,6 +39167,7 @@
         }
       },
       position: String,
+      iconRight: String,
       events: Array,
       indicators: {
         type: String,
@@ -39169,7 +39263,7 @@
     data: function data() {
       var focusedDate = (Array.isArray(this.value) ? this.value[0] : this.value) || this.focusedDate || this.dateCreator();
 
-      if (!this.value && this.maxDate && this.maxDate.getFullYear() < new Date().getFullYear()) {
+      if (!this.value && this.maxDate && this.maxDate.getFullYear() < focusedDate.getFullYear()) {
         focusedDate.setFullYear(this.maxDate.getFullYear());
       }
 
@@ -39214,14 +39308,14 @@
       },
       dtf: function dtf() {
         return new Intl.DateTimeFormat(this.locale, {
-          timezome: 'UTC'
+          timeZone: 'UTC'
         });
       },
       dtfMonth: function dtfMonth() {
         return new Intl.DateTimeFormat(this.locale, {
           year: this.localeOptions.year || 'numeric',
           month: this.localeOptions.month || '2-digit',
-          timezome: 'UTC'
+          timeZone: 'UTC'
         });
       },
       newMonthNames: function newMonthNames() {
@@ -39484,8 +39578,12 @@
        */
       togglePicker: function togglePicker(active) {
         if (this.$refs.dropdown) {
-          if (this.closeOnClick) {
-            this.$refs.dropdown.isActive = typeof active === 'boolean' ? active : !this.$refs.dropdown.isActive;
+          var isActive = typeof active === 'boolean' ? active : !this.$refs.dropdown.isActive;
+
+          if (isActive) {
+            this.$refs.dropdown.isActive = isActive;
+          } else if (this.closeOnClick) {
+            this.$refs.dropdown.isActive = isActive;
           }
         }
       },
@@ -39567,7 +39665,7 @@
   const __vue_script__$3$1 = script$3$1;
 
   /* template */
-  var __vue_render__$3$1 = function () {var _vm=this;var _h=_vm.$createElement;var _c=_vm._self._c||_h;return _c('div',{staticClass:"datepicker control",class:[_vm.size, {'is-expanded': _vm.expanded}]},[(!_vm.isMobile || _vm.inline)?_c('b-dropdown',{ref:"dropdown",attrs:{"position":_vm.position,"disabled":_vm.disabled,"inline":_vm.inline,"mobile-modal":_vm.mobileModal,"trap-focus":_vm.trapFocus,"aria-role":_vm.ariaRole,"aria-modal":!_vm.inline,"append-to-body":_vm.appendToBody,"append-to-body-copy-parent":""},on:{"active-change":_vm.onActiveChange},scopedSlots:_vm._u([(!_vm.inline)?{key:"trigger",fn:function(){return [_vm._t("trigger",[_c('b-input',_vm._b({ref:"input",attrs:{"autocomplete":"off","value":_vm.formattedValue,"placeholder":_vm.placeholder,"size":_vm.size,"icon":_vm.icon,"icon-pack":_vm.iconPack,"rounded":_vm.rounded,"loading":_vm.loading,"disabled":_vm.disabled,"readonly":!_vm.editable,"use-html5-validation":false},on:{"focus":_vm.handleOnFocus},nativeOn:{"click":function($event){return _vm.onInputClick($event)},"keyup":function($event){if(!$event.type.indexOf('key')&&_vm._k($event.keyCode,"enter",13,$event.key,"Enter")){ return null; }return _vm.togglePicker(true)},"change":function($event){return _vm.onChange($event.target.value)}}},'b-input',_vm.$attrs,false))])]},proxy:true}:null],null,true)},[_c('b-dropdown-item',{class:{'dropdown-horizonal-timepicker': _vm.horizontalTimePicker},attrs:{"disabled":_vm.disabled,"focusable":_vm.focusable,"custom":""}},[_c('div',[_c('header',{staticClass:"datepicker-header"},[(_vm.$slots.header !== undefined && _vm.$slots.header.length)?[_vm._t("header")]:_c('div',{staticClass:"pagination field is-centered",class:_vm.size},[_c('a',{directives:[{name:"show",rawName:"v-show",value:(!_vm.showPrev && !_vm.disabled),expression:"!showPrev && !disabled"}],staticClass:"pagination-previous",attrs:{"role":"button","href":"#","disabled":_vm.disabled,"aria-label":_vm.ariaPreviousLabel},on:{"click":function($event){$event.preventDefault();return _vm.prev($event)},"keydown":[function($event){if(!$event.type.indexOf('key')&&_vm._k($event.keyCode,"enter",13,$event.key,"Enter")){ return null; }$event.preventDefault();return _vm.prev($event)},function($event){if(!$event.type.indexOf('key')&&_vm._k($event.keyCode,"space",32,$event.key,[" ","Spacebar"])){ return null; }$event.preventDefault();return _vm.prev($event)}]}},[_c('b-icon',{attrs:{"icon":_vm.iconPrev,"pack":_vm.iconPack,"both":"","type":"is-primary is-clickable"}})],1),_c('a',{directives:[{name:"show",rawName:"v-show",value:(!_vm.showNext && !_vm.disabled),expression:"!showNext && !disabled"}],staticClass:"pagination-next",attrs:{"role":"button","href":"#","disabled":_vm.disabled,"aria-label":_vm.ariaNextLabel},on:{"click":function($event){$event.preventDefault();return _vm.next($event)},"keydown":[function($event){if(!$event.type.indexOf('key')&&_vm._k($event.keyCode,"enter",13,$event.key,"Enter")){ return null; }$event.preventDefault();return _vm.next($event)},function($event){if(!$event.type.indexOf('key')&&_vm._k($event.keyCode,"space",32,$event.key,[" ","Spacebar"])){ return null; }$event.preventDefault();return _vm.next($event)}]}},[_c('b-icon',{attrs:{"icon":_vm.iconNext,"pack":_vm.iconPack,"both":"","type":"is-primary is-clickable"}})],1),_c('div',{staticClass:"pagination-list"},[_c('b-field',[(!_vm.isTypeMonth)?_c('b-select',{attrs:{"disabled":_vm.disabled,"size":_vm.size},model:{value:(_vm.focusedDateData.month),callback:function ($$v) {_vm.$set(_vm.focusedDateData, "month", $$v);},expression:"focusedDateData.month"}},_vm._l((_vm.listOfMonths),function(month){return _c('option',{key:month.name,attrs:{"disabled":month.disabled},domProps:{"value":month.index}},[_vm._v(" "+_vm._s(month.name)+" ")])}),0):_vm._e(),_c('b-select',{attrs:{"disabled":_vm.disabled,"size":_vm.size},model:{value:(_vm.focusedDateData.year),callback:function ($$v) {_vm.$set(_vm.focusedDateData, "year", $$v);},expression:"focusedDateData.year"}},_vm._l((_vm.listOfYears),function(year){return _c('option',{key:year,domProps:{"value":year}},[_vm._v(" "+_vm._s(year)+" ")])}),0)],1)],1)])],2),(!_vm.isTypeMonth)?_c('div',{staticClass:"datepicker-content",class:{'content-horizonal-timepicker': _vm.horizontalTimePicker}},[_c('b-datepicker-table',{attrs:{"day-names":_vm.newDayNames,"month-names":_vm.newMonthNames,"first-day-of-week":_vm.firstDayOfWeek,"rules-for-first-week":_vm.rulesForFirstWeek,"min-date":_vm.minDate,"max-date":_vm.maxDate,"focused":_vm.focusedDateData,"disabled":_vm.disabled,"unselectable-dates":_vm.unselectableDates,"unselectable-days-of-week":_vm.unselectableDaysOfWeek,"selectable-dates":_vm.selectableDates,"events":_vm.events,"indicators":_vm.indicators,"date-creator":_vm.dateCreator,"type-month":_vm.isTypeMonth,"nearby-month-days":_vm.nearbyMonthDays,"nearby-selectable-month-days":_vm.nearbySelectableMonthDays,"show-week-number":_vm.showWeekNumber,"week-number-clickable":_vm.weekNumberClickable,"range":_vm.range,"multiple":_vm.multiple},on:{"range-start":function (date) { return _vm.$emit('range-start', date); },"range-end":function (date) { return _vm.$emit('range-end', date); },"close":function($event){return _vm.togglePicker(false)},"update:focused":function($event){_vm.focusedDateData = $event;}},model:{value:(_vm.computedValue),callback:function ($$v) {_vm.computedValue=$$v;},expression:"computedValue"}})],1):_c('div',[_c('b-datepicker-month',{attrs:{"month-names":_vm.newMonthNames,"min-date":_vm.minDate,"max-date":_vm.maxDate,"focused":_vm.focusedDateData,"disabled":_vm.disabled,"unselectable-dates":_vm.unselectableDates,"unselectable-days-of-week":_vm.unselectableDaysOfWeek,"selectable-dates":_vm.selectableDates,"events":_vm.events,"indicators":_vm.indicators,"date-creator":_vm.dateCreator,"range":_vm.range,"multiple":_vm.multiple},on:{"range-start":function (date) { return _vm.$emit('range-start', date); },"range-end":function (date) { return _vm.$emit('range-end', date); },"close":function($event){return _vm.togglePicker(false)},"change-focus":_vm.changeFocus,"update:focused":function($event){_vm.focusedDateData = $event;}},model:{value:(_vm.computedValue),callback:function ($$v) {_vm.computedValue=$$v;},expression:"computedValue"}})],1)]),(_vm.$slots.default !== undefined && _vm.$slots.default.length)?_c('footer',{staticClass:"datepicker-footer",class:{'footer-horizontal-timepicker': _vm.horizontalTimePicker}},[_vm._t("default")],2):_vm._e()])],1):_c('b-input',_vm._b({ref:"input",attrs:{"type":!_vm.isTypeMonth ? 'date' : 'month',"autocomplete":"off","value":_vm.formatNative(_vm.computedValue),"placeholder":_vm.placeholder,"size":_vm.size,"icon":_vm.icon,"icon-pack":_vm.iconPack,"rounded":_vm.rounded,"loading":_vm.loading,"max":_vm.formatNative(_vm.maxDate),"min":_vm.formatNative(_vm.minDate),"disabled":_vm.disabled,"readonly":false,"use-html5-validation":false},on:{"focus":_vm.onFocus,"blur":_vm.onBlur},nativeOn:{"change":function($event){return _vm.onChangeNativePicker($event)}}},'b-input',_vm.$attrs,false))],1)};
+  var __vue_render__$3$1 = function () {var _vm=this;var _h=_vm.$createElement;var _c=_vm._self._c||_h;return _c('div',{staticClass:"datepicker control",class:[_vm.size, {'is-expanded': _vm.expanded}]},[(!_vm.isMobile || _vm.inline)?_c('b-dropdown',{ref:"dropdown",attrs:{"position":_vm.position,"disabled":_vm.disabled,"inline":_vm.inline,"mobile-modal":_vm.mobileModal,"trap-focus":_vm.trapFocus,"aria-role":_vm.ariaRole,"aria-modal":!_vm.inline,"append-to-body":_vm.appendToBody,"append-to-body-copy-parent":""},on:{"active-change":_vm.onActiveChange},scopedSlots:_vm._u([(!_vm.inline)?{key:"trigger",fn:function(){return [_vm._t("trigger",[_c('b-input',_vm._b({ref:"input",attrs:{"autocomplete":"off","value":_vm.formattedValue,"placeholder":_vm.placeholder,"size":_vm.size,"icon":_vm.icon,"icon-right":_vm.iconRight,"icon-pack":_vm.iconPack,"rounded":_vm.rounded,"loading":_vm.loading,"disabled":_vm.disabled,"readonly":!_vm.editable,"use-html5-validation":false},on:{"focus":_vm.handleOnFocus},nativeOn:{"click":function($event){return _vm.onInputClick($event)},"keyup":function($event){if(!$event.type.indexOf('key')&&_vm._k($event.keyCode,"enter",13,$event.key,"Enter")){ return null; }return _vm.togglePicker(true)},"change":function($event){return _vm.onChange($event.target.value)}}},'b-input',_vm.$attrs,false))])]},proxy:true}:null],null,true)},[_c('b-dropdown-item',{class:{'dropdown-horizonal-timepicker': _vm.horizontalTimePicker},attrs:{"disabled":_vm.disabled,"focusable":_vm.focusable,"custom":""}},[_c('div',[_c('header',{staticClass:"datepicker-header"},[(_vm.$slots.header !== undefined && _vm.$slots.header.length)?[_vm._t("header")]:_c('div',{staticClass:"pagination field is-centered",class:_vm.size},[_c('a',{directives:[{name:"show",rawName:"v-show",value:(!_vm.showPrev && !_vm.disabled),expression:"!showPrev && !disabled"}],staticClass:"pagination-previous",attrs:{"role":"button","href":"#","disabled":_vm.disabled,"aria-label":_vm.ariaPreviousLabel},on:{"click":function($event){$event.preventDefault();return _vm.prev($event)},"keydown":[function($event){if(!$event.type.indexOf('key')&&_vm._k($event.keyCode,"enter",13,$event.key,"Enter")){ return null; }$event.preventDefault();return _vm.prev($event)},function($event){if(!$event.type.indexOf('key')&&_vm._k($event.keyCode,"space",32,$event.key,[" ","Spacebar"])){ return null; }$event.preventDefault();return _vm.prev($event)}]}},[_c('b-icon',{attrs:{"icon":_vm.iconPrev,"pack":_vm.iconPack,"both":"","type":"is-primary is-clickable"}})],1),_c('a',{directives:[{name:"show",rawName:"v-show",value:(!_vm.showNext && !_vm.disabled),expression:"!showNext && !disabled"}],staticClass:"pagination-next",attrs:{"role":"button","href":"#","disabled":_vm.disabled,"aria-label":_vm.ariaNextLabel},on:{"click":function($event){$event.preventDefault();return _vm.next($event)},"keydown":[function($event){if(!$event.type.indexOf('key')&&_vm._k($event.keyCode,"enter",13,$event.key,"Enter")){ return null; }$event.preventDefault();return _vm.next($event)},function($event){if(!$event.type.indexOf('key')&&_vm._k($event.keyCode,"space",32,$event.key,[" ","Spacebar"])){ return null; }$event.preventDefault();return _vm.next($event)}]}},[_c('b-icon',{attrs:{"icon":_vm.iconNext,"pack":_vm.iconPack,"both":"","type":"is-primary is-clickable"}})],1),_c('div',{staticClass:"pagination-list"},[_c('b-field',[(!_vm.isTypeMonth)?_c('b-select',{attrs:{"disabled":_vm.disabled,"size":_vm.size},model:{value:(_vm.focusedDateData.month),callback:function ($$v) {_vm.$set(_vm.focusedDateData, "month", $$v);},expression:"focusedDateData.month"}},_vm._l((_vm.listOfMonths),function(month){return _c('option',{key:month.name,attrs:{"disabled":month.disabled},domProps:{"value":month.index}},[_vm._v(" "+_vm._s(month.name)+" ")])}),0):_vm._e(),_c('b-select',{attrs:{"disabled":_vm.disabled,"size":_vm.size},model:{value:(_vm.focusedDateData.year),callback:function ($$v) {_vm.$set(_vm.focusedDateData, "year", $$v);},expression:"focusedDateData.year"}},_vm._l((_vm.listOfYears),function(year){return _c('option',{key:year,domProps:{"value":year}},[_vm._v(" "+_vm._s(year)+" ")])}),0)],1)],1)])],2),(!_vm.isTypeMonth)?_c('div',{staticClass:"datepicker-content",class:{'content-horizonal-timepicker': _vm.horizontalTimePicker}},[_c('b-datepicker-table',{attrs:{"day-names":_vm.newDayNames,"month-names":_vm.newMonthNames,"first-day-of-week":_vm.firstDayOfWeek,"rules-for-first-week":_vm.rulesForFirstWeek,"min-date":_vm.minDate,"max-date":_vm.maxDate,"focused":_vm.focusedDateData,"disabled":_vm.disabled,"unselectable-dates":_vm.unselectableDates,"unselectable-days-of-week":_vm.unselectableDaysOfWeek,"selectable-dates":_vm.selectableDates,"events":_vm.events,"indicators":_vm.indicators,"date-creator":_vm.dateCreator,"type-month":_vm.isTypeMonth,"nearby-month-days":_vm.nearbyMonthDays,"nearby-selectable-month-days":_vm.nearbySelectableMonthDays,"show-week-number":_vm.showWeekNumber,"week-number-clickable":_vm.weekNumberClickable,"range":_vm.range,"multiple":_vm.multiple},on:{"range-start":function (date) { return _vm.$emit('range-start', date); },"range-end":function (date) { return _vm.$emit('range-end', date); },"close":function($event){return _vm.togglePicker(false)},"update:focused":function($event){_vm.focusedDateData = $event;}},model:{value:(_vm.computedValue),callback:function ($$v) {_vm.computedValue=$$v;},expression:"computedValue"}})],1):_c('div',[_c('b-datepicker-month',{attrs:{"month-names":_vm.newMonthNames,"min-date":_vm.minDate,"max-date":_vm.maxDate,"focused":_vm.focusedDateData,"disabled":_vm.disabled,"unselectable-dates":_vm.unselectableDates,"unselectable-days-of-week":_vm.unselectableDaysOfWeek,"selectable-dates":_vm.selectableDates,"events":_vm.events,"indicators":_vm.indicators,"date-creator":_vm.dateCreator,"range":_vm.range,"multiple":_vm.multiple},on:{"range-start":function (date) { return _vm.$emit('range-start', date); },"range-end":function (date) { return _vm.$emit('range-end', date); },"close":function($event){return _vm.togglePicker(false)},"change-focus":_vm.changeFocus,"update:focused":function($event){_vm.focusedDateData = $event;}},model:{value:(_vm.computedValue),callback:function ($$v) {_vm.computedValue=$$v;},expression:"computedValue"}})],1)]),(_vm.$slots.default !== undefined && _vm.$slots.default.length)?_c('footer',{staticClass:"datepicker-footer",class:{'footer-horizontal-timepicker': _vm.horizontalTimePicker}},[_vm._t("default")],2):_vm._e()])],1):_c('b-input',_vm._b({ref:"input",attrs:{"type":!_vm.isTypeMonth ? 'date' : 'month',"autocomplete":"off","value":_vm.formatNative(_vm.computedValue),"placeholder":_vm.placeholder,"size":_vm.size,"icon":_vm.icon,"icon-pack":_vm.iconPack,"rounded":_vm.rounded,"loading":_vm.loading,"max":_vm.formatNative(_vm.maxDate),"min":_vm.formatNative(_vm.minDate),"disabled":_vm.disabled,"readonly":false,"use-html5-validation":false},on:{"focus":_vm.onFocus,"blur":_vm.onBlur},nativeOn:{"change":function($event){return _vm.onChangeNativePicker($event)}}},'b-input',_vm.$attrs,false))],1)};
   var __vue_staticRenderFns__$3$1 = [];
 
     /* style */
@@ -39742,7 +39840,7 @@
 
             this.newValue = new Date(val.getTime());
           } else {
-            this.newValue = this.adjustValue(this.value);
+            this.newValue = this.adjustValue(value);
           }
 
           var adjustedValue = this.adjustValue(this.newValue, true); // reverse adjust
@@ -39768,8 +39866,7 @@
           hour: this.localeOptions.hour || 'numeric',
           minute: this.localeOptions.minute || 'numeric',
           second: this.enableSeconds() ? this.localeOptions.second || 'numeric' : undefined,
-          hour12: !this.isHourFormat24(),
-          timezome: 'UTC'
+          hour12: !this.isHourFormat24()
         });
       },
       isMobileNative: function isMobileNative() {
@@ -39827,10 +39924,10 @@
       }
     },
     watch: {
-      value: function value(val) {
+      value: function value() {
         this.newValue = this.adjustValue(this.value);
       },
-      tzOffset: function tzOffset(val) {
+      tzOffset: function tzOffset() {
         this.newValue = this.adjustValue(this.value);
       }
     },
@@ -39850,14 +39947,12 @@
         return !this.localeOptions.hour12;
       },
       adjustValue: function adjustValue(value) {
-        var reverse = arguments.length > 1 && arguments[1] !== undefined ? arguments[1] : false;
-        if (!value) return value;
 
-        if (reverse) {
-          return new Date(value.getTime() - this.tzOffset * 60000);
-        } else {
-          return new Date(value.getTime() + this.tzOffset * 60000);
+        if (value !== null && typeof value !== 'undefined') {
+          return new Date(value.getTime());
         }
+
+        return value;
       },
       defaultDatetimeParser: function defaultDatetimeParser(date) {
         if (typeof this.datetimeParser === 'function') {
@@ -40064,6 +40159,12 @@
         }
       },
       ariaModal: Boolean,
+      ariaLabel: {
+        type: String,
+        validator: function validator(value) {
+          return Boolean(value);
+        }
+      },
       destroyOnHide: {
         type: Boolean,
         default: true
@@ -40074,7 +40175,7 @@
         isActive: this.active || false,
         savedScrollTop: null,
         newWidth: typeof this.width === 'number' ? this.width + 'px' : this.width,
-        animating: true,
+        animating: !this.active,
         destroyed: !this.active
       };
     },
@@ -40083,7 +40184,7 @@
         return typeof this.canCancel === 'boolean' ? this.canCancel ? config$2.defaultModalCanCancel : [] : this.canCancel;
       },
       showX: function showX() {
-        return this.cancelOptions.indexOf('x') >= 0 && !this.hasModalCard;
+        return this.cancelOptions.indexOf('x') >= 0;
       },
       customStyle: function customStyle() {
         if (!this.fullScreen) {
@@ -40237,7 +40338,7 @@
   const __vue_script__$f = script$f;
 
   /* template */
-  var __vue_render__$e = function () {var _vm=this;var _h=_vm.$createElement;var _c=_vm._self._c||_h;return _c('transition',{attrs:{"name":_vm.animation},on:{"after-enter":_vm.afterEnter,"before-leave":_vm.beforeLeave,"after-leave":_vm.afterLeave}},[(!_vm.destroyed)?_c('div',{directives:[{name:"show",rawName:"v-show",value:(_vm.isActive),expression:"isActive"},{name:"trap-focus",rawName:"v-trap-focus",value:(_vm.trapFocus),expression:"trapFocus"}],staticClass:"modal is-active",class:[{'is-full-screen': _vm.fullScreen}, _vm.customClass],attrs:{"tabindex":"-1","role":_vm.ariaRole,"aria-modal":_vm.ariaModal}},[_c('div',{staticClass:"modal-background",on:{"click":function($event){return _vm.cancel('outside')}}}),_c('div',{staticClass:"animation-content",class:{ 'modal-content': !_vm.hasModalCard },style:(_vm.customStyle)},[(_vm.component)?_c(_vm.component,_vm._g(_vm._b({tag:"component",attrs:{"can-cancel":_vm.canCancel},on:{"close":_vm.close}},'component',_vm.props,false),_vm.events)):(_vm.content)?[_c('div',{domProps:{"innerHTML":_vm._s(_vm.content)}})]:_vm._t("default",null,{"canCancel":_vm.canCancel,"close":_vm.close}),(_vm.showX)?_c('button',{directives:[{name:"show",rawName:"v-show",value:(!_vm.animating),expression:"!animating"}],staticClass:"modal-close is-large",attrs:{"type":"button"},on:{"click":function($event){return _vm.cancel('x')}}}):_vm._e()],2)]):_vm._e()])};
+  var __vue_render__$e = function () {var _vm=this;var _h=_vm.$createElement;var _c=_vm._self._c||_h;return _c('transition',{attrs:{"name":_vm.animation},on:{"after-enter":_vm.afterEnter,"before-leave":_vm.beforeLeave,"after-leave":_vm.afterLeave}},[(!_vm.destroyed)?_c('div',{directives:[{name:"show",rawName:"v-show",value:(_vm.isActive),expression:"isActive"},{name:"trap-focus",rawName:"v-trap-focus",value:(_vm.trapFocus),expression:"trapFocus"}],staticClass:"modal is-active",class:[{'is-full-screen': _vm.fullScreen}, _vm.customClass],attrs:{"tabindex":"-1","role":_vm.ariaRole,"aria-label":_vm.ariaLabel,"aria-modal":_vm.ariaModal}},[_c('div',{staticClass:"modal-background",on:{"click":function($event){return _vm.cancel('outside')}}}),_c('div',{staticClass:"animation-content",class:{ 'modal-content': !_vm.hasModalCard },style:(_vm.customStyle)},[(_vm.component)?_c(_vm.component,_vm._g(_vm._b({tag:"component",attrs:{"can-cancel":_vm.canCancel},on:{"close":_vm.close}},'component',_vm.props,false),_vm.events)):(_vm.content)?[_c('div',{domProps:{"innerHTML":_vm._s(_vm.content)}})]:_vm._t("default",null,{"canCancel":_vm.canCancel,"close":_vm.close}),(_vm.showX)?_c('button',{directives:[{name:"show",rawName:"v-show",value:(!_vm.animating),expression:"!animating"}],staticClass:"modal-close is-large",attrs:{"type":"button"},on:{"click":function($event){return _vm.cancel('x')}}}):_vm._e()],2)]):_vm._e()])};
   var __vue_staticRenderFns__$e = [];
 
     /* style */
@@ -40541,8 +40642,7 @@
     },
     prompt: function prompt(params) {
       var defaultParam = {
-        hasInput: true,
-        confirmText: 'Done'
+        hasInput: true
       };
       var propsData = merge$2(defaultParam, params);
       return open(propsData);
@@ -40624,6 +40724,10 @@
         }
       },
       rounded: {
+        type: Boolean,
+        default: false
+      },
+      captionFirst: {
         type: Boolean,
         default: false
       }
@@ -40750,6 +40854,12 @@
         if (this.computedSrcset && this.computedWidth) {
           return "".concat(this.computedWidth, "px");
         }
+      },
+      isCaptionFirst: function isCaptionFirst() {
+        return this.$slots.caption && this.captionFirst;
+      },
+      isCaptionLast: function isCaptionLast() {
+        return this.$slots.caption && !this.captionFirst;
       }
     },
     methods: {
@@ -40847,7 +40957,7 @@
   const __vue_script__$h = script$h;
 
   /* template */
-  var __vue_render__$g = function () {var _vm=this;var _h=_vm.$createElement;var _c=_vm._self._c||_h;return _c('figure',{staticClass:"b-image-wrapper",class:_vm.figureClasses,style:(_vm.figureStyles)},[_c('transition',{attrs:{"name":"fade"}},[(_vm.isDisplayed)?_c('img',{class:_vm.imgClasses,attrs:{"srcset":_vm.computedSrcset,"src":_vm.computedSrc,"alt":_vm.alt,"width":_vm.computedWidth,"sizes":_vm.computedSizes,"loading":_vm.computedNativeLazy},on:{"load":_vm.onLoad,"error":_vm.onError}}):_vm._e()]),_c('transition',{attrs:{"name":"fade"}},[(_vm.isPlaceholderDisplayed)?_vm._t("placeholder",[_c('img',{staticClass:"placeholder",class:_vm.imgClasses,attrs:{"src":_vm.computedPlaceholder}})]):_vm._e()],2)],1)};
+  var __vue_render__$g = function () {var _vm=this;var _h=_vm.$createElement;var _c=_vm._self._c||_h;return _c('figure',{staticClass:"b-image-wrapper",class:_vm.figureClasses,style:(_vm.figureStyles)},[(_vm.isCaptionFirst)?_c('figcaption',[_vm._t("caption")],2):_vm._e(),_c('transition',{attrs:{"name":"fade"}},[(_vm.isDisplayed)?_c('img',{class:_vm.imgClasses,attrs:{"srcset":_vm.computedSrcset,"src":_vm.computedSrc,"alt":_vm.alt,"width":_vm.computedWidth,"sizes":_vm.computedSizes,"loading":_vm.computedNativeLazy},on:{"load":_vm.onLoad,"error":_vm.onError}}):_vm._e()]),_c('transition',{attrs:{"name":"fade"}},[(_vm.isPlaceholderDisplayed)?_vm._t("placeholder",[_c('img',{staticClass:"placeholder",class:_vm.imgClasses,attrs:{"src":_vm.computedPlaceholder,"alt":_vm.alt}})]):_vm._e()],2),(_vm.isCaptionLast)?_c('figcaption',[_vm._t("caption")],2):_vm._e()],1)};
   var __vue_staticRenderFns__$g = [];
 
     /* style */
@@ -41299,7 +41409,8 @@
   var __vue_render__$1$5 = function () {var _vm=this;var _h=_vm.$createElement;var _c=_vm._self._c||_h;return _c('li',{attrs:{"role":_vm.ariaRoleMenu}},[_c(_vm.tag,_vm._g(_vm._b({tag:"component",class:{
               'is-active': _vm.newActive,
               'is-expanded': _vm.newExpanded,
-              'is-disabled': _vm.disabled
+              'is-disabled': _vm.disabled,
+              'icon-text': _vm.icon,
           },on:{"click":function($event){return _vm.onClick($event)}}},'component',_vm.$attrs,false),_vm.$listeners),[(_vm.icon)?_c('b-icon',{attrs:{"icon":_vm.icon,"pack":_vm.iconPack,"size":_vm.size}}):_vm._e(),(_vm.label)?_c('span',[_vm._v(" "+_vm._s(_vm.label)+" ")]):_vm._t("label",null,{"expanded":_vm.newExpanded,"active":_vm.newActive})],2),(_vm.$slots.default)?[_c('transition',{attrs:{"name":_vm.animation}},[_c('ul',{directives:[{name:"show",rawName:"v-show",value:(_vm.newExpanded),expression:"newExpanded"}]},[_vm._t("default")],2)])]:_vm._e()],2)};
   var __vue_staticRenderFns__$1$5 = [];
 
@@ -41564,6 +41675,10 @@
         type: Boolean,
         default: undefined
       },
+      indefinite: {
+        type: Boolean,
+        default: false
+      },
       position: {
         type: String,
         default: 'is-top',
@@ -41737,12 +41852,6 @@
   var script$1$7 = {
     name: 'BNotificationNotice',
     mixins: [NoticeMixin],
-    props: {
-      indefinite: {
-        type: Boolean,
-        default: false
-      }
-    },
     data: function data() {
       return {
         newDuration: this.duration || config$2.defaultNotificationDuration
@@ -41904,7 +42013,7 @@
     var isFunction = typeof bindingValue === 'function';
 
     if (!isFunction && _typeof(bindingValue) !== 'object') {
-      throw new Error("v-click-outside: Binding value should be a function or an object, typeof ".concat(bindingValue, " given"));
+      throw new Error("v-click-outside: Binding value should be a function or an object, ".concat(_typeof(bindingValue), " given"));
     }
 
     return {
@@ -41923,17 +42032,27 @@
         middleware = _ref.middleware;
     var isClickOutside = event.target !== el && !el.contains(event.target);
 
-    if (!isClickOutside) {
+    if (!isClickOutside || !middleware(event, el)) {
       return;
     }
 
-    if (middleware(event, el)) {
-      handler(event, el);
-    }
+    handler(event, el);
   }
 
-  function bind$3(el, _ref2) {
-    var value = _ref2.value;
+  function toggleEventListeners() {
+    var _ref2 = arguments.length > 0 && arguments[0] !== undefined ? arguments[0] : {},
+        eventHandlers = _ref2.eventHandlers;
+
+    var action = arguments.length > 1 && arguments[1] !== undefined ? arguments[1] : 'add';
+    eventHandlers.forEach(function (_ref3) {
+      var event = _ref3.event,
+          handler = _ref3.handler;
+      document["".concat(action, "EventListener")](event, handler);
+    });
+  }
+
+  function bind$3(el, _ref4) {
+    var value = _ref4.value;
 
     var _processArgs = processArgs(value),
         _handler = _processArgs.handler,
@@ -41956,16 +42075,12 @@
         };
       })
     };
-    instance.eventHandlers.forEach(function (_ref3) {
-      var event = _ref3.event,
-          handler = _ref3.handler;
-      return document.addEventListener(event, handler);
-    });
+    toggleEventListeners(instance, 'add');
     instances.push(instance);
   }
 
-  function update(el, _ref4) {
-    var value = _ref4.value;
+  function update(el, _ref5) {
+    var value = _ref5.value;
 
     var _processArgs2 = processArgs(value),
         _handler2 = _processArgs2.handler,
@@ -41976,11 +42091,7 @@
     var instance = instances.filter(function (instance) {
       return instance.el === el;
     })[0];
-    instance.eventHandlers.forEach(function (_ref5) {
-      var event = _ref5.event,
-          handler = _ref5.handler;
-      return document.removeEventListener(event, handler);
-    });
+    toggleEventListeners(instance, 'remove');
     instance.eventHandlers = events.map(function (eventName) {
       return {
         event: eventName,
@@ -41994,11 +42105,7 @@
         }
       };
     });
-    instance.eventHandlers.forEach(function (_ref6) {
-      var event = _ref6.event,
-          handler = _ref6.handler;
-      return document.addEventListener(event, handler);
-    });
+    toggleEventListeners(instance, 'add');
   }
 
   function unbind$1(el) {
@@ -42006,11 +42113,7 @@
     var instance = instances.filter(function (instance) {
       return instance.el === el;
     })[0];
-    instance.eventHandlers.forEach(function (_ref7) {
-      var event = _ref7.event,
-          handler = _ref7.handler;
-      return document.removeEventListener(event, handler);
-    });
+    toggleEventListeners(instance, 'remove');
   }
 
   var directive$2 = {
@@ -42105,37 +42208,13 @@
         },
         immediate: true
       },
-      fixedTop: {
-        handler: function handler(isSet) {
-          this.checkIfFixedPropertiesAreColliding();
-
-          if (isSet) {
-            // TODO Apply only one of the classes once PR is merged in Bulma:
-            // https://github.com/jgthms/bulma/pull/2737
-            this.setBodyClass(BODY_FIXED_TOP_CLASS);
-            this.spaced && this.setBodyClass(BODY_SPACED_FIXED_TOP_CLASS);
-          } else {
-            this.removeBodyClass(BODY_FIXED_TOP_CLASS);
-            this.removeBodyClass(BODY_SPACED_FIXED_TOP_CLASS);
-          }
-        },
-        immediate: true
+      fixedTop: function fixedTop(isSet) {
+        // toggle body class only on update to handle multiple navbar
+        this.setBodyFixedTopClass(isSet);
       },
-      fixedBottom: {
-        handler: function handler(isSet) {
-          this.checkIfFixedPropertiesAreColliding();
-
-          if (isSet) {
-            // TODO Apply only one of the classes once PR is merged in Bulma:
-            // https://github.com/jgthms/bulma/pull/2737
-            this.setBodyClass(BODY_FIXED_BOTTOM_CLASS);
-            this.spaced && this.setBodyClass(BODY_SPACED_FIXED_BOTTOM_CLASS);
-          } else {
-            this.removeBodyClass(BODY_FIXED_BOTTOM_CLASS);
-            this.removeBodyClass(BODY_SPACED_FIXED_BOTTOM_CLASS);
-          }
-        },
-        immediate: true
+      bottomTop: function bottomTop(isSet) {
+        // toggle body class only on update to handle multiple navbar
+        this.setBodyFixedBottomClass(isSet);
       }
     },
     methods: {
@@ -42230,7 +42309,37 @@
         return createElement('div', {
           staticClass: "navbar-".concat(positionName)
         }, this.$slots[positionName]);
+      },
+      setBodyFixedTopClass: function setBodyFixedTopClass(isSet) {
+        this.checkIfFixedPropertiesAreColliding();
+
+        if (isSet) {
+          // TODO Apply only one of the classes once PR is merged in Bulma:
+          // https://github.com/jgthms/bulma/pull/2737
+          this.setBodyClass(BODY_FIXED_TOP_CLASS);
+          this.spaced && this.setBodyClass(BODY_SPACED_FIXED_TOP_CLASS);
+        } else {
+          this.removeBodyClass(BODY_FIXED_TOP_CLASS);
+          this.removeBodyClass(BODY_SPACED_FIXED_TOP_CLASS);
+        }
+      },
+      setBodyFixedBottomClass: function setBodyFixedBottomClass(isSet) {
+        this.checkIfFixedPropertiesAreColliding();
+
+        if (isSet) {
+          // TODO Apply only one of the classes once PR is merged in Bulma:
+          // https://github.com/jgthms/bulma/pull/2737
+          this.setBodyClass(BODY_FIXED_BOTTOM_CLASS);
+          this.spaced && this.setBodyClass(BODY_SPACED_FIXED_BOTTOM_CLASS);
+        } else {
+          this.removeBodyClass(BODY_FIXED_BOTTOM_CLASS);
+          this.removeBodyClass(BODY_SPACED_FIXED_BOTTOM_CLASS);
+        }
       }
+    },
+    beforeMount: function beforeMount() {
+      this.fixedTop && this.setBodyFixedTopClass(true);
+      this.fixedBottom && this.setBodyFixedBottomClass(true);
     },
     beforeDestroy: function beforeDestroy() {
       if (this.fixedTop) {
@@ -42536,7 +42645,9 @@
         default: false
       },
       controlsPosition: String,
-      placeholder: [Number, String]
+      placeholder: [Number, String],
+      ariaMinusLabel: String,
+      ariaPlusLabel: String
     },
     data: function data() {
       return {
@@ -42564,7 +42675,11 @@
           }
 
           this.newValue = newValue;
-          this.$emit('input', newValue);
+
+          if (!isNaN(newValue) && newValue !== null && newValue !== '-0') {
+            this.$emit('input', Number(newValue));
+          }
+
           !this.isValid && this.$refs.input.checkHtml5Validity();
         }
       },
@@ -42706,7 +42821,7 @@
   const __vue_script__$n = script$n;
 
   /* template */
-  var __vue_render__$m = function () {var _vm=this;var _h=_vm.$createElement;var _c=_vm._self._c||_h;return _c('div',{staticClass:"b-numberinput field",class:_vm.fieldClasses},[_vm._l((_vm.controlsLeft),function(control){return _c('p',{key:control,class:['control', control],on:{"mouseup":_vm.onStopLongPress,"mouseleave":_vm.onStopLongPress,"touchend":_vm.onStopLongPress,"touchcancel":_vm.onStopLongPress}},[_c('button',{staticClass:"button",class:_vm.buttonClasses,attrs:{"type":"button","disabled":_vm.disabled || control === 'plus' ? _vm.disabledMax : _vm.disabledMin},on:{"mousedown":function($event){return _vm.onStartLongPress($event, control === 'plus')},"touchstart":function($event){$event.preventDefault();return _vm.onStartLongPress($event, control === 'plus')},"click":function($event){return _vm.onControlClick($event, control === 'plus')}}},[_c('b-icon',{attrs:{"both":"","icon":control,"pack":_vm.iconPack,"size":_vm.iconSize}})],1)])}),_c('b-input',_vm._b({ref:"input",attrs:{"type":"number","step":_vm.minStepNumber,"max":_vm.max,"min":_vm.min,"size":_vm.size,"disabled":_vm.disabled,"readonly":!_vm.editable,"loading":_vm.loading,"rounded":_vm.rounded,"icon":_vm.icon,"icon-pack":_vm.iconPack,"autocomplete":_vm.autocomplete,"expanded":_vm.expanded,"placeholder":_vm.placeholder,"use-html5-validation":_vm.useHtml5Validation},on:{"focus":function($event){return _vm.$emit('focus', $event)},"blur":function($event){return _vm.$emit('blur', $event)}},model:{value:(_vm.computedValue),callback:function ($$v) {_vm.computedValue=_vm._n($$v);},expression:"computedValue"}},'b-input',_vm.$attrs,false)),_vm._l((_vm.controlsRight),function(control){return _c('p',{key:control,class:['control', control],on:{"mouseup":_vm.onStopLongPress,"mouseleave":_vm.onStopLongPress,"touchend":_vm.onStopLongPress,"touchcancel":_vm.onStopLongPress}},[_c('button',{staticClass:"button",class:_vm.buttonClasses,attrs:{"type":"button","disabled":_vm.disabled || control === 'plus' ? _vm.disabledMax : _vm.disabledMin},on:{"mousedown":function($event){return _vm.onStartLongPress($event, control === 'plus')},"touchstart":function($event){$event.preventDefault();return _vm.onStartLongPress($event, control === 'plus')},"click":function($event){return _vm.onControlClick($event, control === 'plus')}}},[_c('b-icon',{attrs:{"both":"","icon":control,"pack":_vm.iconPack,"size":_vm.iconSize}})],1)])})],2)};
+  var __vue_render__$m = function () {var _vm=this;var _h=_vm.$createElement;var _c=_vm._self._c||_h;return _c('div',{staticClass:"b-numberinput field",class:_vm.fieldClasses},[_vm._l((_vm.controlsLeft),function(control){return _c('p',{key:control,class:['control', control],on:{"mouseup":_vm.onStopLongPress,"mouseleave":_vm.onStopLongPress,"touchend":_vm.onStopLongPress,"touchcancel":_vm.onStopLongPress}},[_c('button',{staticClass:"button",class:_vm.buttonClasses,attrs:{"type":"button","disabled":_vm.disabled || control === 'plus' ? _vm.disabledMax : _vm.disabledMin,"aria-label":control === 'plus' ? _vm.ariaPlusLabel : _vm.ariaMinusLabel},on:{"mousedown":function($event){return _vm.onStartLongPress($event, control === 'plus')},"touchstart":function($event){$event.preventDefault();return _vm.onStartLongPress($event, control === 'plus')},"click":function($event){return _vm.onControlClick($event, control === 'plus')}}},[_c('b-icon',{attrs:{"both":"","icon":control,"pack":_vm.iconPack,"size":_vm.iconSize}})],1)])}),_c('b-input',_vm._b({ref:"input",attrs:{"type":"number","step":_vm.minStepNumber,"max":_vm.max,"min":_vm.min,"size":_vm.size,"disabled":_vm.disabled,"readonly":!_vm.editable,"loading":_vm.loading,"rounded":_vm.rounded,"icon":_vm.icon,"icon-pack":_vm.iconPack,"autocomplete":_vm.autocomplete,"expanded":_vm.expanded,"placeholder":_vm.placeholder,"use-html5-validation":_vm.useHtml5Validation},on:{"focus":function($event){return _vm.$emit('focus', $event)},"blur":function($event){return _vm.$emit('blur', $event)}},model:{value:(_vm.computedValue),callback:function ($$v) {_vm.computedValue=$$v;},expression:"computedValue"}},'b-input',_vm.$attrs,false)),_vm._l((_vm.controlsRight),function(control){return _c('p',{key:control,class:['control', control],on:{"mouseup":_vm.onStopLongPress,"mouseleave":_vm.onStopLongPress,"touchend":_vm.onStopLongPress,"touchcancel":_vm.onStopLongPress}},[_c('button',{staticClass:"button",class:_vm.buttonClasses,attrs:{"type":"button","disabled":_vm.disabled || control === 'plus' ? _vm.disabledMax : _vm.disabledMin,"aria-label":control === 'plus' ? _vm.ariaPlusLabel : _vm.ariaMinusLabel},on:{"mousedown":function($event){return _vm.onStartLongPress($event, control === 'plus')},"touchstart":function($event){$event.preventDefault();return _vm.onStartLongPress($event, control === 'plus')},"click":function($event){return _vm.onControlClick($event, control === 'plus')}}},[_c('b-icon',{attrs:{"both":"","icon":control,"pack":_vm.iconPack,"size":_vm.iconSize}})],1)])})],2)};
   var __vue_staticRenderFns__$m = [];
 
     /* style */
@@ -43040,11 +43155,11 @@
               disabled: !_vm.hasPrev,
               class: 'pagination-previous',
               'aria-label': _vm.ariaPreviousLabel
-      })}):_c('BPaginationButton',{staticClass:"pagination-previous",attrs:{"disabled":!_vm.hasPrev,"page":_vm.getPage(_vm.current - 1)}},[_c('b-icon',{attrs:{"icon":_vm.iconPrev,"pack":_vm.iconPack,"both":"","aria-hidden":"true"}})],1),(_vm.$scopedSlots.next)?_vm._t("next",[_c('b-icon',{attrs:{"icon":_vm.iconNext,"pack":_vm.iconPack,"both":"","aria-hidden":"true"}})],{"page":_vm.getPage(_vm.current + 1, {
+      })}):_c('BPaginationButton',{staticClass:"pagination-previous",attrs:{"disabled":!_vm.hasPrev,"page":_vm.getPage(_vm.current - 1),"aria-label":_vm.ariaPreviousLabel}},[_c('b-icon',{attrs:{"icon":_vm.iconPrev,"pack":_vm.iconPack,"both":"","aria-hidden":"true"}})],1),(_vm.$scopedSlots.next)?_vm._t("next",[_c('b-icon',{attrs:{"icon":_vm.iconNext,"pack":_vm.iconPack,"both":"","aria-hidden":"true"}})],{"page":_vm.getPage(_vm.current + 1, {
               disabled: !_vm.hasNext,
               class: 'pagination-next',
               'aria-label': _vm.ariaNextLabel
-      })}):_c('BPaginationButton',{staticClass:"pagination-next",attrs:{"disabled":!_vm.hasNext,"page":_vm.getPage(_vm.current + 1)}},[_c('b-icon',{attrs:{"icon":_vm.iconNext,"pack":_vm.iconPack,"both":"","aria-hidden":"true"}})],1),(_vm.simple)?_c('small',{staticClass:"info"},[(_vm.perPage == 1)?[_vm._v(" "+_vm._s(_vm.firstItem)+" / "+_vm._s(_vm.total)+" ")]:[_vm._v(" "+_vm._s(_vm.firstItem)+"-"+_vm._s(Math.min(_vm.current * _vm.perPage, _vm.total))+" / "+_vm._s(_vm.total)+" ")]],2):_c('ul',{staticClass:"pagination-list"},[(_vm.hasFirst)?_c('li',[(_vm.$scopedSlots.default)?_vm._t("default",null,{"page":_vm.getPage(1)}):_c('BPaginationButton',{attrs:{"page":_vm.getPage(1)}})],2):_vm._e(),(_vm.hasFirstEllipsis)?_c('li',[_c('span',{staticClass:"pagination-ellipsis"},[_vm._v("…")])]):_vm._e(),_vm._l((_vm.pagesInRange),function(page){return _c('li',{key:page.number},[(_vm.$scopedSlots.default)?_vm._t("default",null,{"page":page}):_c('BPaginationButton',{attrs:{"page":page}})],2)}),(_vm.hasLastEllipsis)?_c('li',[_c('span',{staticClass:"pagination-ellipsis"},[_vm._v("…")])]):_vm._e(),(_vm.hasLast)?_c('li',[(_vm.$scopedSlots.default)?_vm._t("default",null,{"page":_vm.getPage(_vm.pageCount)}):_c('BPaginationButton',{attrs:{"page":_vm.getPage(_vm.pageCount)}})],2):_vm._e()],2)],2)};
+      })}):_c('BPaginationButton',{staticClass:"pagination-next",attrs:{"disabled":!_vm.hasNext,"page":_vm.getPage(_vm.current + 1),"aria-label":_vm.ariaNextLabel}},[_c('b-icon',{attrs:{"icon":_vm.iconNext,"pack":_vm.iconPack,"both":"","aria-hidden":"true"}})],1),(_vm.simple)?_c('small',{staticClass:"info"},[(_vm.perPage == 1)?[_vm._v(" "+_vm._s(_vm.firstItem)+" / "+_vm._s(_vm.total)+" ")]:[_vm._v(" "+_vm._s(_vm.firstItem)+"-"+_vm._s(Math.min(_vm.current * _vm.perPage, _vm.total))+" / "+_vm._s(_vm.total)+" ")]],2):_c('ul',{staticClass:"pagination-list"},[(_vm.hasFirst)?_c('li',[(_vm.$scopedSlots.default)?_vm._t("default",null,{"page":_vm.getPage(1)}):_c('BPaginationButton',{attrs:{"page":_vm.getPage(1)}})],2):_vm._e(),(_vm.hasFirstEllipsis)?_c('li',[_c('span',{staticClass:"pagination-ellipsis"},[_vm._v("…")])]):_vm._e(),_vm._l((_vm.pagesInRange),function(page){return _c('li',{key:page.number},[(_vm.$scopedSlots.default)?_vm._t("default",null,{"page":page}):_c('BPaginationButton',{attrs:{"page":page}})],2)}),(_vm.hasLastEllipsis)?_c('li',[_c('span',{staticClass:"pagination-ellipsis"},[_vm._v("…")])]):_vm._e(),(_vm.hasLast)?_c('li',[(_vm.$scopedSlots.default)?_vm._t("default",null,{"page":_vm.getPage(_vm.pageCount)}):_c('BPaginationButton',{attrs:{"page":_vm.getPage(_vm.pageCount)}})],2):_vm._e()],2)],2)};
   var __vue_staticRenderFns__$1$8 = [];
 
     /* style */
@@ -43347,6 +43462,18 @@
       return {
         isFocused: false
       };
+    },
+    computed: {
+      isSelected: function isSelected() {
+        return this.newValue === this.nativeValue;
+      },
+      labelClass: function labelClass() {
+        return [this.isSelected ? this.type : null, this.size, {
+          'is-selected': this.isSelected,
+          'is-disabled': this.disabled,
+          'is-focused': this.isFocused
+        }];
+      }
     }
   };
 
@@ -43354,10 +43481,7 @@
   const __vue_script__$1$b = script$1$b;
 
   /* template */
-  var __vue_render__$1$a = function () {var _vm=this;var _h=_vm.$createElement;var _c=_vm._self._c||_h;return _c('div',{staticClass:"control",class:{ 'is-expanded': _vm.expanded }},[_c('label',{ref:"label",staticClass:"b-radio radio button",class:[_vm.newValue === _vm.nativeValue ? _vm.type : null, _vm.size, {
-              'is-disabled': _vm.disabled,
-              'is-focused': _vm.isFocused
-          }],attrs:{"disabled":_vm.disabled},on:{"click":_vm.focus,"keydown":function($event){if(!$event.type.indexOf('key')&&_vm._k($event.keyCode,"enter",13,$event.key,"Enter")){ return null; }$event.preventDefault();return _vm.$refs.label.click()}}},[_vm._t("default"),_c('input',{directives:[{name:"model",rawName:"v-model",value:(_vm.computedValue),expression:"computedValue"}],ref:"input",attrs:{"type":"radio","disabled":_vm.disabled,"required":_vm.required,"name":_vm.name},domProps:{"value":_vm.nativeValue,"checked":_vm._q(_vm.computedValue,_vm.nativeValue)},on:{"click":function($event){$event.stopPropagation();},"focus":function($event){_vm.isFocused = true;},"blur":function($event){_vm.isFocused = false;},"change":function($event){_vm.computedValue=_vm.nativeValue;}}})],2)])};
+  var __vue_render__$1$a = function () {var _vm=this;var _h=_vm.$createElement;var _c=_vm._self._c||_h;return _c('div',{staticClass:"control",class:{ 'is-expanded': _vm.expanded }},[_c('label',{ref:"label",staticClass:"b-radio radio button",class:_vm.labelClass,attrs:{"disabled":_vm.disabled},on:{"click":_vm.focus,"keydown":function($event){if(!$event.type.indexOf('key')&&_vm._k($event.keyCode,"enter",13,$event.key,"Enter")){ return null; }$event.preventDefault();return _vm.$refs.label.click()}}},[_vm._t("default"),_c('input',{directives:[{name:"model",rawName:"v-model",value:(_vm.computedValue),expression:"computedValue"}],ref:"input",attrs:{"type":"radio","disabled":_vm.disabled,"required":_vm.required,"name":_vm.name},domProps:{"value":_vm.nativeValue,"checked":_vm._q(_vm.computedValue,_vm.nativeValue)},on:{"click":function($event){$event.stopPropagation();},"focus":function($event){_vm.isFocused = true;},"blur":function($event){_vm.isFocused = false;},"change":function($event){_vm.computedValue=_vm.nativeValue;}}})],2)])};
   var __vue_staticRenderFns__$1$a = [];
 
     /* style */
@@ -44125,9 +44249,14 @@
       clickedOutside: function clickedOutside(event) {
         if (this.isActive) {
           if (Array.isArray(this.autoClose)) {
-            if (this.autoClose.indexOf('outside') >= 0) {
-              if (!this.isInWhiteList(event.target)) this.isActive = false;
-            } else if (this.autoClose.indexOf('inside') >= 0) {
+            if (this.autoClose.includes('outside')) {
+              if (!this.isInWhiteList(event.target)) {
+                this.isActive = false;
+                return;
+              }
+            }
+
+            if (this.autoClose.includes('inside')) {
               if (this.isInWhiteList(event.target)) this.isActive = false;
             }
           }
@@ -44838,9 +44967,9 @@
         type: Function,
         default: function _default() {}
       },
-      indefinite: {
-        type: Boolean,
-        default: false
+      cancelText: {
+        type: String | null,
+        default: null
       }
     },
     data: function data() {
@@ -44864,7 +44993,7 @@
   const __vue_script__$w = script$w;
 
   /* template */
-  var __vue_render__$u = function () {var _vm=this;var _h=_vm.$createElement;var _c=_vm._self._c||_h;return _c('transition',{attrs:{"enter-active-class":_vm.transition.enter,"leave-active-class":_vm.transition.leave}},[_c('div',{directives:[{name:"show",rawName:"v-show",value:(_vm.isActive),expression:"isActive"}],staticClass:"snackbar",class:[_vm.type,_vm.position],attrs:{"role":_vm.actionText ? 'alertdialog' : 'alert'}},[(_vm.$slots.default)?[_vm._t("default")]:[_c('div',{staticClass:"text",domProps:{"innerHTML":_vm._s(_vm.message)}})],(_vm.actionText)?_c('div',{staticClass:"action",class:_vm.type,on:{"click":_vm.action}},[_c('button',{staticClass:"button"},[_vm._v(_vm._s(_vm.actionText))])]):_vm._e()],2)])};
+  var __vue_render__$u = function () {var _vm=this;var _h=_vm.$createElement;var _c=_vm._self._c||_h;return _c('transition',{attrs:{"enter-active-class":_vm.transition.enter,"leave-active-class":_vm.transition.leave}},[_c('div',{directives:[{name:"show",rawName:"v-show",value:(_vm.isActive),expression:"isActive"}],staticClass:"snackbar",class:[_vm.type,_vm.position],attrs:{"role":_vm.actionText ? 'alertdialog' : 'alert'}},[(_vm.$slots.default)?[_vm._t("default")]:[_c('div',{staticClass:"text",domProps:{"innerHTML":_vm._s(_vm.message)}})],(_vm.cancelText)?_c('div',{staticClass:"action is-light is-cancel",on:{"click":_vm.close}},[_c('button',{staticClass:"button"},[_vm._v(_vm._s(_vm.cancelText))])]):_vm._e(),(_vm.actionText)?_c('div',{staticClass:"action",class:_vm.type,on:{"click":_vm.action}},[_c('button',{staticClass:"button"},[_vm._v(_vm._s(_vm.actionText))])]):_vm._e()],2)])};
   var __vue_staticRenderFns__$u = [];
 
     /* style */
@@ -45090,6 +45219,37 @@
         */
         childClick: function childClick(child) {
           this.activeId = child.value;
+        },
+        getNextItemIdx: function getNextItemIdx(fromIdx) {
+          var skipDisabled = arguments.length > 1 && arguments[1] !== undefined ? arguments[1] : false;
+          var nextItemIdx = null;
+          var idx = fromIdx + 1;
+
+          for (; idx < this.items.length; idx++) {
+            var item = this.items[idx];
+
+            if (item.visible && (!skipDisabled || skipDisabled && !item.disabled)) {
+              nextItemIdx = idx;
+              break;
+            }
+          }
+
+          return nextItemIdx;
+        },
+        getPrevItemIdx: function getPrevItemIdx(fromIdx) {
+          var skipDisabled = arguments.length > 1 && arguments[1] !== undefined ? arguments[1] : false;
+          var prevItemIdx = null;
+
+          for (var idx = fromIdx - 1; idx >= 0; idx--) {
+            var item = this.items[idx];
+
+            if (item.visible && (!skipDisabled || skipDisabled && !item.disabled)) {
+              prevItemIdx = idx;
+              break;
+            }
+          }
+
+          return prevItemIdx;
         }
       }
     };
@@ -45120,7 +45280,8 @@
       data: function data() {
         return {
           transitionName: null,
-          elementClass: 'item'
+          elementClass: 'item',
+          elementRole: null
         };
       },
       computed: {
@@ -45159,7 +45320,11 @@
             value: this.isActive && this.visible
           }],
           attrs: {
-            'class': this.elementClass
+            'class': this.elementClass,
+            'role': this.elementRole,
+            'id': "".concat(this.value, "-content"),
+            'aria-labelledby': this.elementRole ? "".concat(this.value, "-label") : null,
+            'tabindex': this.isActive ? 0 : -1
           }
         }, this.$slots.default); // check animated prop
 
@@ -45255,7 +45420,15 @@
        * Check if previous button is available.
        */
       hasPrev: function hasPrev() {
-        return !!this.prevItem;
+        return this.prevItemIdx !== null;
+      },
+
+      /**
+       * Retrieves the next visible item index
+       */
+      nextItemIdx: function nextItemIdx() {
+        var idx = this.activeItem ? this.items.indexOf(this.activeItem) : 0;
+        return this.getNextItemIdx(idx);
       },
 
       /**
@@ -45263,16 +45436,24 @@
        */
       nextItem: function nextItem() {
         var nextItem = null;
-        var idx = this.activeItem ? this.items.indexOf(this.activeItem) + 1 : 0;
 
-        for (; idx < this.items.length; idx++) {
-          if (this.items[idx].visible) {
-            nextItem = this.items[idx];
-            break;
-          }
+        if (this.nextItemIdx !== null) {
+          nextItem = this.items[this.nextItemIdx];
         }
 
         return nextItem;
+      },
+
+      /**
+      * Retrieves the next visible item index
+      */
+      prevItemIdx: function prevItemIdx() {
+        if (!this.activeItem) {
+          return null;
+        }
+
+        var idx = this.items.indexOf(this.activeItem);
+        return this.getPrevItemIdx(idx);
       },
 
       /**
@@ -45285,11 +45466,8 @@
 
         var prevItem = null;
 
-        for (var idx = this.items.indexOf(this.activeItem) - 1; idx >= 0; idx--) {
-          if (this.items[idx].visible) {
-            prevItem = this.items[idx];
-            break;
-          }
+        if (this.prevItemIdx !== null) {
+          prevItem = this.items[this.prevItemIdx];
         }
 
         return prevItem;
@@ -45299,7 +45477,7 @@
        * Check if next button is available.
        */
       hasNext: function hasNext() {
-        return !!this.nextItem;
+        return this.nextItemIdx !== null;
       },
       navigationProps: function navigationProps() {
         return {
@@ -45438,35 +45616,6 @@
   use(Plugin$u);
 
   //
-  //
-  //
-  //
-  //
-  //
-  //
-  //
-  //
-  //
-  //
-  //
-  //
-  //
-  //
-  //
-  //
-  //
-  //
-  //
-  //
-  //
-  //
-  //
-  //
-  //
-  //
-  //
-  //
-  //
   var script$y = {
     name: 'BSwitch',
     props: {
@@ -45488,7 +45637,9 @@
       },
       rounded: {
         type: Boolean,
-        default: true
+        default: function _default() {
+          return config$2.defaultSwitchRounded;
+        }
       },
       outlined: {
         type: Boolean,
@@ -45771,7 +45922,19 @@
       sticky: Boolean,
       headerSelectable: Boolean,
       headerClass: String,
-      cellClass: String
+      cellClass: String,
+      thAttrs: {
+        type: Function,
+        default: function _default() {
+          return {};
+        }
+      },
+      tdAttrs: {
+        type: Function,
+        default: function _default() {
+          return {};
+        }
+      }
     },
     data: function data() {
       return {
@@ -45780,6 +45943,30 @@
       };
     },
     computed: {
+      thClasses: function thClasses() {
+        var attrs = this.thAttrs(this);
+        var classes = [this.headerClass, {
+          'is-sortable': this.sortable,
+          'is-sticky': this.sticky,
+          'is-unselectable': this.isHeaderUnSelectable
+        }];
+
+        if (attrs && attrs.class) {
+          classes.push(attrs.class);
+        }
+
+        return classes;
+      },
+      thStyle: function thStyle() {
+        var attrs = this.thAttrs(this);
+        var style = [this.style];
+
+        if (attrs && attrs.style) {
+          style.push(attrs.style);
+        }
+
+        return style;
+      },
       rootClasses: function rootClasses() {
         return [this.cellClass, {
           'has-text-right': this.numeric && !this.centered,
@@ -45801,6 +45988,28 @@
        */
       isHeaderUnSelectable: function isHeaderUnSelectable() {
         return !this.headerSelectable && this.sortable;
+      }
+    },
+    methods: {
+      getRootClasses: function getRootClasses(row) {
+        var attrs = this.tdAttrs(row, this);
+        var classes = [this.rootClasses];
+
+        if (attrs && attrs.class) {
+          classes.push(attrs.class);
+        }
+
+        return classes;
+      },
+      getRootStyle: function getRootStyle(row) {
+        var attrs = this.tdAttrs(row, this);
+        var style = [];
+
+        if (attrs && attrs.style) {
+          style.push(attrs.style);
+        }
+
+        return style;
       }
     },
     created: function created() {
@@ -46057,6 +46266,10 @@
         }
       },
       detailKey: {
+        type: String,
+        default: ''
+      },
+      detailTransition: {
         type: String,
         default: ''
       },
@@ -46898,6 +47111,9 @@
           index: index
         });
       },
+      emitEventForRow: function emitEventForRow(eventName, event, row) {
+        return this.$listeners[eventName] ? this.$emit(eventName, row, event) : null;
+      },
       refreshSlots: function refreshSlots() {
         this.defaultSlots = this.$slots.default || [];
       }
@@ -46913,12 +47129,9 @@
   const __vue_script__$3$3 = script$3$3;
 
   /* template */
-  var __vue_render__$2$5 = function () {var _vm=this;var _h=_vm.$createElement;var _c=_vm._self._c||_h;return _c('div',{staticClass:"b-table"},[_vm._t("default"),(_vm.mobileCards && _vm.hasSortablenewColumns)?_c('b-table-mobile-sort',{attrs:{"current-sort-column":_vm.currentSortColumn,"sort-multiple":_vm.sortMultiple,"sort-multiple-data":_vm.sortMultipleDataComputed,"is-asc":_vm.isAsc,"columns":_vm.newColumns,"placeholder":_vm.mobileSortPlaceholder,"icon-pack":_vm.iconPack,"sort-icon":_vm.sortIcon,"sort-icon-size":_vm.sortIconSize},on:{"sort":function (column, event) { return _vm.sort(column, null, event); },"removePriority":function (column) { return _vm.removeSortingPriority(column); }}}):_vm._e(),(_vm.paginated && (_vm.paginationPosition === 'top' || _vm.paginationPosition === 'both'))?[_vm._t("pagination",[_c('b-table-pagination',_vm._b({attrs:{"per-page":_vm.perPage,"paginated":_vm.paginated,"rounded":_vm.paginationRounded,"icon-pack":_vm.iconPack,"total":_vm.newDataTotal,"current-page":_vm.newCurrentPage},on:{"update:currentPage":function($event){_vm.newCurrentPage=$event;},"update:current-page":function($event){_vm.newCurrentPage=$event;},"page-change":function (event) { return _vm.$emit('page-change', event); }}},'b-table-pagination',_vm.$attrs,false),[_vm._t("top-left")],2)])]:_vm._e(),_c('div',{staticClass:"table-wrapper",class:_vm.tableWrapperClasses,style:(_vm.tableStyle)},[_c('table',{staticClass:"table",class:_vm.tableClasses,attrs:{"tabindex":!_vm.focusable ? false : 0},on:{"keydown":[function($event){if(!$event.type.indexOf('key')&&_vm._k($event.keyCode,"up",38,$event.key,["Up","ArrowUp"])){ return null; }if($event.target !== $event.currentTarget){ return null; }$event.preventDefault();return _vm.pressedArrow(-1)},function($event){if(!$event.type.indexOf('key')&&_vm._k($event.keyCode,"down",40,$event.key,["Down","ArrowDown"])){ return null; }if($event.target !== $event.currentTarget){ return null; }$event.preventDefault();return _vm.pressedArrow(1)}]}},[(_vm.newColumns.length && _vm.showHeader)?_c('thead',[_c('tr',[(_vm.showDetailRowIcon)?_c('th',{attrs:{"width":"40px"}}):_vm._e(),(_vm.checkable && _vm.checkboxPosition === 'left')?_c('th',{class:['checkbox-cell', { 'is-sticky': _vm.stickyCheckbox } ]},[(_vm.headerCheckable)?[_c('b-checkbox',{attrs:{"value":_vm.isAllChecked,"disabled":_vm.isAllUncheckable},nativeOn:{"change":function($event){return _vm.checkAll($event)}}})]:_vm._e()],2):_vm._e(),_vm._l((_vm.visibleColumns),function(column,index){return _c('th',{key:column.newKey + ':' + index + 'header',class:[column.headerClass, {
+  var __vue_render__$2$5 = function () {var _vm=this;var _h=_vm.$createElement;var _c=_vm._self._c||_h;return _c('div',{staticClass:"b-table"},[_vm._t("default"),(_vm.mobileCards && _vm.hasSortablenewColumns)?_c('b-table-mobile-sort',{attrs:{"current-sort-column":_vm.currentSortColumn,"sort-multiple":_vm.sortMultiple,"sort-multiple-data":_vm.sortMultipleDataComputed,"is-asc":_vm.isAsc,"columns":_vm.newColumns,"placeholder":_vm.mobileSortPlaceholder,"icon-pack":_vm.iconPack,"sort-icon":_vm.sortIcon,"sort-icon-size":_vm.sortIconSize},on:{"sort":function (column, event) { return _vm.sort(column, null, event); },"removePriority":function (column) { return _vm.removeSortingPriority(column); }}}):_vm._e(),(_vm.paginated && (_vm.paginationPosition === 'top' || _vm.paginationPosition === 'both'))?[_vm._t("pagination",[_c('b-table-pagination',_vm._b({attrs:{"per-page":_vm.perPage,"paginated":_vm.paginated,"rounded":_vm.paginationRounded,"icon-pack":_vm.iconPack,"total":_vm.newDataTotal,"current-page":_vm.newCurrentPage,"aria-next-label":_vm.ariaNextLabel,"aria-previous-label":_vm.ariaPreviousLabel,"aria-page-label":_vm.ariaPageLabel,"aria-current-label":_vm.ariaCurrentLabel},on:{"update:currentPage":function($event){_vm.newCurrentPage=$event;},"update:current-page":function($event){_vm.newCurrentPage=$event;},"page-change":function (event) { return _vm.$emit('page-change', event); }}},'b-table-pagination',_vm.$attrs,false),[_vm._t("top-left")],2)])]:_vm._e(),_c('div',{staticClass:"table-wrapper",class:_vm.tableWrapperClasses,style:(_vm.tableStyle)},[_c('table',{staticClass:"table",class:_vm.tableClasses,attrs:{"tabindex":!_vm.focusable ? false : 0},on:{"keydown":[function($event){if(!$event.type.indexOf('key')&&_vm._k($event.keyCode,"up",38,$event.key,["Up","ArrowUp"])){ return null; }if($event.target !== $event.currentTarget){ return null; }$event.preventDefault();return _vm.pressedArrow(-1)},function($event){if(!$event.type.indexOf('key')&&_vm._k($event.keyCode,"down",40,$event.key,["Down","ArrowDown"])){ return null; }if($event.target !== $event.currentTarget){ return null; }$event.preventDefault();return _vm.pressedArrow(1)}]}},[(_vm.newColumns.length && _vm.showHeader)?_c('thead',[_c('tr',[(_vm.showDetailRowIcon)?_c('th',{attrs:{"width":"40px"}}):_vm._e(),(_vm.checkable && _vm.checkboxPosition === 'left')?_c('th',{class:['checkbox-cell', { 'is-sticky': _vm.stickyCheckbox } ]},[(_vm.headerCheckable)?[_c('b-checkbox',{attrs:{"value":_vm.isAllChecked,"disabled":_vm.isAllUncheckable},nativeOn:{"change":function($event){return _vm.checkAll($event)}}})]:_vm._e()],2):_vm._e(),_vm._l((_vm.visibleColumns),function(column,index){return _c('th',_vm._b({key:column.newKey + ':' + index + 'header',class:[column.thClasses, {
                               'is-current-sort': !_vm.sortMultiple && _vm.currentSortColumn === column,
-                              'is-sortable': column.sortable,
-                              'is-sticky': column.sticky,
-                              'is-unselectable': column.isHeaderUnSelectable
-                          }],style:(column.style),on:{"click":function($event){$event.stopPropagation();return _vm.sort(column, null, $event)}}},[_c('div',{staticClass:"th-wrap",class:{
+                          }],style:(column.thStyle),on:{"click":function($event){$event.stopPropagation();return _vm.sort(column, null, $event)}}},'th',column.thAttrs(column),false),[_c('div',{staticClass:"th-wrap",class:{
                                   'is-numeric': column.numeric,
                                   'is-centered': column.centered
                           }},[(column.$scopedSlots && column.$scopedSlots.header)?[_c('b-slot-component',{attrs:{"component":column,"scoped":"","name":"header","tag":"span","props":{ column: column, index: index }}})]:[_c('span',{staticClass:"is-relative"},[_vm._v(" "+_vm._s(column.label)+" "),(_vm.sortMultiple &&
@@ -46931,12 +47144,12 @@
                                           },attrs:{"icon":_vm.sortIcon,"pack":_vm.iconPack,"both":"","size":_vm.sortIconSize}})],2)]],2)])}),(_vm.checkable && _vm.checkboxPosition === 'right')?_c('th',{class:['checkbox-cell', { 'is-sticky': _vm.stickyCheckbox } ]},[(_vm.headerCheckable)?[_c('b-checkbox',{attrs:{"value":_vm.isAllChecked,"disabled":_vm.isAllUncheckable},nativeOn:{"change":function($event){return _vm.checkAll($event)}}})]:_vm._e()],2):_vm._e()],2),(_vm.hasCustomSubheadings)?_c('tr',{staticClass:"is-subheading"},[(_vm.showDetailRowIcon)?_c('th',{attrs:{"width":"40px"}}):_vm._e(),(_vm.checkable && _vm.checkboxPosition === 'left')?_c('th'):_vm._e(),_vm._l((_vm.visibleColumns),function(column,index){return _c('th',{key:column.newKey + ':' + index + 'subheading',style:(column.style)},[_c('div',{staticClass:"th-wrap",class:{
                                   'is-numeric': column.numeric,
                                   'is-centered': column.centered
-                          }},[(column.$scopedSlots && column.$scopedSlots.subheading)?[_c('b-slot-component',{attrs:{"component":column,"scoped":"","name":"subheading","tag":"span","props":{ column: column, index: index }}})]:[_vm._v(_vm._s(column.subheading))]],2)])}),(_vm.checkable && _vm.checkboxPosition === 'right')?_c('th'):_vm._e()],2):_vm._e(),(_vm.hasSearchablenewColumns)?_c('tr',[(_vm.showDetailRowIcon)?_c('th',{attrs:{"width":"40px"}}):_vm._e(),(_vm.checkable && _vm.checkboxPosition === 'left')?_c('th'):_vm._e(),_vm._l((_vm.visibleColumns),function(column,index){return _c('th',{key:column.newKey + ':' + index + 'searchable',class:{'is-sticky': column.sticky},style:(column.style)},[_c('div',{staticClass:"th-wrap"},[(column.searchable)?[(column.$scopedSlots
+                          }},[(column.$scopedSlots && column.$scopedSlots.subheading)?[_c('b-slot-component',{attrs:{"component":column,"scoped":"","name":"subheading","tag":"span","props":{ column: column, index: index }}})]:[_vm._v(_vm._s(column.subheading))]],2)])}),(_vm.checkable && _vm.checkboxPosition === 'right')?_c('th'):_vm._e()],2):_vm._e(),(_vm.hasSearchablenewColumns)?_c('tr',[(_vm.showDetailRowIcon)?_c('th',{attrs:{"width":"40px"}}):_vm._e(),(_vm.checkable && _vm.checkboxPosition === 'left')?_c('th'):_vm._e(),_vm._l((_vm.visibleColumns),function(column,index){return _c('th',_vm._b({key:column.newKey + ':' + index + 'searchable',class:{'is-sticky': column.sticky},style:(column.thStyle)},'th',column.thAttrs(column),false),[_c('div',{staticClass:"th-wrap"},[(column.searchable)?[(column.$scopedSlots
                                       && column.$scopedSlots.searchable)?[_c('b-slot-component',{attrs:{"component":column,"scoped":true,"name":"searchable","tag":"span","props":{ column: column, filters: _vm.filters }}})]:_c('b-input',{attrs:{"type":column.numeric ? 'number' : 'text'},nativeOn:_vm._d({},[_vm.filtersEvent,function($event){return _vm.onFiltersEvent($event)}]),model:{value:(_vm.filters[column.field]),callback:function ($$v) {_vm.$set(_vm.filters, column.field, $$v);},expression:"filters[column.field]"}})]:_vm._e()],2)])}),(_vm.checkable && _vm.checkboxPosition === 'right')?_c('th'):_vm._e()],2):_vm._e()]):_vm._e(),_c('tbody',[_vm._l((_vm.visibleData),function(row,index){return [_c('tr',{key:_vm.customRowKey ? row[_vm.customRowKey] : index,class:[_vm.rowClass(row, index), {
                               'is-selected': _vm.isRowSelected(row, _vm.selected),
                               'is-checked': _vm.isRowChecked(row),
-                          }],attrs:{"draggable":_vm.draggable},on:{"click":function($event){return _vm.selectRow(row)},"dblclick":function($event){return _vm.$emit('dblclick', row)},"mouseenter":function($event){_vm.$listeners.mouseenter ? _vm.$emit('mouseenter', row) : null;},"mouseleave":function($event){_vm.$listeners.mouseleave ? _vm.$emit('mouseleave', row) : null;},"contextmenu":function($event){return _vm.$emit('contextmenu', row, $event)},"dragstart":function($event){return _vm.handleDragStart($event, row, index)},"dragend":function($event){return _vm.handleDragEnd($event, row, index)},"drop":function($event){return _vm.handleDrop($event, row, index)},"dragover":function($event){return _vm.handleDragOver($event, row, index)},"dragleave":function($event){return _vm.handleDragLeave($event, row, index)}}},[(_vm.showDetailRowIcon)?_c('td',{staticClass:"chevron-cell"},[(_vm.hasDetailedVisible(row))?_c('a',{attrs:{"role":"button"},on:{"click":function($event){$event.stopPropagation();return _vm.toggleDetails(row)}}},[_c('b-icon',{class:{'is-expanded': _vm.isVisibleDetailRow(row)},attrs:{"icon":"chevron-right","pack":_vm.iconPack,"both":""}})],1):_vm._e()]):_vm._e(),(_vm.checkable && _vm.checkboxPosition === 'left')?_c('td',{class:['checkbox-cell', { 'is-sticky': _vm.stickyCheckbox } ]},[_c('b-checkbox',{attrs:{"disabled":!_vm.isRowCheckable(row),"value":_vm.isRowChecked(row)},nativeOn:{"click":function($event){$event.preventDefault();$event.stopPropagation();return _vm.checkRow(row, index, $event)}}})],1):_vm._e(),_vm._l((_vm.visibleColumns),function(column,colindex){return [(column.$scopedSlots && column.$scopedSlots.default)?[_c('b-slot-component',{key:column.newKey + ':' + index + ':' + colindex,class:column.rootClasses,attrs:{"component":column,"scoped":"","name":"default","tag":"td","data-label":column.label,"props":{ row: row, column: column, index: index, colindex: colindex, toggleDetails: _vm.toggleDetails }},nativeOn:{"click":function($event){return _vm.$emit('cellclick',row,column,index,colindex)}}})]:_vm._e()]}),(_vm.checkable && _vm.checkboxPosition === 'right')?_c('td',{class:['checkbox-cell', { 'is-sticky': _vm.stickyCheckbox } ]},[_c('b-checkbox',{attrs:{"disabled":!_vm.isRowCheckable(row),"value":_vm.isRowChecked(row)},nativeOn:{"click":function($event){$event.preventDefault();$event.stopPropagation();return _vm.checkRow(row, index, $event)}}})],1):_vm._e()],2),(_vm.isActiveDetailRow(row))?_c('tr',{key:(_vm.customRowKey ? row[_vm.customRowKey] : index) + 'detail',staticClass:"detail"},[_c('td',{attrs:{"colspan":_vm.columnCount}},[_c('div',{staticClass:"detail-container"},[_vm._t("detail",null,{"row":row,"index":index})],2)])]):_vm._e(),(_vm.isActiveCustomDetailRow(row))?_vm._t("detail",null,{"row":row,"index":index}):_vm._e()]}),(!_vm.visibleData.length)?_c('tr',{staticClass:"is-empty"},[_c('td',{attrs:{"colspan":_vm.columnCount}},[_vm._t("empty")],2)]):_vm._e()],2),(_vm.$slots.footer !== undefined)?_c('tfoot',[_c('tr',{staticClass:"table-footer"},[(_vm.hasCustomFooterSlot())?_vm._t("footer"):_c('th',{attrs:{"colspan":_vm.columnCount}},[_vm._t("footer")],2)],2)]):_vm._e()]),(_vm.loading)?[_vm._t("loading",[_c('b-loading',{attrs:{"is-full-page":false,"active":_vm.loading},on:{"update:active":function($event){_vm.loading=$event;}}})])]:_vm._e()],2),((_vm.checkable && _vm.hasBottomLeftSlot()) ||
-          (_vm.paginated && (_vm.paginationPosition === 'bottom' || _vm.paginationPosition === 'both')))?[_vm._t("pagination",[_c('b-table-pagination',_vm._b({attrs:{"per-page":_vm.perPage,"paginated":_vm.paginated,"rounded":_vm.paginationRounded,"icon-pack":_vm.iconPack,"total":_vm.newDataTotal,"current-page":_vm.newCurrentPage},on:{"update:currentPage":function($event){_vm.newCurrentPage=$event;},"update:current-page":function($event){_vm.newCurrentPage=$event;},"page-change":function (event) { return _vm.$emit('page-change', event); }}},'b-table-pagination',_vm.$attrs,false),[_vm._t("bottom-left")],2)])]:_vm._e()],2)};
+                          }],attrs:{"draggable":_vm.draggable},on:{"click":function($event){return _vm.selectRow(row)},"dblclick":function($event){return _vm.$emit('dblclick', row)},"mouseenter":function($event){return _vm.emitEventForRow('mouseenter', $event, row)},"mouseleave":function($event){return _vm.emitEventForRow('mouseleave', $event, row)},"contextmenu":function($event){return _vm.$emit('contextmenu', row, $event)},"dragstart":function($event){return _vm.handleDragStart($event, row, index)},"dragend":function($event){return _vm.handleDragEnd($event, row, index)},"drop":function($event){return _vm.handleDrop($event, row, index)},"dragover":function($event){return _vm.handleDragOver($event, row, index)},"dragleave":function($event){return _vm.handleDragLeave($event, row, index)}}},[(_vm.showDetailRowIcon)?_c('td',{staticClass:"chevron-cell"},[(_vm.hasDetailedVisible(row))?_c('a',{attrs:{"role":"button"},on:{"click":function($event){$event.stopPropagation();return _vm.toggleDetails(row)}}},[_c('b-icon',{class:{'is-expanded': _vm.isVisibleDetailRow(row)},attrs:{"icon":"chevron-right","pack":_vm.iconPack,"both":""}})],1):_vm._e()]):_vm._e(),(_vm.checkable && _vm.checkboxPosition === 'left')?_c('td',{class:['checkbox-cell', { 'is-sticky': _vm.stickyCheckbox } ]},[_c('b-checkbox',{attrs:{"disabled":!_vm.isRowCheckable(row),"value":_vm.isRowChecked(row)},nativeOn:{"click":function($event){$event.preventDefault();$event.stopPropagation();return _vm.checkRow(row, index, $event)}}})],1):_vm._e(),_vm._l((_vm.visibleColumns),function(column,colindex){return [(column.$scopedSlots && column.$scopedSlots.default)?[_c('b-slot-component',_vm._b({key:column.newKey + ':' + index + ':' + colindex,class:column.getRootClasses(row),style:(column.getRootStyle(row)),attrs:{"component":column,"scoped":"","name":"default","tag":"td","data-label":column.label,"props":{ row: row, column: column, index: index, colindex: colindex, toggleDetails: _vm.toggleDetails }},nativeOn:{"click":function($event){return _vm.$emit('cellclick',row,column,index,colindex)}}},'b-slot-component',column.tdAttrs(row, column),false))]:_vm._e()]}),(_vm.checkable && _vm.checkboxPosition === 'right')?_c('td',{class:['checkbox-cell', { 'is-sticky': _vm.stickyCheckbox } ]},[_c('b-checkbox',{attrs:{"disabled":!_vm.isRowCheckable(row),"value":_vm.isRowChecked(row)},nativeOn:{"click":function($event){$event.preventDefault();$event.stopPropagation();return _vm.checkRow(row, index, $event)}}})],1):_vm._e()],2),_c('transition',{key:(_vm.customRowKey ? row[_vm.customRowKey] : index) + 'detail',attrs:{"name":_vm.detailTransition}},[(_vm.isActiveDetailRow(row))?_c('tr',{staticClass:"detail"},[_c('td',{attrs:{"colspan":_vm.columnCount}},[_c('div',{staticClass:"detail-container"},[_vm._t("detail",null,{"row":row,"index":index})],2)])]):_vm._e()]),(_vm.isActiveCustomDetailRow(row))?_vm._t("detail",null,{"row":row,"index":index}):_vm._e()]}),(!_vm.visibleData.length)?_c('tr',{staticClass:"is-empty"},[_c('td',{attrs:{"colspan":_vm.columnCount}},[_vm._t("empty")],2)]):_vm._e()],2),(_vm.$slots.footer !== undefined)?_c('tfoot',[_c('tr',{staticClass:"table-footer"},[(_vm.hasCustomFooterSlot())?_vm._t("footer"):_c('th',{attrs:{"colspan":_vm.columnCount}},[_vm._t("footer")],2)],2)]):_vm._e()]),(_vm.loading)?[_vm._t("loading",[_c('b-loading',{attrs:{"is-full-page":false,"active":_vm.loading},on:{"update:active":function($event){_vm.loading=$event;}}})])]:_vm._e()],2),((_vm.checkable && _vm.hasBottomLeftSlot()) ||
+          (_vm.paginated && (_vm.paginationPosition === 'bottom' || _vm.paginationPosition === 'both')))?[_vm._t("pagination",[_c('b-table-pagination',_vm._b({attrs:{"per-page":_vm.perPage,"paginated":_vm.paginated,"rounded":_vm.paginationRounded,"icon-pack":_vm.iconPack,"total":_vm.newDataTotal,"current-page":_vm.newCurrentPage,"aria-next-label":_vm.ariaNextLabel,"aria-previous-label":_vm.ariaPreviousLabel,"aria-page-label":_vm.ariaPageLabel,"aria-current-label":_vm.ariaCurrentLabel},on:{"update:currentPage":function($event){_vm.newCurrentPage=$event;},"update:current-page":function($event){_vm.newCurrentPage=$event;},"page-change":function (event) { return _vm.$emit('page-change', event); }}},'b-table-pagination',_vm.$attrs,false),[_vm._t("bottom-left")],2)])]:_vm._e()],2)};
   var __vue_staticRenderFns__$2$5 = [];
 
     /* style */
@@ -47001,6 +47214,11 @@
       },
       multiline: Boolean
     },
+    data: function data() {
+      return {
+        currentFocus: this.value
+      };
+    },
     computed: {
       mainClasses: function mainClasses() {
         return _defineProperty({
@@ -47012,7 +47230,74 @@
       navClasses: function navClasses() {
         var _ref2;
 
-        return [this.type, this.size, (_ref2 = {}, _defineProperty(_ref2, this.position, this.position && !this.vertical), _defineProperty(_ref2, 'is-fullwidth', this.expanded), _defineProperty(_ref2, 'is-toggle-rounded is-toggle', this.type === 'is-toggle-rounded'), _ref2)];
+        return [this.type, this.size, (_ref2 = {}, _defineProperty(_ref2, this.position, this.position && !this.vertical), _defineProperty(_ref2, 'is-fullwidth', this.expanded), _defineProperty(_ref2, 'is-toggle', this.type === 'is-toggle-rounded'), _ref2)];
+      }
+    },
+    methods: {
+      giveFocusToTab: function giveFocusToTab(tab) {
+        if (tab.$el && tab.$el.focus) {
+          tab.$el.focus();
+        } else if (tab.focus) {
+          tab.focus();
+        }
+      },
+      manageTablistKeydown: function manageTablistKeydown(event) {
+        // https://developer.mozilla.org/fr/docs/Web/API/KeyboardEvent/key/Key_Values#Navigation_keys
+        var key = event.key;
+
+        switch (key) {
+          case this.vertical ? 'ArrowUp' : 'ArrowLeft':
+          case this.vertical ? 'Up' : 'Left':
+            {
+              var prevIdx = this.getPrevItemIdx(this.currentFocus, true);
+
+              if (prevIdx === null) {
+                // We try to give focus back to the last visible element
+                prevIdx = this.getPrevItemIdx(this.items.length, true);
+              }
+
+              if (prevIdx !== null && this.$refs.tabLink && prevIdx < this.$refs.tabLink.length && !this.items[prevIdx].disabled) {
+                this.giveFocusToTab(this.$refs.tabLink[prevIdx]);
+              }
+
+              event.preventDefault();
+              break;
+            }
+
+          case this.vertical ? 'ArrowDown' : 'ArrowRight':
+          case this.vertical ? 'Down' : 'Right':
+            {
+              var nextIdx = this.getNextItemIdx(this.currentFocus, true);
+
+              if (nextIdx === null) {
+                // We try to give focus back to the first visible element
+                nextIdx = this.getNextItemIdx(-1, true);
+              }
+
+              if (nextIdx !== null && this.$refs.tabLink && nextIdx < this.$refs.tabLink.length && !this.items[nextIdx].disabled) {
+                this.giveFocusToTab(this.$refs.tabLink[nextIdx]);
+              }
+
+              event.preventDefault();
+              break;
+            }
+        }
+      },
+      manageTabKeydown: function manageTabKeydown(event, childItem) {
+        // https://developer.mozilla.org/fr/docs/Web/API/KeyboardEvent/key/Key_Values#Navigation_keys
+        var key = event.key;
+
+        switch (key) {
+          case ' ':
+          case 'Space':
+          case 'Spacebar':
+          case 'Enter':
+            {
+              this.childClick(childItem);
+              event.preventDefault();
+              break;
+            }
+        }
       }
     }
   };
@@ -47021,8 +47306,8 @@
   const __vue_script__$A = script$A;
 
   /* template */
-  var __vue_render__$y = function () {var _vm=this;var _h=_vm.$createElement;var _c=_vm._self._c||_h;return _c('div',{staticClass:"b-tabs",class:_vm.mainClasses},[_c('nav',{staticClass:"tabs",class:_vm.navClasses},[_c('ul',_vm._l((_vm.items),function(childItem){return _c('li',{directives:[{name:"show",rawName:"v-show",value:(childItem.visible),expression:"childItem.visible"}],key:childItem.value,class:[ childItem.headerClass, { 'is-active': childItem.isActive,
-                                                     'is-disabled': childItem.disabled }]},[(childItem.$scopedSlots.header)?_c('b-slot-component',{attrs:{"component":childItem,"name":"header","tag":"a"},nativeOn:{"click":function($event){return _vm.childClick(childItem)}}}):_c('a',{on:{"click":function($event){return _vm.childClick(childItem)}}},[(childItem.icon)?_c('b-icon',{attrs:{"icon":childItem.icon,"pack":childItem.iconPack,"size":_vm.size}}):_vm._e(),_c('span',[_vm._v(_vm._s(childItem.label))])],1)],1)}),0)]),_c('section',{staticClass:"tab-content",class:{'is-transitioning': _vm.isTransitioning}},[_vm._t("default")],2)])};
+  var __vue_render__$y = function () {var _vm=this;var _h=_vm.$createElement;var _c=_vm._self._c||_h;return _c('div',{staticClass:"b-tabs",class:_vm.mainClasses},[_c('nav',{staticClass:"tabs",class:_vm.navClasses,attrs:{"role":"tablist","aria-orientation":_vm.vertical ? 'vertical' : 'horizontal'},on:{"keydown":_vm.manageTablistKeydown}},[_c('ul',_vm._l((_vm.items),function(childItem,childIdx){return _c('li',{directives:[{name:"show",rawName:"v-show",value:(childItem.visible),expression:"childItem.visible"}],key:childItem.value,class:[ childItem.headerClass, { 'is-active': childItem.isActive,
+                                                     'is-disabled': childItem.disabled }],attrs:{"role":"presentation"}},[(childItem.$scopedSlots.header)?_c('b-slot-component',{ref:"tabLink",refInFor:true,attrs:{"component":childItem,"name":"header","tag":"a","role":"tab","id":((childItem.value) + "-label"),"aria-controls":((childItem.value) + "-content"),"aria-selected":("" + (childItem.isActive)),"tabindex":childItem.isActive ? 0 : -1},on:{"keydown":function($event){return _vm.manageTabKeydown($event, childItem)}},nativeOn:{"focus":function($event){_vm.currentFocus = childIdx;},"click":function($event){return _vm.childClick(childItem)}}}):_c('a',{ref:"tabLink",refInFor:true,attrs:{"role":"tab","id":((childItem.value) + "-tab"),"aria-controls":((childItem.value) + "-content"),"aria-selected":("" + (childItem.isActive)),"tabindex":childItem.isActive ? 0 : -1},on:{"focus":function($event){_vm.currentFocus = childIdx;},"click":function($event){return _vm.childClick(childItem)},"keydown":function($event){return _vm.manageTabKeydown($event, childItem)}}},[(childItem.icon)?_c('b-icon',{attrs:{"icon":childItem.icon,"pack":childItem.iconPack,"size":_vm.size}}):_vm._e(),_c('span',[_vm._v(_vm._s(childItem.label))])],1)],1)}),0)]),_c('section',{staticClass:"tab-content",class:{'is-transitioning': _vm.isTransitioning}},[_vm._t("default")],2)])};
   var __vue_staticRenderFns__$y = [];
 
     /* style */
@@ -47058,7 +47343,8 @@
     },
     data: function data() {
       return {
-        elementClass: 'tab-item'
+        elementClass: 'tab-item',
+        elementRole: 'tabpanel'
       };
     }
   };
@@ -47193,7 +47479,7 @@
   var __vue_render__$z = function () {var _vm=this;var _h=_vm.$createElement;var _c=_vm._self._c||_h;return (_vm.attached && _vm.closable)?_c('div',{staticClass:"tags has-addons"},[_c('span',{staticClass:"tag",class:[_vm.type, _vm.size, { 'is-rounded': _vm.rounded }]},[_c('span',{class:{ 'has-ellipsis': _vm.ellipsis }},[_vm._t("default")],2)]),_c('a',{staticClass:"tag",class:[_vm.size,
                    _vm.closeType,
                    {'is-rounded': _vm.rounded},
-                   _vm.closeIcon ? 'has-delete-icon' : 'is-delete'],attrs:{"role":"button","aria-label":_vm.ariaCloseLabel,"tabindex":_vm.tabstop ? 0 : false,"disabled":_vm.disabled},on:{"click":_vm.close,"keyup":function($event){if(!$event.type.indexOf('key')&&_vm._k($event.keyCode,"delete",[8,46],$event.key,["Backspace","Delete","Del"])){ return null; }$event.preventDefault();return _vm.close($event)}}},[(_vm.closeIcon)?_c('b-icon',{attrs:{"custom-class":"","icon":_vm.closeIcon,"size":_vm.size,"type":_vm.closeIconType,"pack":_vm.closeIconPack}}):_vm._e(),_c('a')],1)]):_c('span',{staticClass:"tag",class:[_vm.type, _vm.size, { 'is-rounded': _vm.rounded }]},[_c('span',{class:{ 'has-ellipsis': _vm.ellipsis }},[_vm._t("default")],2),(_vm.closable)?_c('a',{staticClass:"delete is-small",class:_vm.closeType,attrs:{"role":"button","aria-label":_vm.ariaCloseLabel,"disabled":_vm.disabled,"tabindex":_vm.tabstop ? 0 : false},on:{"click":_vm.close,"keyup":function($event){if(!$event.type.indexOf('key')&&_vm._k($event.keyCode,"delete",[8,46],$event.key,["Backspace","Delete","Del"])){ return null; }$event.preventDefault();return _vm.close($event)}}}):_vm._e()])};
+                   _vm.closeIcon ? 'has-delete-icon' : 'is-delete'],attrs:{"role":"button","aria-label":_vm.ariaCloseLabel,"tabindex":_vm.tabstop ? 0 : false,"disabled":_vm.disabled},on:{"click":_vm.close,"keyup":function($event){if(!$event.type.indexOf('key')&&_vm._k($event.keyCode,"delete",[8,46],$event.key,["Backspace","Delete","Del"])){ return null; }$event.preventDefault();return _vm.close($event)}}},[(_vm.closeIcon)?_c('b-icon',{attrs:{"custom-class":"","icon":_vm.closeIcon,"size":_vm.size,"type":_vm.closeIconType,"pack":_vm.closeIconPack}}):_vm._e()],1)]):_c('span',{staticClass:"tag",class:[_vm.type, _vm.size, { 'is-rounded': _vm.rounded }]},[_c('span',{class:{ 'has-ellipsis': _vm.ellipsis }},[_vm._t("default")],2),(_vm.closable)?_c('a',{staticClass:"delete is-small",class:_vm.closeType,attrs:{"role":"button","aria-label":_vm.ariaCloseLabel,"disabled":_vm.disabled,"tabindex":_vm.tabstop ? 0 : false},on:{"click":_vm.close,"keyup":function($event){if(!$event.type.indexOf('key')&&_vm._k($event.keyCode,"delete",[8,46],$event.key,["Backspace","Delete","Del"])){ return null; }$event.preventDefault();return _vm.close($event)}}}):_vm._e()])};
   var __vue_staticRenderFns__$z = [];
 
     /* style */
@@ -47374,6 +47660,7 @@
       return {
         tags: Array.isArray(this.value) ? this.value.slice(0) : this.value || [],
         newTag: '',
+        isComposing: false,
         _elementRef: 'autocomplete',
         _isTaginput: true
       };
@@ -47410,7 +47697,7 @@
        * Show the input field if a maxtags hasn't been set or reached.
        */
       hasInput: function hasInput() {
-        return this.maxtags == null || this.tagsLength < this.maxtags;
+        return this.maxtags == null || this.maxtags === 1 || this.tagsLength < this.maxtags;
       },
       tagsLength: function tagsLength() {
         return this.tags.length;
@@ -47461,6 +47748,10 @@
           var add = !this.allowDuplicates ? this.tags.indexOf(tagToAdd) === -1 : true;
 
           if (add && this.beforeAdding(tagToAdd)) {
+            if (this.maxtags === 1) {
+              this.tags = []; // replace existing tag if only 1 is allowed
+            }
+
             this.tags.push(this.createTag(tagToAdd));
             this.$emit('input', this.tags);
             this.$emit('add', tagToAdd);
@@ -47520,6 +47811,7 @@
         if (this.confirmKeys.indexOf(key) >= 0) {
           // Allow Tab to advance to next field regardless
           if (key !== 'Tab') event.preventDefault();
+          if (key === 'Enter' && this.isComposing) return;
           this.addTag();
         }
       },
@@ -47536,7 +47828,7 @@
   const __vue_script__$D = script$D;
 
   /* template */
-  var __vue_render__$B = function () {var _vm=this;var _h=_vm.$createElement;var _c=_vm._self._c||_h;return _c('div',{staticClass:"taginput control",class:_vm.rootClasses},[_c('div',{staticClass:"taginput-container",class:[_vm.statusType, _vm.size, _vm.containerClasses],attrs:{"disabled":_vm.disabled},on:{"click":function($event){_vm.hasInput && _vm.focus($event);}}},[_vm._t("selected",_vm._l((_vm.tags),function(tag,index){return _c('b-tag',{key:_vm.getNormalizedTagText(tag) + index,attrs:{"type":_vm.type,"close-type":_vm.closeType,"size":_vm.size,"rounded":_vm.rounded,"attached":_vm.attached,"tabstop":false,"disabled":_vm.disabled,"ellipsis":_vm.ellipsis,"closable":_vm.closable,"aria-close-label":_vm.ariaCloseLabel,"title":_vm.ellipsis && _vm.getNormalizedTagText(tag)},on:{"close":function($event){return _vm.removeTag(index, $event)}}},[_vm._t("tag",[_vm._v(" "+_vm._s(_vm.getNormalizedTagText(tag))+" ")],{"tag":tag})],2)}),{"tags":_vm.tags}),(_vm.hasInput)?_c('b-autocomplete',_vm._b({ref:"autocomplete",attrs:{"data":_vm.data,"field":_vm.field,"icon":_vm.icon,"icon-pack":_vm.iconPack,"maxlength":_vm.maxlength,"has-counter":false,"size":_vm.size,"disabled":_vm.disabled,"loading":_vm.loading,"autocomplete":_vm.nativeAutocomplete,"open-on-focus":_vm.openOnFocus,"keep-open":_vm.openOnFocus,"keep-first":!_vm.allowNew,"group-field":_vm.groupField,"group-options":_vm.groupOptions,"use-html5-validation":_vm.useHtml5Validation,"check-infinite-scroll":_vm.checkInfiniteScroll,"append-to-body":_vm.appendToBody,"confirm-keys":_vm.confirmKeys},on:{"typing":_vm.onTyping,"focus":_vm.onFocus,"blur":_vm.customOnBlur,"select":_vm.onSelect,"infinite-scroll":_vm.emitInfiniteScroll},nativeOn:{"keydown":function($event){return _vm.keydown($event)}},scopedSlots:_vm._u([(_vm.hasHeaderSlot)?{key:"header",fn:function(){return [_vm._t("header")]},proxy:true}:null,(_vm.hasDefaultSlot)?{key:"default",fn:function(props){return [_vm._t("default",null,{"option":props.option,"index":props.index})]}}:null,(_vm.hasEmptySlot)?{key:"empty",fn:function(){return [_vm._t("empty")]},proxy:true}:null,(_vm.hasFooterSlot)?{key:"footer",fn:function(){return [_vm._t("footer")]},proxy:true}:null],null,true),model:{value:(_vm.newTag),callback:function ($$v) {_vm.newTag=$$v;},expression:"newTag"}},'b-autocomplete',_vm.$attrs,false)):_vm._e()],2),(_vm.hasCounter && (_vm.maxtags || _vm.maxlength))?_c('small',{staticClass:"help counter"},[(_vm.maxlength && _vm.valueLength > 0)?[_vm._v(" "+_vm._s(_vm.valueLength)+" / "+_vm._s(_vm.maxlength)+" ")]:(_vm.maxtags)?[_vm._v(" "+_vm._s(_vm.tagsLength)+" / "+_vm._s(_vm.maxtags)+" ")]:_vm._e()],2):_vm._e()])};
+  var __vue_render__$B = function () {var _vm=this;var _h=_vm.$createElement;var _c=_vm._self._c||_h;return _c('div',{staticClass:"taginput control",class:_vm.rootClasses},[_c('div',{staticClass:"taginput-container",class:[_vm.statusType, _vm.size, _vm.containerClasses],attrs:{"disabled":_vm.disabled},on:{"click":function($event){_vm.hasInput && _vm.focus($event);}}},[_vm._t("selected",_vm._l((_vm.tags),function(tag,index){return _c('b-tag',{key:_vm.getNormalizedTagText(tag) + index,attrs:{"type":_vm.type,"close-type":_vm.closeType,"size":_vm.size,"rounded":_vm.rounded,"attached":_vm.attached,"tabstop":false,"disabled":_vm.disabled,"ellipsis":_vm.ellipsis,"closable":_vm.closable,"aria-close-label":_vm.ariaCloseLabel,"title":_vm.ellipsis && _vm.getNormalizedTagText(tag)},on:{"close":function($event){return _vm.removeTag(index, $event)}}},[_vm._t("tag",[_vm._v(" "+_vm._s(_vm.getNormalizedTagText(tag))+" ")],{"tag":tag})],2)}),{"tags":_vm.tags}),(_vm.hasInput)?_c('b-autocomplete',_vm._b({ref:"autocomplete",attrs:{"data":_vm.data,"field":_vm.field,"icon":_vm.icon,"icon-pack":_vm.iconPack,"maxlength":_vm.maxlength,"has-counter":false,"size":_vm.size,"disabled":_vm.disabled,"loading":_vm.loading,"autocomplete":_vm.nativeAutocomplete,"open-on-focus":_vm.openOnFocus,"keep-open":_vm.openOnFocus,"group-field":_vm.groupField,"group-options":_vm.groupOptions,"use-html5-validation":_vm.useHtml5Validation,"check-infinite-scroll":_vm.checkInfiniteScroll,"append-to-body":_vm.appendToBody,"confirm-keys":_vm.confirmKeys},on:{"typing":_vm.onTyping,"focus":_vm.onFocus,"blur":_vm.customOnBlur,"select":_vm.onSelect,"infinite-scroll":_vm.emitInfiniteScroll},nativeOn:{"keydown":function($event){return _vm.keydown($event)},"compositionstart":function($event){_vm.isComposing = true;},"compositionend":function($event){_vm.isComposing = false;}},scopedSlots:_vm._u([(_vm.hasHeaderSlot)?{key:"header",fn:function(){return [_vm._t("header")]},proxy:true}:null,(_vm.hasDefaultSlot)?{key:"default",fn:function(props){return [_vm._t("default",null,{"option":props.option,"index":props.index})]}}:null,(_vm.hasEmptySlot)?{key:"empty",fn:function(){return [_vm._t("empty")]},proxy:true}:null,(_vm.hasFooterSlot)?{key:"footer",fn:function(){return [_vm._t("footer")]},proxy:true}:null],null,true),model:{value:(_vm.newTag),callback:function ($$v) {_vm.newTag=$$v;},expression:"newTag"}},'b-autocomplete',_vm.$attrs,false)):_vm._e()],2),(_vm.hasCounter && (_vm.maxtags || _vm.maxlength))?_c('small',{staticClass:"help counter"},[(_vm.maxlength && _vm.valueLength > 0)?[_vm._v(" "+_vm._s(_vm.valueLength)+" / "+_vm._s(_vm.maxlength)+" ")]:(_vm.maxtags)?[_vm._v(" "+_vm._s(_vm.tagsLength)+" / "+_vm._s(_vm.maxtags)+" ")]:_vm._e()],2):_vm._e()])};
   var __vue_staticRenderFns__$B = [];
 
     /* style */
@@ -47704,6 +47996,10 @@
       expanded: {
         type: Boolean,
         default: false
+      },
+      rounded: {
+        type: Boolean,
+        default: false
       }
     },
     data: function data() {
@@ -47823,7 +48119,7 @@
   const __vue_script__$F = script$F;
 
   /* template */
-  var __vue_render__$D = function () {var _vm=this;var _h=_vm.$createElement;var _c=_vm._self._c||_h;return _c('label',{staticClass:"upload control",class:{'is-expanded' : _vm.expanded}},[(!_vm.dragDrop)?[_vm._t("default")]:_c('div',{staticClass:"upload-draggable",class:[_vm.type, {
+  var __vue_render__$D = function () {var _vm=this;var _h=_vm.$createElement;var _c=_vm._self._c||_h;return _c('label',{staticClass:"upload control",class:{'is-expanded' : _vm.expanded, 'is-rounded' : _vm.rounded}},[(!_vm.dragDrop)?[_vm._t("default")]:_c('div',{staticClass:"upload-draggable",class:[_vm.type, {
               'is-loading': _vm.loading,
               'is-disabled': _vm.disabled,
               'is-hovered': _vm.dragDropFocus,
@@ -47862,6 +48158,15 @@
     }
   };
   use(Plugin$D);
+
+  var ConfigComponent = {
+    getOptions: function getOptions() {
+      return config$2;
+    },
+    setOptions: function setOptions$1(options) {
+      setOptions(merge$2(config$2, options, true));
+    }
+  };
 
   var components = /*#__PURE__*/Object.freeze({
       Autocomplete: Plugin,
@@ -47905,15 +48210,6 @@
       Tooltip: Plugin$C,
       Upload: Plugin$D
   });
-
-  var ConfigComponent = {
-    getOptions: function getOptions() {
-      return config$2;
-    },
-    setOptions: function setOptions$1(options) {
-      setOptions(merge$2(config$2, options, true));
-    }
-  };
 
   var Buefy = {
     install: function install(Vue) {
@@ -49943,6 +50239,10 @@
           mergeMap( (model) =>
           {
           	uiModel.goToLoadingState();
+
+              // Workaround for errors in ktx lib after loading an asset with ktx2 files for the second time:
+              resourceLoader.initKtxLib();
+
               return from(resourceLoader.loadGltf(model.mainFile, model.additionalFiles).then( (gltf) => {
                   state.gltf = gltf;
                   const defaultScene = state.gltf.scene;
