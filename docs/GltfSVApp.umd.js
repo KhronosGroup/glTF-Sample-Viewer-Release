@@ -1772,11 +1772,9 @@
 
       getViewMatrix(gltf)
       {
-          const view = create$1();
-          const position = this.getPosition(gltf);
-          const target = this.getTarget(gltf);
-          lookAt(view, position, target, fromValues(0, 1, 0));
-          return view;
+          let result = create$1();
+          invert(result, this.getTransformMatrix(gltf));
+          return result;
       }
 
       getTarget(gltf)
