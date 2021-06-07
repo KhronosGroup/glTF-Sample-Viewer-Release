@@ -2400,10 +2400,14 @@
       BITANGENT: "Bitangent",
       /** output the base color value */
       BASECOLOR: "Base Color",
+      /** output the linear base color value */
+      BASECOLOR_LINEAR: "Base Color (Linear)",
       /** output the occlusion value */
       OCCLUSION: "Occlusion",
       /** output the emissive value */
       EMISSIVE: "Emissive",
+      /** output the linear emissive value */
+      EMISSIVE_LINEAR: "Emissive (Linear)",
       /** output diffuse lighting */
       DIFFUSE: "Diffuse",
       /** output specular lighting */
@@ -3098,7 +3102,7 @@
       }
   }
 
-  var pbrShader = "//\n// This fragment shader defines a reference implementation for Physically Based Shading of\n// a microfacet surface material defined by a glTF model.\n//\n// References:\n// [1] Real Shading in Unreal Engine 4\n//     http://blog.selfshadow.com/publications/s2013-shading-course/karis/s2013_pbs_epic_notes_v2.pdf\n// [2] Physically Based Shading at Disney\n//     http://blog.selfshadow.com/publications/s2012-shading-course/burley/s2012_pbs_disney_brdf_notes_v3.pdf\n// [3] README.md - Environment Maps\n//     https://github.com/KhronosGroup/glTF-WebGL-PBR/#environment-maps\n// [4] \"An Inexpensive BRDF Model for Physically based Rendering\" by Christophe Schlick\n//     https://www.cs.virginia.edu/~jdl/bib/appearance/analytic%20models/schlick94b.pdf\n// [5] \"KHR_materials_clearcoat\"\n//     https://github.com/KhronosGroup/glTF/tree/master/extensions/2.0/Khronos/KHR_materials_clearcoat\n\nprecision highp float;\n#define GLSLIFY 1\n\n#include <tonemapping.glsl>\n#include <textures.glsl>\n#include <functions.glsl>\n#include <brdf.glsl>\n#include <punctual.glsl>\n#include <ibl.glsl>\n#include <material_info.glsl>\n\nout vec4 g_finalColor;\n\nvoid main()\n{\n    vec4 baseColor = getBaseColor();\n\n#if ALPHAMODE == ALPHAMODE_OPAQUE\n    baseColor.a = 1.0;\n#endif\n\n#ifdef MATERIAL_UNLIT\n    g_finalColor = (vec4(linearTosRGB(baseColor.rgb), baseColor.a));\n    return;\n#endif\n\n    vec3 v = normalize(u_Camera - v_Position);\n    NormalInfo normalInfo = getNormalInfo(v);\n    vec3 n = normalInfo.n;\n    vec3 t = normalInfo.t;\n    vec3 b = normalInfo.b;\n\n    float NdotV = clampedDot(n, v);\n    float TdotV = clampedDot(t, v);\n    float BdotV = clampedDot(b, v);\n\n    MaterialInfo materialInfo;\n    materialInfo.baseColor = baseColor.rgb;\n    \n    // The default index of refraction of 1.5 yields a dielectric normal incidence reflectance of 0.04.\n    materialInfo.ior = 1.5;\n    materialInfo.f0 = vec3(0.04);\n    materialInfo.specularWeight = 1.0;\n    \n#ifdef MATERIAL_IOR\n    materialInfo = getIorInfo(materialInfo);\n#endif\n\n#ifdef MATERIAL_SPECULARGLOSSINESS\n    materialInfo = getSpecularGlossinessInfo(materialInfo);\n#endif\n\n#ifdef MATERIAL_METALLICROUGHNESS\n    materialInfo = getMetallicRoughnessInfo(materialInfo);\n#endif\n\n#ifdef MATERIAL_SHEEN\n    materialInfo = getSheenInfo(materialInfo);\n#endif\n\n#ifdef MATERIAL_CLEARCOAT\n    materialInfo = getClearCoatInfo(materialInfo, normalInfo);\n#endif\n\n#ifdef MATERIAL_SPECULAR\n    materialInfo = getSpecularInfo(materialInfo);\n#endif\n\n#ifdef MATERIAL_TRANSMISSION\n    materialInfo = getTransmissionInfo(materialInfo);\n#endif\n\n#ifdef MATERIAL_VOLUME\n    materialInfo = getVolumeInfo(materialInfo);\n#endif\n\n    materialInfo.perceptualRoughness = clamp(materialInfo.perceptualRoughness, 0.0, 1.0);\n    materialInfo.metallic = clamp(materialInfo.metallic, 0.0, 1.0);\n\n    // Roughness is authored as perceptual roughness; as is convention,\n    // convert to material roughness by squaring the perceptual roughness.\n    materialInfo.alphaRoughness = materialInfo.perceptualRoughness * materialInfo.perceptualRoughness;\n\n    // Compute reflectance.\n    float reflectance = max(max(materialInfo.f0.r, materialInfo.f0.g), materialInfo.f0.b);\n\n    // Anything less than 2% is physically impossible and is instead considered to be shadowing. Compare to \"Real-Time-Rendering\" 4th editon on page 325.\n    materialInfo.f90 = vec3(1.0);\n\n    // LIGHTING\n    vec3 f_specular = vec3(0.0);\n    vec3 f_diffuse = vec3(0.0);\n    vec3 f_emissive = vec3(0.0);\n    vec3 f_clearcoat = vec3(0.0);\n    vec3 f_sheen = vec3(0.0);\n    vec3 f_transmission = vec3(0.0);\n\n    float albedoSheenScaling = 1.0;\n\n    // Calculate lighting contribution from image based lighting source (IBL)\n#ifdef USE_IBL\n    f_specular += getIBLRadianceGGX(n, v, materialInfo.perceptualRoughness, materialInfo.f0, materialInfo.specularWeight);\n    f_diffuse += getIBLRadianceLambertian(n, v, materialInfo.perceptualRoughness, materialInfo.c_diff, materialInfo.f0, materialInfo.specularWeight);\n\n#ifdef MATERIAL_CLEARCOAT\n    f_clearcoat += getIBLRadianceGGX(materialInfo.clearcoatNormal, v, materialInfo.clearcoatRoughness, materialInfo.clearcoatF0, 1.0);\n#endif\n\n#ifdef MATERIAL_SHEEN\n    f_sheen += getIBLRadianceCharlie(n, v, materialInfo.sheenRoughnessFactor, materialInfo.sheenColorFactor);\n#endif\n#endif\n\n#if (defined(MATERIAL_TRANSMISSION) || defined(MATERIAL_VOLUME)) && (defined(USE_PUNCTUAL) || defined(USE_IBL))\n    f_transmission += materialInfo.transmissionFactor * getIBLVolumeRefraction(\n        n, v,\n        materialInfo.perceptualRoughness,\n        materialInfo.baseColor, materialInfo.f0, materialInfo.f90,\n        v_Position, u_ModelMatrix, u_ViewMatrix, u_ProjectionMatrix,\n        materialInfo.ior, materialInfo.thickness, materialInfo.attenuationColor, materialInfo.attenuationDistance);\n#endif\n\n    float ao = 1.0;\n    // Apply optional PBR terms for additional (optional) shading\n#ifdef HAS_OCCLUSION_MAP\n    ao = texture(u_OcclusionSampler,  getOcclusionUV()).r;\n    f_diffuse = mix(f_diffuse, f_diffuse * ao, u_OcclusionStrength);\n    // apply ambient occlusion to all lighting that is not punctual\n    f_specular = mix(f_specular, f_specular * ao, u_OcclusionStrength);\n    f_sheen = mix(f_sheen, f_sheen * ao, u_OcclusionStrength);\n    f_clearcoat = mix(f_clearcoat, f_clearcoat * ao, u_OcclusionStrength);\n#endif\n\n#ifdef USE_PUNCTUAL\n    for (int i = 0; i < LIGHT_COUNT; ++i)\n    {\n        Light light = u_Lights[i];\n\n        vec3 pointToLight;\n        if (light.type != LightType_Directional)\n        {\n            pointToLight = light.position - v_Position;\n        }\n        else\n        {\n            pointToLight = -light.direction;\n        }\n\n        // BSTF\n        vec3 l = normalize(pointToLight);   // Direction from surface point to light\n        vec3 h = normalize(l + v);          // Direction of the vector between l and v, called halfway vector\n        float NdotL = clampedDot(n, l);\n        float NdotV = clampedDot(n, v);\n        float NdotH = clampedDot(n, h);\n        float LdotH = clampedDot(l, h);\n        float VdotH = clampedDot(v, h);\n        if (NdotL > 0.0 || NdotV > 0.0)\n        {\n            // Calculation of analytical light\n            // https://github.com/KhronosGroup/glTF/tree/master/specification/2.0#acknowledgments AppendixB\n            vec3 intensity = getLighIntensity(light, pointToLight);\n            f_diffuse += intensity * NdotL *  BRDF_lambertian(materialInfo.f0, materialInfo.f90, materialInfo.c_diff, materialInfo.specularWeight, VdotH);\n            f_specular += intensity * NdotL * BRDF_specularGGX(materialInfo.f0, materialInfo.f90, materialInfo.alphaRoughness, materialInfo.specularWeight, VdotH, NdotL, NdotV, NdotH);\n\n#ifdef MATERIAL_SHEEN\n            f_sheen += intensity * getPunctualRadianceSheen(materialInfo.sheenColorFactor, materialInfo.sheenRoughnessFactor, NdotL, NdotV, NdotH);\n            albedoSheenScaling = min(1.0 - max3(materialInfo.sheenColorFactor) * albedoSheenScalingLUT(NdotV, materialInfo.sheenRoughnessFactor),\n                1.0 - max3(materialInfo.sheenColorFactor) * albedoSheenScalingLUT(NdotL, materialInfo.sheenRoughnessFactor));\n#endif\n\n#ifdef MATERIAL_CLEARCOAT\n            f_clearcoat += intensity * getPunctualRadianceClearCoat(materialInfo.clearcoatNormal, v, l, h, VdotH,\n                materialInfo.clearcoatF0, materialInfo.clearcoatF90, materialInfo.clearcoatRoughness);\n#endif\n        }\n\n        // BDTF\n#ifdef MATERIAL_TRANSMISSION\n        // If the light ray travels through the geometry, use the point it exits the geometry again.\n        // That will change the angle to the light source, if the material refracts the light ray.\n        vec3 transmissionRay = getVolumeTransmissionRay(n, v, materialInfo.thickness, materialInfo.ior, u_ModelMatrix);\n        pointToLight -= transmissionRay;\n        l = normalize(pointToLight);\n\n        vec3 intensity = getLighIntensity(light, pointToLight);\n        vec3 transmittedLight = intensity * getPunctualRadianceTransmission(n, v, l, materialInfo.alphaRoughness, materialInfo.f0, materialInfo.f90, materialInfo.baseColor, materialInfo.ior);\n\n#ifdef MATERIAL_VOLUME\n        transmittedLight = applyVolumeAttenuation(transmittedLight, length(transmissionRay), materialInfo.attenuationColor, materialInfo.attenuationDistance);\n#endif\n\n        f_transmission += materialInfo.transmissionFactor * transmittedLight;\n#endif\n    }\n#endif\n\n    f_emissive = u_EmissiveFactor;\n#ifdef HAS_EMISSIVE_MAP\n    f_emissive *= texture(u_EmissiveSampler, getEmissiveUV()).rgb;\n#endif\n\n    vec3 color = vec3(0);\n\n    // Layer blending\n\n    float clearcoatFactor = 0.0;\n    vec3 clearcoatFresnel = vec3(0);\n\n#ifdef MATERIAL_CLEARCOAT\n    clearcoatFactor = materialInfo.clearcoatFactor;\n    clearcoatFresnel = F_Schlick(materialInfo.clearcoatF0, materialInfo.clearcoatF90, clampedDot(materialInfo.clearcoatNormal, v));\n    f_clearcoat = f_clearcoat * clearcoatFactor;\n#endif\n\n#ifdef MATERIAL_TRANSMISSION\n    vec3 diffuse = mix(f_diffuse, f_transmission, materialInfo.transmissionFactor);\n#else\n    vec3 diffuse = f_diffuse;\n#endif\n\n    color = f_emissive + diffuse + f_specular;\n    color = f_sheen + color * albedoSheenScaling;\n    color = color * (1.0 - clearcoatFactor * clearcoatFresnel) + f_clearcoat;\n\n#if DEBUG == DEBUG_NONE\n\n#if ALPHAMODE == ALPHAMODE_MASK\n    // Late discard to avoid samplig artifacts. See https://github.com/KhronosGroup/glTF-Sample-Viewer/issues/267\n    if (baseColor.a < u_AlphaCutoff)\n    {\n        discard;\n    }\n    baseColor.a = 1.0;\n#endif\n\n#ifdef LINEAR_OUTPUT\n    g_finalColor = vec4(color.rgb, baseColor.a);\n#else\n    g_finalColor = vec4(toneMap(color), baseColor.a);\n#endif\n\n#else\n    g_finalColor.a = 1.0;\n#endif\n\n#if DEBUG == DEBUG_METALLIC\n    g_finalColor.rgb = vec3(materialInfo.metallic);\n#endif\n\n#if DEBUG == DEBUG_ROUGHNESS\n    g_finalColor.rgb = vec3(materialInfo.perceptualRoughness);\n#endif\n\n#if DEBUG == DEBUG_NORMAL\n#ifdef HAS_NORMAL_MAP\n    g_finalColor.rgb = texture(u_NormalSampler, getNormalUV()).rgb;\n#else\n    g_finalColor.rgb = vec3(0.5, 0.5, 1.0);\n#endif\n#endif\n\n#if DEBUG == DEBUG_NORMAL_GEOMETRY\n    g_finalColor.rgb = (normalInfo.ng + 1.0) / 2.0;\n#endif\n\n#if DEBUG == DEBUG_NORMAL_WORLD\n    g_finalColor.rgb = (n + 1.0) / 2.0;\n#endif\n\n#if DEBUG == DEBUG_TANGENT\n    g_finalColor.rgb = t * 0.5 + vec3(0.5);\n#endif\n\n#if DEBUG == DEBUG_BITANGENT\n    g_finalColor.rgb = b * 0.5 + vec3(0.5);\n#endif\n\n#if DEBUG == DEBUG_BASE_COLOR_SRGB\n    g_finalColor.rgb = linearTosRGB(materialInfo.baseColor);\n#endif\n\n#if DEBUG == DEBUG_OCCLUSION\n    g_finalColor.rgb = vec3(ao);\n#endif\n\n#if DEBUG == DEBUG_F0\n    g_finalColor.rgb = materialInfo.f0;\n#endif\n\n#if DEBUG == DEBUG_EMISSIVE_SRGB\n    g_finalColor.rgb = linearTosRGB(f_emissive);\n#endif\n\n#if DEBUG == DEBUG_SPECULAR_SRGB\n    g_finalColor.rgb = linearTosRGB(f_specular);\n#endif\n\n#if DEBUG == DEBUG_DIFFUSE_SRGB\n    g_finalColor.rgb = linearTosRGB(f_diffuse);\n#endif\n\n#if DEBUG == DEBUG_CLEARCOAT_SRGB\n    g_finalColor.rgb = linearTosRGB(f_clearcoat);\n#endif\n\n#if DEBUG == DEBUG_SHEEN_SRGB\n    g_finalColor.rgb = linearTosRGB(f_sheen);\n#endif\n\n#if DEBUG == DEBUG_TRANSMISSION_SRGB\n    g_finalColor.rgb = linearTosRGB(f_transmission);\n#endif\n\n#if DEBUG == DEBUG_ALPHA\n    g_finalColor.rgb = vec3(baseColor.a);\n#endif\n}\n"; // eslint-disable-line
+  var pbrShader = "//\n// This fragment shader defines a reference implementation for Physically Based Shading of\n// a microfacet surface material defined by a glTF model.\n//\n// References:\n// [1] Real Shading in Unreal Engine 4\n//     http://blog.selfshadow.com/publications/s2013-shading-course/karis/s2013_pbs_epic_notes_v2.pdf\n// [2] Physically Based Shading at Disney\n//     http://blog.selfshadow.com/publications/s2012-shading-course/burley/s2012_pbs_disney_brdf_notes_v3.pdf\n// [3] README.md - Environment Maps\n//     https://github.com/KhronosGroup/glTF-WebGL-PBR/#environment-maps\n// [4] \"An Inexpensive BRDF Model for Physically based Rendering\" by Christophe Schlick\n//     https://www.cs.virginia.edu/~jdl/bib/appearance/analytic%20models/schlick94b.pdf\n// [5] \"KHR_materials_clearcoat\"\n//     https://github.com/KhronosGroup/glTF/tree/master/extensions/2.0/Khronos/KHR_materials_clearcoat\n\nprecision highp float;\n#define GLSLIFY 1\n\n#include <tonemapping.glsl>\n#include <textures.glsl>\n#include <functions.glsl>\n#include <brdf.glsl>\n#include <punctual.glsl>\n#include <ibl.glsl>\n#include <material_info.glsl>\n\nout vec4 g_finalColor;\n\nvoid main()\n{\n    vec4 baseColor = getBaseColor();\n\n#if ALPHAMODE == ALPHAMODE_OPAQUE\n    baseColor.a = 1.0;\n#endif\n\n#ifdef MATERIAL_UNLIT\n    g_finalColor = (vec4(linearTosRGB(baseColor.rgb), baseColor.a));\n    return;\n#endif\n\n    vec3 v = normalize(u_Camera - v_Position);\n    NormalInfo normalInfo = getNormalInfo(v);\n    vec3 n = normalInfo.n;\n    vec3 t = normalInfo.t;\n    vec3 b = normalInfo.b;\n\n    float NdotV = clampedDot(n, v);\n    float TdotV = clampedDot(t, v);\n    float BdotV = clampedDot(b, v);\n\n    MaterialInfo materialInfo;\n    materialInfo.baseColor = baseColor.rgb;\n    \n    // The default index of refraction of 1.5 yields a dielectric normal incidence reflectance of 0.04.\n    materialInfo.ior = 1.5;\n    materialInfo.f0 = vec3(0.04);\n    materialInfo.specularWeight = 1.0;\n    \n#ifdef MATERIAL_IOR\n    materialInfo = getIorInfo(materialInfo);\n#endif\n\n#ifdef MATERIAL_SPECULARGLOSSINESS\n    materialInfo = getSpecularGlossinessInfo(materialInfo);\n#endif\n\n#ifdef MATERIAL_METALLICROUGHNESS\n    materialInfo = getMetallicRoughnessInfo(materialInfo);\n#endif\n\n#ifdef MATERIAL_SHEEN\n    materialInfo = getSheenInfo(materialInfo);\n#endif\n\n#ifdef MATERIAL_CLEARCOAT\n    materialInfo = getClearCoatInfo(materialInfo, normalInfo);\n#endif\n\n#ifdef MATERIAL_SPECULAR\n    materialInfo = getSpecularInfo(materialInfo);\n#endif\n\n#ifdef MATERIAL_TRANSMISSION\n    materialInfo = getTransmissionInfo(materialInfo);\n#endif\n\n#ifdef MATERIAL_VOLUME\n    materialInfo = getVolumeInfo(materialInfo);\n#endif\n\n    materialInfo.perceptualRoughness = clamp(materialInfo.perceptualRoughness, 0.0, 1.0);\n    materialInfo.metallic = clamp(materialInfo.metallic, 0.0, 1.0);\n\n    // Roughness is authored as perceptual roughness; as is convention,\n    // convert to material roughness by squaring the perceptual roughness.\n    materialInfo.alphaRoughness = materialInfo.perceptualRoughness * materialInfo.perceptualRoughness;\n\n    // Compute reflectance.\n    float reflectance = max(max(materialInfo.f0.r, materialInfo.f0.g), materialInfo.f0.b);\n\n    // Anything less than 2% is physically impossible and is instead considered to be shadowing. Compare to \"Real-Time-Rendering\" 4th editon on page 325.\n    materialInfo.f90 = vec3(1.0);\n\n    // LIGHTING\n    vec3 f_specular = vec3(0.0);\n    vec3 f_diffuse = vec3(0.0);\n    vec3 f_emissive = vec3(0.0);\n    vec3 f_clearcoat = vec3(0.0);\n    vec3 f_sheen = vec3(0.0);\n    vec3 f_transmission = vec3(0.0);\n\n    float albedoSheenScaling = 1.0;\n\n    // Calculate lighting contribution from image based lighting source (IBL)\n#ifdef USE_IBL\n    f_specular += getIBLRadianceGGX(n, v, materialInfo.perceptualRoughness, materialInfo.f0, materialInfo.specularWeight);\n    f_diffuse += getIBLRadianceLambertian(n, v, materialInfo.perceptualRoughness, materialInfo.c_diff, materialInfo.f0, materialInfo.specularWeight);\n\n#ifdef MATERIAL_CLEARCOAT\n    f_clearcoat += getIBLRadianceGGX(materialInfo.clearcoatNormal, v, materialInfo.clearcoatRoughness, materialInfo.clearcoatF0, 1.0);\n#endif\n\n#ifdef MATERIAL_SHEEN\n    f_sheen += getIBLRadianceCharlie(n, v, materialInfo.sheenRoughnessFactor, materialInfo.sheenColorFactor);\n#endif\n#endif\n\n#if (defined(MATERIAL_TRANSMISSION) || defined(MATERIAL_VOLUME)) && (defined(USE_PUNCTUAL) || defined(USE_IBL))\n    f_transmission += materialInfo.transmissionFactor * getIBLVolumeRefraction(\n        n, v,\n        materialInfo.perceptualRoughness,\n        materialInfo.baseColor, materialInfo.f0, materialInfo.f90,\n        v_Position, u_ModelMatrix, u_ViewMatrix, u_ProjectionMatrix,\n        materialInfo.ior, materialInfo.thickness, materialInfo.attenuationColor, materialInfo.attenuationDistance);\n#endif\n\n    float ao = 1.0;\n    // Apply optional PBR terms for additional (optional) shading\n#ifdef HAS_OCCLUSION_MAP\n    ao = texture(u_OcclusionSampler,  getOcclusionUV()).r;\n    f_diffuse = mix(f_diffuse, f_diffuse * ao, u_OcclusionStrength);\n    // apply ambient occlusion to all lighting that is not punctual\n    f_specular = mix(f_specular, f_specular * ao, u_OcclusionStrength);\n    f_sheen = mix(f_sheen, f_sheen * ao, u_OcclusionStrength);\n    f_clearcoat = mix(f_clearcoat, f_clearcoat * ao, u_OcclusionStrength);\n#endif\n\n#ifdef USE_PUNCTUAL\n    for (int i = 0; i < LIGHT_COUNT; ++i)\n    {\n        Light light = u_Lights[i];\n\n        vec3 pointToLight;\n        if (light.type != LightType_Directional)\n        {\n            pointToLight = light.position - v_Position;\n        }\n        else\n        {\n            pointToLight = -light.direction;\n        }\n\n        // BSTF\n        vec3 l = normalize(pointToLight);   // Direction from surface point to light\n        vec3 h = normalize(l + v);          // Direction of the vector between l and v, called halfway vector\n        float NdotL = clampedDot(n, l);\n        float NdotV = clampedDot(n, v);\n        float NdotH = clampedDot(n, h);\n        float LdotH = clampedDot(l, h);\n        float VdotH = clampedDot(v, h);\n        if (NdotL > 0.0 || NdotV > 0.0)\n        {\n            // Calculation of analytical light\n            // https://github.com/KhronosGroup/glTF/tree/master/specification/2.0#acknowledgments AppendixB\n            vec3 intensity = getLighIntensity(light, pointToLight);\n            f_diffuse += intensity * NdotL *  BRDF_lambertian(materialInfo.f0, materialInfo.f90, materialInfo.c_diff, materialInfo.specularWeight, VdotH);\n            f_specular += intensity * NdotL * BRDF_specularGGX(materialInfo.f0, materialInfo.f90, materialInfo.alphaRoughness, materialInfo.specularWeight, VdotH, NdotL, NdotV, NdotH);\n\n#ifdef MATERIAL_SHEEN\n            f_sheen += intensity * getPunctualRadianceSheen(materialInfo.sheenColorFactor, materialInfo.sheenRoughnessFactor, NdotL, NdotV, NdotH);\n            albedoSheenScaling = min(1.0 - max3(materialInfo.sheenColorFactor) * albedoSheenScalingLUT(NdotV, materialInfo.sheenRoughnessFactor),\n                1.0 - max3(materialInfo.sheenColorFactor) * albedoSheenScalingLUT(NdotL, materialInfo.sheenRoughnessFactor));\n#endif\n\n#ifdef MATERIAL_CLEARCOAT\n            f_clearcoat += intensity * getPunctualRadianceClearCoat(materialInfo.clearcoatNormal, v, l, h, VdotH,\n                materialInfo.clearcoatF0, materialInfo.clearcoatF90, materialInfo.clearcoatRoughness);\n#endif\n        }\n\n        // BDTF\n#ifdef MATERIAL_TRANSMISSION\n        // If the light ray travels through the geometry, use the point it exits the geometry again.\n        // That will change the angle to the light source, if the material refracts the light ray.\n        vec3 transmissionRay = getVolumeTransmissionRay(n, v, materialInfo.thickness, materialInfo.ior, u_ModelMatrix);\n        pointToLight -= transmissionRay;\n        l = normalize(pointToLight);\n\n        vec3 intensity = getLighIntensity(light, pointToLight);\n        vec3 transmittedLight = intensity * getPunctualRadianceTransmission(n, v, l, materialInfo.alphaRoughness, materialInfo.f0, materialInfo.f90, materialInfo.baseColor, materialInfo.ior);\n\n#ifdef MATERIAL_VOLUME\n        transmittedLight = applyVolumeAttenuation(transmittedLight, length(transmissionRay), materialInfo.attenuationColor, materialInfo.attenuationDistance);\n#endif\n\n        f_transmission += materialInfo.transmissionFactor * transmittedLight;\n#endif\n    }\n#endif\n\n    f_emissive = u_EmissiveFactor;\n#ifdef HAS_EMISSIVE_MAP\n    f_emissive *= texture(u_EmissiveSampler, getEmissiveUV()).rgb;\n#endif\n\n    vec3 color = vec3(0);\n\n    // Layer blending\n\n    float clearcoatFactor = 0.0;\n    vec3 clearcoatFresnel = vec3(0);\n\n#ifdef MATERIAL_CLEARCOAT\n    clearcoatFactor = materialInfo.clearcoatFactor;\n    clearcoatFresnel = F_Schlick(materialInfo.clearcoatF0, materialInfo.clearcoatF90, clampedDot(materialInfo.clearcoatNormal, v));\n    f_clearcoat = f_clearcoat * clearcoatFactor;\n#endif\n\n#ifdef MATERIAL_TRANSMISSION\n    vec3 diffuse = mix(f_diffuse, f_transmission, materialInfo.transmissionFactor);\n#else\n    vec3 diffuse = f_diffuse;\n#endif\n\n    color = f_emissive + diffuse + f_specular;\n    color = f_sheen + color * albedoSheenScaling;\n    color = color * (1.0 - clearcoatFactor * clearcoatFresnel) + f_clearcoat;\n\n#if DEBUG == DEBUG_NONE\n\n#if ALPHAMODE == ALPHAMODE_MASK\n    // Late discard to avoid samplig artifacts. See https://github.com/KhronosGroup/glTF-Sample-Viewer/issues/267\n    if (baseColor.a < u_AlphaCutoff)\n    {\n        discard;\n    }\n    baseColor.a = 1.0;\n#endif\n\n#ifdef LINEAR_OUTPUT\n    g_finalColor = vec4(color.rgb, baseColor.a);\n#else\n    g_finalColor = vec4(toneMap(color), baseColor.a);\n#endif\n\n#else\n    g_finalColor.a = 1.0;\n#endif\n\n#if DEBUG == DEBUG_METALLIC\n    g_finalColor.rgb = vec3(materialInfo.metallic);\n#endif\n\n#if DEBUG == DEBUG_ROUGHNESS\n    g_finalColor.rgb = vec3(materialInfo.perceptualRoughness);\n#endif\n\n#if DEBUG == DEBUG_NORMAL\n#ifdef HAS_NORMAL_MAP\n    g_finalColor.rgb = texture(u_NormalSampler, getNormalUV()).rgb;\n#else\n    g_finalColor.rgb = vec3(0.5, 0.5, 1.0);\n#endif\n#endif\n\n#if DEBUG == DEBUG_NORMAL_GEOMETRY\n    g_finalColor.rgb = (normalInfo.ng + 1.0) / 2.0;\n#endif\n\n#if DEBUG == DEBUG_NORMAL_WORLD\n    g_finalColor.rgb = (n + 1.0) / 2.0;\n#endif\n\n#if DEBUG == DEBUG_TANGENT\n    g_finalColor.rgb = t * 0.5 + vec3(0.5);\n#endif\n\n#if DEBUG == DEBUG_BITANGENT\n    g_finalColor.rgb = b * 0.5 + vec3(0.5);\n#endif\n\n#if DEBUG == DEBUG_BASE_COLOR_SRGB\n    g_finalColor.rgb = linearTosRGB(materialInfo.baseColor);\n#endif\n\n#if DEBUG == DEBUG_BASE_COLOR_LINEAR\n    g_finalColor.rgb = materialInfo.baseColor;\n#endif\n\n#if DEBUG == DEBUG_OCCLUSION\n    g_finalColor.rgb = vec3(ao);\n#endif\n\n#if DEBUG == DEBUG_F0\n    g_finalColor.rgb = materialInfo.f0;\n#endif\n\n#if DEBUG == DEBUG_EMISSIVE_SRGB\n    g_finalColor.rgb = linearTosRGB(f_emissive);\n#endif\n\n#if DEBUG == DEBUG_EMISSIVE_LINEAR\n    g_finalColor.rgb = f_emissive;\n#endif\n\n#if DEBUG == DEBUG_SPECULAR_SRGB\n    g_finalColor.rgb = linearTosRGB(f_specular);\n#endif\n\n#if DEBUG == DEBUG_DIFFUSE_SRGB\n    g_finalColor.rgb = linearTosRGB(f_diffuse);\n#endif\n\n#if DEBUG == DEBUG_CLEARCOAT_SRGB\n    g_finalColor.rgb = linearTosRGB(f_clearcoat);\n#endif\n\n#if DEBUG == DEBUG_SHEEN_SRGB\n    g_finalColor.rgb = linearTosRGB(f_sheen);\n#endif\n\n#if DEBUG == DEBUG_TRANSMISSION_SRGB\n    g_finalColor.rgb = linearTosRGB(f_transmission);\n#endif\n\n#if DEBUG == DEBUG_ALPHA\n    g_finalColor.rgb = vec3(baseColor.a);\n#endif\n}\n"; // eslint-disable-line
 
   var brdfShader = "#define GLSLIFY 1\n//\n// Fresnel\n//\n// http://graphicrants.blogspot.com/2013/08/specular-brdf-reference.html\n// https://github.com/wdas/brdf/tree/master/src/brdfs\n// https://google.github.io/filament/Filament.md.html\n//\n\n// The following equation models the Fresnel reflectance term of the spec equation (aka F())\n// Implementation of fresnel from [4], Equation 15\nvec3 F_Schlick(vec3 f0, vec3 f90, float VdotH)\n{\n    return f0 + (f90 - f0) * pow(clamp(1.0 - VdotH, 0.0, 1.0), 5.0);\n}\n\n// Smith Joint GGX\n// Note: Vis = G / (4 * NdotL * NdotV)\n// see Eric Heitz. 2014. Understanding the Masking-Shadowing Function in Microfacet-Based BRDFs. Journal of Computer Graphics Techniques, 3\n// see Real-Time Rendering. Page 331 to 336.\n// see https://google.github.io/filament/Filament.md.html#materialsystem/specularbrdf/geometricshadowing(specularg)\nfloat V_GGX(float NdotL, float NdotV, float alphaRoughness)\n{\n    float alphaRoughnessSq = alphaRoughness * alphaRoughness;\n\n    float GGXV = NdotL * sqrt(NdotV * NdotV * (1.0 - alphaRoughnessSq) + alphaRoughnessSq);\n    float GGXL = NdotV * sqrt(NdotL * NdotL * (1.0 - alphaRoughnessSq) + alphaRoughnessSq);\n\n    float GGX = GGXV + GGXL;\n    if (GGX > 0.0)\n    {\n        return 0.5 / GGX;\n    }\n    return 0.0;\n}\n\n// The following equation(s) model the distribution of microfacet normals across the area being drawn (aka D())\n// Implementation from \"Average Irregularity Representation of a Roughened Surface for Ray Reflection\" by T. S. Trowbridge, and K. P. Reitz\n// Follows the distribution function recommended in the SIGGRAPH 2013 course notes from EPIC Games [1], Equation 3.\nfloat D_GGX(float NdotH, float alphaRoughness)\n{\n    float alphaRoughnessSq = alphaRoughness * alphaRoughness;\n    float f = (NdotH * NdotH) * (alphaRoughnessSq - 1.0) + 1.0;\n    return alphaRoughnessSq / (M_PI * f * f);\n}\n\nfloat lambdaSheenNumericHelper(float x, float alphaG)\n{\n    float oneMinusAlphaSq = (1.0 - alphaG) * (1.0 - alphaG);\n    float a = mix(21.5473, 25.3245, oneMinusAlphaSq);\n    float b = mix(3.82987, 3.32435, oneMinusAlphaSq);\n    float c = mix(0.19823, 0.16801, oneMinusAlphaSq);\n    float d = mix(-1.97760, -1.27393, oneMinusAlphaSq);\n    float e = mix(-4.32054, -4.85967, oneMinusAlphaSq);\n    return a / (1.0 + b * pow(x, c)) + d * x + e;\n}\n\nfloat lambdaSheen(float cosTheta, float alphaG)\n{\n    if (abs(cosTheta) < 0.5)\n    {\n        return exp(lambdaSheenNumericHelper(cosTheta, alphaG));\n    }\n    else\n    {\n        return exp(2.0 * lambdaSheenNumericHelper(0.5, alphaG) - lambdaSheenNumericHelper(1.0 - cosTheta, alphaG));\n    }\n}\n\nfloat V_Sheen(float NdotL, float NdotV, float sheenRoughness)\n{\n    sheenRoughness = max(sheenRoughness, 0.000001); //clamp (0,1]\n    float alphaG = sheenRoughness * sheenRoughness;\n\n    return clamp(1.0 / ((1.0 + lambdaSheen(NdotV, alphaG) + lambdaSheen(NdotL, alphaG)) *\n        (4.0 * NdotV * NdotL)), 0.0, 1.0);\n}\n\n//Sheen implementation-------------------------------------------------------------------------------------\n// See  https://github.com/sebavan/glTF/tree/KHR_materials_sheen/extensions/2.0/Khronos/KHR_materials_sheen\n\n// Estevez and Kulla http://www.aconty.com/pdf/s2017_pbs_imageworks_sheen.pdf\nfloat D_Charlie(float sheenRoughness, float NdotH)\n{\n    sheenRoughness = max(sheenRoughness, 0.000001); //clamp (0,1]\n    float alphaG = sheenRoughness * sheenRoughness;\n    float invR = 1.0 / alphaG;\n    float cos2h = NdotH * NdotH;\n    float sin2h = 1.0 - cos2h;\n    return (2.0 + invR) * pow(sin2h, invR * 0.5) / (2.0 * M_PI);\n}\n\n//https://github.com/KhronosGroup/glTF/tree/master/specification/2.0#acknowledgments AppendixB\nvec3 BRDF_lambertian(vec3 f0, vec3 f90, vec3 diffuseColor, float specularWeight, float VdotH)\n{\n    // see https://seblagarde.wordpress.com/2012/01/08/pi-or-not-to-pi-in-game-lighting-equation/\n    return (1.0 - specularWeight * F_Schlick(f0, f90, VdotH)) * (diffuseColor / M_PI);\n}\n\n//  https://github.com/KhronosGroup/glTF/tree/master/specification/2.0#acknowledgments AppendixB\nvec3 BRDF_specularGGX(vec3 f0, vec3 f90, float alphaRoughness, float specularWeight, float VdotH, float NdotL, float NdotV, float NdotH)\n{\n    vec3 F = F_Schlick(f0, f90, VdotH);\n    float Vis = V_GGX(NdotL, NdotV, alphaRoughness);\n    float D = D_GGX(NdotH, alphaRoughness);\n\n    return specularWeight * F * Vis * D;\n}\n\n// f_sheen\nvec3 BRDF_specularSheen(vec3 sheenColor, float sheenRoughness, float NdotL, float NdotV, float NdotH)\n{\n    float sheenDistribution = D_Charlie(sheenRoughness, NdotH);\n    float sheenVisibility = V_Sheen(NdotL, NdotV, sheenRoughness);\n    return sheenColor * sheenDistribution * sheenVisibility;\n}\n"; // eslint-disable-line
 
@@ -3887,11 +3891,17 @@
           case GltfState.DebugOutput.BASECOLOR:
               fragDefines.push("DEBUG DEBUG_BASE_COLOR_SRGB");
               break;
+          case GltfState.DebugOutput.BASECOLOR_LINEAR:
+              fragDefines.push("DEBUG DEBUG_BASE_COLOR_LINEAR");
+              break;
           case GltfState.DebugOutput.OCCLUSION:
               fragDefines.push("DEBUG DEBUG_OCCLUSION");
               break;
           case GltfState.DebugOutput.EMISSIVE:
               fragDefines.push("DEBUG DEBUG_EMISSIVE_SRGB");
+              break;
+          case GltfState.DebugOutput.EMISSIVE_LINEAR:
+              fragDefines.push("DEBUG DEBUG_EMISSIVE_LINEAR");
               break;
           case GltfState.DebugOutput.F0:
               fragDefines.push("DEBUG DEBUG_F0");
@@ -22114,8 +22124,8 @@
   }
 
   /*!
-   * Vue.js v2.6.12
-   * (c) 2014-2020 Evan You
+   * Vue.js v2.6.14
+   * (c) 2014-2021 Evan You
    * Released under the MIT License.
    */
   /*  */
@@ -23583,13 +23593,15 @@
       : def
   }
 
+  var functionTypeCheckRE = /^\s*function (\w+)/;
+
   /**
    * Use function string name to check built-in types,
    * because a simple equality check will fail when running
    * across different vms / iframes.
    */
   function getType (fn) {
-    var match = fn && fn.toString().match(/^\s*function (\w+)/);
+    var match = fn && fn.toString().match(functionTypeCheckRE);
     return match ? match[1] : ''
   }
 
@@ -24183,6 +24195,12 @@
 
   /*  */
 
+  function isAsyncPlaceholder (node) {
+    return node.isComment && node.asyncFactory
+  }
+
+  /*  */
+
   function normalizeScopedSlots (
     slots,
     normalSlots,
@@ -24239,9 +24257,10 @@
       res = res && typeof res === 'object' && !Array.isArray(res)
         ? [res] // single vnode
         : normalizeChildren(res);
+      var vnode = res && res[0];
       return res && (
-        res.length === 0 ||
-        (res.length === 1 && res[0].isComment) // #9658
+        !vnode ||
+        (res.length === 1 && vnode.isComment && !isAsyncPlaceholder(vnode)) // #9658, #10391
       ) ? undefined
         : res
     };
@@ -24314,20 +24333,25 @@
    */
   function renderSlot (
     name,
-    fallback,
+    fallbackRender,
     props,
     bindObject
   ) {
     var scopedSlotFn = this.$scopedSlots[name];
     var nodes;
-    if (scopedSlotFn) { // scoped slot
+    if (scopedSlotFn) {
+      // scoped slot
       props = props || {};
       if (bindObject) {
         props = extend$1(extend$1({}, bindObject), props);
       }
-      nodes = scopedSlotFn(props) || fallback;
+      nodes =
+        scopedSlotFn(props) ||
+        (typeof fallbackRender === 'function' ? fallbackRender() : fallbackRender);
     } else {
-      nodes = this.$slots[name] || fallback;
+      nodes =
+        this.$slots[name] ||
+        (typeof fallbackRender === 'function' ? fallbackRender() : fallbackRender);
     }
 
     var target = props && props.slot;
@@ -24377,6 +24401,7 @@
     } else if (eventKeyName) {
       return hyphenate(eventKeyName) !== key
     }
+    return eventKeyCode === undefined
   }
 
   /*  */
@@ -24886,8 +24911,10 @@
   }
 
   function createComponentInstanceForVnode (
-    vnode, // we know it's MountedComponentVNode but flow doesn't
-    parent // activeInstance in lifecycle state
+    // we know it's MountedComponentVNode but flow doesn't
+    vnode,
+    // activeInstance in lifecycle state
+    parent
   ) {
     var options = {
       _isComponent: true,
@@ -25307,12 +25334,6 @@
 
   /*  */
 
-  function isAsyncPlaceholder (node) {
-    return node.isComment && node.asyncFactory
-  }
-
-  /*  */
-
   function getFirstComponentChild (children) {
     if (Array.isArray(children)) {
       for (var i = 0; i < children.length; i++) {
@@ -25629,7 +25650,8 @@
     var hasDynamicScopedSlot = !!(
       (newScopedSlots && !newScopedSlots.$stable) ||
       (oldScopedSlots !== emptyObject && !oldScopedSlots.$stable) ||
-      (newScopedSlots && vm.$scopedSlots.$key !== newScopedSlots.$key)
+      (newScopedSlots && vm.$scopedSlots.$key !== newScopedSlots.$key) ||
+      (!newScopedSlots && vm.$scopedSlots.$key)
     );
 
     // Any static slot children from the parent may have changed during parent's
@@ -26043,11 +26065,8 @@
         var oldValue = this.value;
         this.value = value;
         if (this.user) {
-          try {
-            this.cb.call(this.vm, value, oldValue);
-          } catch (e) {
-            handleError(e, this.vm, ("callback for watcher \"" + (this.expression) + "\""));
-          }
+          var info = "callback for watcher \"" + (this.expression) + "\"";
+          invokeWithErrorHandling(this.cb, this.vm, [value, oldValue], this.vm, info);
         } else {
           this.cb.call(this.vm, value, oldValue);
         }
@@ -26331,11 +26350,10 @@
       options.user = true;
       var watcher = new Watcher(vm, expOrFn, cb, options);
       if (options.immediate) {
-        try {
-          cb.call(vm, watcher.value);
-        } catch (error) {
-          handleError(error, vm, ("callback for immediate watcher \"" + (watcher.expression) + "\""));
-        }
+        var info = "callback for immediate watcher \"" + (watcher.expression) + "\"";
+        pushTarget();
+        invokeWithErrorHandling(cb, vm, [watcher.value], vm, info);
+        popTarget();
       }
       return function unwatchFn () {
         watcher.teardown();
@@ -26607,6 +26625,8 @@
 
 
 
+
+
   function getComponentName (opts) {
     return opts && (opts.Ctor.options.name || opts.tag)
   }
@@ -26628,9 +26648,9 @@
     var keys = keepAliveInstance.keys;
     var _vnode = keepAliveInstance._vnode;
     for (var key in cache) {
-      var cachedNode = cache[key];
-      if (cachedNode) {
-        var name = getComponentName(cachedNode.componentOptions);
+      var entry = cache[key];
+      if (entry) {
+        var name = entry.name;
         if (name && !filter(name)) {
           pruneCacheEntry(cache, key, keys, _vnode);
         }
@@ -26644,9 +26664,9 @@
     keys,
     current
   ) {
-    var cached$$1 = cache[key];
-    if (cached$$1 && (!current || cached$$1.tag !== current.tag)) {
-      cached$$1.componentInstance.$destroy();
+    var entry = cache[key];
+    if (entry && (!current || entry.tag !== current.tag)) {
+      entry.componentInstance.$destroy();
     }
     cache[key] = null;
     remove(keys, key);
@@ -26664,6 +26684,32 @@
       max: [String, Number]
     },
 
+    methods: {
+      cacheVNode: function cacheVNode() {
+        var ref = this;
+        var cache = ref.cache;
+        var keys = ref.keys;
+        var vnodeToCache = ref.vnodeToCache;
+        var keyToCache = ref.keyToCache;
+        if (vnodeToCache) {
+          var tag = vnodeToCache.tag;
+          var componentInstance = vnodeToCache.componentInstance;
+          var componentOptions = vnodeToCache.componentOptions;
+          cache[keyToCache] = {
+            name: getComponentName(componentOptions),
+            tag: tag,
+            componentInstance: componentInstance,
+          };
+          keys.push(keyToCache);
+          // prune oldest entry
+          if (this.max && keys.length > parseInt(this.max)) {
+            pruneCacheEntry(cache, keys[0], keys, this._vnode);
+          }
+          this.vnodeToCache = null;
+        }
+      }
+    },
+
     created: function created () {
       this.cache = Object.create(null);
       this.keys = [];
@@ -26678,12 +26724,17 @@
     mounted: function mounted () {
       var this$1 = this;
 
+      this.cacheVNode();
       this.$watch('include', function (val) {
         pruneCache(this$1, function (name) { return matches(val, name); });
       });
       this.$watch('exclude', function (val) {
         pruneCache(this$1, function (name) { return !matches(val, name); });
       });
+    },
+
+    updated: function updated () {
+      this.cacheVNode();
     },
 
     render: function render () {
@@ -26719,12 +26770,9 @@
           remove(keys, key);
           keys.push(key);
         } else {
-          cache[key] = vnode;
-          keys.push(key);
-          // prune oldest entry
-          if (this.max && keys.length > parseInt(this.max)) {
-            pruneCacheEntry(cache, keys[0], keys, this._vnode);
-          }
+          // delay setting the cache until update
+          this.vnodeToCache = vnode;
+          this.keyToCache = key;
         }
 
         vnode.data.keepAlive = true;
@@ -26800,7 +26848,7 @@
     value: FunctionalRenderContext
   });
 
-  Vue$1.version = '2.6.12';
+  Vue$1.version = '2.6.14';
 
   /*  */
 
@@ -26837,7 +26885,7 @@
     'default,defaultchecked,defaultmuted,defaultselected,defer,disabled,' +
     'enabled,formnovalidate,hidden,indeterminate,inert,ismap,itemscope,loop,multiple,' +
     'muted,nohref,noresize,noshade,novalidate,nowrap,open,pauseonexit,readonly,' +
-    'required,reversed,scoped,seamless,selected,sortable,translate,' +
+    'required,reversed,scoped,seamless,selected,sortable,' +
     'truespeed,typemustmatch,visible'
   );
 
@@ -26961,7 +27009,7 @@
   // contain child elements.
   var isSVG = makeMap(
     'svg,animate,circle,clippath,cursor,defs,desc,ellipse,filter,font-face,' +
-    'foreignObject,g,glyph,image,line,marker,mask,missing-glyph,path,pattern,' +
+    'foreignobject,g,glyph,image,line,marker,mask,missing-glyph,path,pattern,' +
     'polygon,polyline,rect,switch,symbol,text,textpath,tspan,use,view',
     true
   );
@@ -27163,7 +27211,8 @@
 
   function sameVnode (a, b) {
     return (
-      a.key === b.key && (
+      a.key === b.key &&
+      a.asyncFactory === b.asyncFactory && (
         (
           a.tag === b.tag &&
           a.isComment === b.isComment &&
@@ -27171,7 +27220,6 @@
           sameInputType(a, b)
         ) || (
           isTrue(a.isAsyncPlaceholder) &&
-          a.asyncFactory === b.asyncFactory &&
           isUndef(b.asyncFactory.error)
         )
       )
@@ -27952,7 +28000,7 @@
       cur = attrs[key];
       old = oldAttrs[key];
       if (old !== cur) {
-        setAttr(elm, key, cur);
+        setAttr(elm, key, cur, vnode.data.pre);
       }
     }
     // #4391: in IE9, setting type can reset value for input[type=radio]
@@ -27972,8 +28020,8 @@
     }
   }
 
-  function setAttr (el, key, value) {
-    if (el.tagName.indexOf('-') > -1) {
+  function setAttr (el, key, value, isInPre) {
+    if (isInPre || el.tagName.indexOf('-') > -1) {
       baseSetAttr(el, key, value);
     } else if (isBooleanAttr(key)) {
       // set attribute for blank value
@@ -30351,7 +30399,7 @@
 
   // Regular Expressions for parsing tags and attributes
   var attribute = /^\s*([^\s"'<>\/=]+)(?:\s*(=)\s*(?:"([^"]*)"+|'([^']*)'+|([^\s"'=<>`]+)))?/;
-  var dynamicArgAttribute = /^\s*((?:v-[\w-]+:|@|:|#)\[[^=]+\][^\s"'<>\/=]*)(?:\s*(=)\s*(?:"([^"]*)"+|'([^']*)'+|([^\s"'=<>`]+)))?/;
+  var dynamicArgAttribute = /^\s*((?:v-[\w-]+:|@|:|#)\[[^=]+?\][^\s"'<>\/=]*)(?:\s*(=)\s*(?:"([^"]*)"+|'([^']*)'+|([^\s"'=<>`]+)))?/;
   var ncname = "[a-zA-Z_][\\-\\.0-9_a-zA-Z" + (unicodeRegExp.source) + "]*";
   var qnameCapture = "((?:" + ncname + "\\:)?" + ncname + ")";
   var startTagOpen = new RegExp(("^<" + qnameCapture));
@@ -30641,7 +30689,7 @@
   var slotRE = /^v-slot(:|$)|^#/;
 
   var lineBreakRE = /[\r\n]/;
-  var whitespaceRE$1 = /\s+/g;
+  var whitespaceRE$1 = /[ \f\t\r\n]+/g;
 
   var decodeHTMLCached = cached(he$1.decode);
 
@@ -30686,7 +30734,6 @@
     platformMustUseProp = options.mustUseProp || no;
     platformGetTagNamespace = options.getTagNamespace || no;
     var isReservedTag = options.isReservedTag || no;
-
     transforms = pluckModuleFunction(options.modules, 'transformNode');
     preTransforms = pluckModuleFunction(options.modules, 'preTransformNode');
     postTransforms = pluckModuleFunction(options.modules, 'postTransformNode');
@@ -31691,9 +31738,9 @@
         code += genModifierCode;
       }
       var handlerCode = isMethodPath
-        ? ("return " + (handler.value) + "($event)")
+        ? ("return " + (handler.value) + ".apply(null, arguments)")
         : isFunctionExpression
-          ? ("return (" + (handler.value) + ")($event)")
+          ? ("return (" + (handler.value) + ").apply(null, arguments)")
           : isFunctionInvocation
             ? ("return " + (handler.value))
             : handler.value;
@@ -31776,7 +31823,8 @@
     options
   ) {
     var state = new CodegenState(options);
-    var code = ast ? genElement(ast, state) : '_c("div")';
+    // fix #11483, Root level <script> tags should not be rendered.
+    var code = ast ? (ast.tag === 'script' ? 'null' : genElement(ast, state)) : '_c("div")';
     return {
       render: ("with(this){return " + code + "}"),
       staticRenderFns: state.staticRenderFns
@@ -32214,7 +32262,7 @@
   function genSlot (el, state) {
     var slotName = el.slotName || '"default"';
     var children = genChildren(el, state);
-    var res = "_t(" + slotName + (children ? ("," + children) : '');
+    var res = "_t(" + slotName + (children ? (",function(){return " + children + "}") : '');
     var attrs = el.attrs || el.dynamicAttrs
       ? genProps((el.attrs || []).concat(el.dynamicAttrs || []).map(function (attr) { return ({
           // slot props are camelized
