@@ -17107,8 +17107,10 @@
       {
           // indices
           let indexBuffer = dracoGeometry.index.array;
-          this.loadBufferIntoGltf(indexBuffer, gltf, this.indices, 34963,
-              "index buffer view");
+          if (this.indices !== undefined){
+              this.loadBufferIntoGltf(indexBuffer, gltf, this.indices, 34963,
+                  "index buffer view");
+          }
 
           // Position
           if(dracoGeometry.attributes.POSITION !== undefined)
