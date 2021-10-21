@@ -11816,14 +11816,15 @@ nav.tabs {
   height: 100px;
   display: table; }
 
+.hideTabs section {
+  display: none !important; }
+
 .tabs li:first-child {
   margin-top: calc(100vh * 0.11); }
 
 .tabs li:nth-child(5) {
-  margin-top: auto; }
-
-.tabs li:last-child {
-  margin-bottom: calc(100vh * 0.07); }
+  margin-top: auto;
+  margin-bottom: calc(100vh * 0.02); }
 
 .tabs li a {
   display: table-cell;
@@ -11831,7 +11832,9 @@ nav.tabs {
   white-space: normal;
   padding-left: unset;
   padding-right: unset;
-  width: 100%; }
+  width: 100%;
+  padding-top: 0;
+  padding-bottom: 0; }
 
 .tabs li a span, .tabs li a img {
   display: block;
@@ -11949,6 +11952,19 @@ button.button {
   border: 0px;
   padding: 0px;
   background: #333333; }
+
+.canvasUIMaximize {
+  float: right;
+  margin-top: -50px;
+  padding-right: 20px;
+  overflow: overlay;
+  z-index: 2; }
+
+.canvasUIMaximize:hover {
+  overflow: visible; }
+
+.maximizeCanvasIcon:hover {
+  transform: scale(1.2); }
 
 .dg li.gui-stats:not(.folder) {
   height: 48px; }

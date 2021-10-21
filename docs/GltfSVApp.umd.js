@@ -680,6 +680,8 @@
   }
   /**
    * Generates a perspective projection matrix with the given bounds.
+   * The near/far clip planes correspond to a normalized device coordinate Z range of [-1, 1],
+   * which matches WebGL/OpenGL's clip volume.
    * Passing null/undefined/no value for far will generate infinite projection matrix.
    *
    * @param {mat4} out mat4 frustum matrix will be written into
@@ -690,7 +692,7 @@
    * @returns {mat4} out
    */
 
-  function perspective(out, fovy, aspect, near, far) {
+  function perspectiveNO(out, fovy, aspect, near, far) {
     var f = 1.0 / Math.tan(fovy / 2),
         nf;
     out[0] = f / aspect;
@@ -719,6 +721,12 @@
 
     return out;
   }
+  /**
+   * Alias for {@link mat4.perspectiveNO}
+   * @function
+   */
+
+  var perspective = perspectiveNO;
   /**
    * Generates a look-at matrix with the given eye position, focal point, and up axis.
    * If you want a matrix that actually makes an object look at another object, you should use targetTo instead.
@@ -1955,10 +1963,18 @@
   function getExtentsFromAccessor(accessor, worldTransform, outMin, outMax)
   {
       const boxMin = create$2();
-      transformMat4(boxMin, jsToGl(accessor.min), worldTransform);
+      let min = jsToGl(accessor.min);
+      if (accessor.normalized){
+          normalize(min, min);
+      }
+      transformMat4(boxMin, min, worldTransform);
 
       const boxMax = create$2();
-      transformMat4(boxMax, jsToGl(accessor.max), worldTransform);
+      let max = jsToGl(accessor.max);
+      if (accessor.normalized){
+          normalize(max, max);
+      }
+      transformMat4(boxMax, max, worldTransform);
 
       const center = create$2();
       add(center, boxMax, boxMin);
@@ -3102,7 +3118,7 @@
       }
   }
 
-  var pbrShader = "//\n// This fragment shader defines a reference implementation for Physically Based Shading of\n// a microfacet surface material defined by a glTF model.\n//\n// References:\n// [1] Real Shading in Unreal Engine 4\n//     http://blog.selfshadow.com/publications/s2013-shading-course/karis/s2013_pbs_epic_notes_v2.pdf\n// [2] Physically Based Shading at Disney\n//     http://blog.selfshadow.com/publications/s2012-shading-course/burley/s2012_pbs_disney_brdf_notes_v3.pdf\n// [3] README.md - Environment Maps\n//     https://github.com/KhronosGroup/glTF-WebGL-PBR/#environment-maps\n// [4] \"An Inexpensive BRDF Model for Physically based Rendering\" by Christophe Schlick\n//     https://www.cs.virginia.edu/~jdl/bib/appearance/analytic%20models/schlick94b.pdf\n// [5] \"KHR_materials_clearcoat\"\n//     https://github.com/KhronosGroup/glTF/tree/master/extensions/2.0/Khronos/KHR_materials_clearcoat\n\nprecision highp float;\n#define GLSLIFY 1\n\n#include <tonemapping.glsl>\n#include <textures.glsl>\n#include <functions.glsl>\n#include <brdf.glsl>\n#include <punctual.glsl>\n#include <ibl.glsl>\n#include <material_info.glsl>\n\nout vec4 g_finalColor;\n\nvoid main()\n{\n    vec4 baseColor = getBaseColor();\n\n#if ALPHAMODE == ALPHAMODE_OPAQUE\n    baseColor.a = 1.0;\n#endif\n\n#ifdef MATERIAL_UNLIT\n    g_finalColor = (vec4(linearTosRGB(baseColor.rgb), baseColor.a));\n    return;\n#endif\n\n    vec3 v = normalize(u_Camera - v_Position);\n    NormalInfo normalInfo = getNormalInfo(v);\n    vec3 n = normalInfo.n;\n    vec3 t = normalInfo.t;\n    vec3 b = normalInfo.b;\n\n    float NdotV = clampedDot(n, v);\n    float TdotV = clampedDot(t, v);\n    float BdotV = clampedDot(b, v);\n\n    MaterialInfo materialInfo;\n    materialInfo.baseColor = baseColor.rgb;\n    \n    // The default index of refraction of 1.5 yields a dielectric normal incidence reflectance of 0.04.\n    materialInfo.ior = 1.5;\n    materialInfo.f0 = vec3(0.04);\n    materialInfo.specularWeight = 1.0;\n    \n#ifdef MATERIAL_IOR\n    materialInfo = getIorInfo(materialInfo);\n#endif\n\n#ifdef MATERIAL_SPECULARGLOSSINESS\n    materialInfo = getSpecularGlossinessInfo(materialInfo);\n#endif\n\n#ifdef MATERIAL_METALLICROUGHNESS\n    materialInfo = getMetallicRoughnessInfo(materialInfo);\n#endif\n\n#ifdef MATERIAL_SHEEN\n    materialInfo = getSheenInfo(materialInfo);\n#endif\n\n#ifdef MATERIAL_CLEARCOAT\n    materialInfo = getClearCoatInfo(materialInfo, normalInfo);\n#endif\n\n#ifdef MATERIAL_SPECULAR\n    materialInfo = getSpecularInfo(materialInfo);\n#endif\n\n#ifdef MATERIAL_TRANSMISSION\n    materialInfo = getTransmissionInfo(materialInfo);\n#endif\n\n#ifdef MATERIAL_VOLUME\n    materialInfo = getVolumeInfo(materialInfo);\n#endif\n\n    materialInfo.perceptualRoughness = clamp(materialInfo.perceptualRoughness, 0.0, 1.0);\n    materialInfo.metallic = clamp(materialInfo.metallic, 0.0, 1.0);\n\n    // Roughness is authored as perceptual roughness; as is convention,\n    // convert to material roughness by squaring the perceptual roughness.\n    materialInfo.alphaRoughness = materialInfo.perceptualRoughness * materialInfo.perceptualRoughness;\n\n    // Compute reflectance.\n    float reflectance = max(max(materialInfo.f0.r, materialInfo.f0.g), materialInfo.f0.b);\n\n    // Anything less than 2% is physically impossible and is instead considered to be shadowing. Compare to \"Real-Time-Rendering\" 4th editon on page 325.\n    materialInfo.f90 = vec3(1.0);\n\n    // LIGHTING\n    vec3 f_specular = vec3(0.0);\n    vec3 f_diffuse = vec3(0.0);\n    vec3 f_emissive = vec3(0.0);\n    vec3 f_clearcoat = vec3(0.0);\n    vec3 f_sheen = vec3(0.0);\n    vec3 f_transmission = vec3(0.0);\n\n    float albedoSheenScaling = 1.0;\n\n    // Calculate lighting contribution from image based lighting source (IBL)\n#ifdef USE_IBL\n    f_specular += getIBLRadianceGGX(n, v, materialInfo.perceptualRoughness, materialInfo.f0, materialInfo.specularWeight);\n    f_diffuse += getIBLRadianceLambertian(n, v, materialInfo.perceptualRoughness, materialInfo.c_diff, materialInfo.f0, materialInfo.specularWeight);\n\n#ifdef MATERIAL_CLEARCOAT\n    f_clearcoat += getIBLRadianceGGX(materialInfo.clearcoatNormal, v, materialInfo.clearcoatRoughness, materialInfo.clearcoatF0, 1.0);\n#endif\n\n#ifdef MATERIAL_SHEEN\n    f_sheen += getIBLRadianceCharlie(n, v, materialInfo.sheenRoughnessFactor, materialInfo.sheenColorFactor);\n#endif\n#endif\n\n#if (defined(MATERIAL_TRANSMISSION) || defined(MATERIAL_VOLUME)) && (defined(USE_PUNCTUAL) || defined(USE_IBL))\n    f_transmission += materialInfo.transmissionFactor * getIBLVolumeRefraction(\n        n, v,\n        materialInfo.perceptualRoughness,\n        materialInfo.baseColor, materialInfo.f0, materialInfo.f90,\n        v_Position, u_ModelMatrix, u_ViewMatrix, u_ProjectionMatrix,\n        materialInfo.ior, materialInfo.thickness, materialInfo.attenuationColor, materialInfo.attenuationDistance);\n#endif\n\n    float ao = 1.0;\n    // Apply optional PBR terms for additional (optional) shading\n#ifdef HAS_OCCLUSION_MAP\n    ao = texture(u_OcclusionSampler,  getOcclusionUV()).r;\n    f_diffuse = mix(f_diffuse, f_diffuse * ao, u_OcclusionStrength);\n    // apply ambient occlusion to all lighting that is not punctual\n    f_specular = mix(f_specular, f_specular * ao, u_OcclusionStrength);\n    f_sheen = mix(f_sheen, f_sheen * ao, u_OcclusionStrength);\n    f_clearcoat = mix(f_clearcoat, f_clearcoat * ao, u_OcclusionStrength);\n#endif\n\n#ifdef USE_PUNCTUAL\n    for (int i = 0; i < LIGHT_COUNT; ++i)\n    {\n        Light light = u_Lights[i];\n\n        vec3 pointToLight;\n        if (light.type != LightType_Directional)\n        {\n            pointToLight = light.position - v_Position;\n        }\n        else\n        {\n            pointToLight = -light.direction;\n        }\n\n        // BSTF\n        vec3 l = normalize(pointToLight);   // Direction from surface point to light\n        vec3 h = normalize(l + v);          // Direction of the vector between l and v, called halfway vector\n        float NdotL = clampedDot(n, l);\n        float NdotV = clampedDot(n, v);\n        float NdotH = clampedDot(n, h);\n        float LdotH = clampedDot(l, h);\n        float VdotH = clampedDot(v, h);\n        if (NdotL > 0.0 || NdotV > 0.0)\n        {\n            // Calculation of analytical light\n            // https://github.com/KhronosGroup/glTF/tree/master/specification/2.0#acknowledgments AppendixB\n            vec3 intensity = getLighIntensity(light, pointToLight);\n            f_diffuse += intensity * NdotL *  BRDF_lambertian(materialInfo.f0, materialInfo.f90, materialInfo.c_diff, materialInfo.specularWeight, VdotH);\n            f_specular += intensity * NdotL * BRDF_specularGGX(materialInfo.f0, materialInfo.f90, materialInfo.alphaRoughness, materialInfo.specularWeight, VdotH, NdotL, NdotV, NdotH);\n\n#ifdef MATERIAL_SHEEN\n            f_sheen += intensity * getPunctualRadianceSheen(materialInfo.sheenColorFactor, materialInfo.sheenRoughnessFactor, NdotL, NdotV, NdotH);\n            albedoSheenScaling = min(1.0 - max3(materialInfo.sheenColorFactor) * albedoSheenScalingLUT(NdotV, materialInfo.sheenRoughnessFactor),\n                1.0 - max3(materialInfo.sheenColorFactor) * albedoSheenScalingLUT(NdotL, materialInfo.sheenRoughnessFactor));\n#endif\n\n#ifdef MATERIAL_CLEARCOAT\n            f_clearcoat += intensity * getPunctualRadianceClearCoat(materialInfo.clearcoatNormal, v, l, h, VdotH,\n                materialInfo.clearcoatF0, materialInfo.clearcoatF90, materialInfo.clearcoatRoughness);\n#endif\n        }\n\n        // BDTF\n#ifdef MATERIAL_TRANSMISSION\n        // If the light ray travels through the geometry, use the point it exits the geometry again.\n        // That will change the angle to the light source, if the material refracts the light ray.\n        vec3 transmissionRay = getVolumeTransmissionRay(n, v, materialInfo.thickness, materialInfo.ior, u_ModelMatrix);\n        pointToLight -= transmissionRay;\n        l = normalize(pointToLight);\n\n        vec3 intensity = getLighIntensity(light, pointToLight);\n        vec3 transmittedLight = intensity * getPunctualRadianceTransmission(n, v, l, materialInfo.alphaRoughness, materialInfo.f0, materialInfo.f90, materialInfo.baseColor, materialInfo.ior);\n\n#ifdef MATERIAL_VOLUME\n        transmittedLight = applyVolumeAttenuation(transmittedLight, length(transmissionRay), materialInfo.attenuationColor, materialInfo.attenuationDistance);\n#endif\n\n        f_transmission += materialInfo.transmissionFactor * transmittedLight;\n#endif\n    }\n#endif\n\n    f_emissive = u_EmissiveFactor;\n#ifdef HAS_EMISSIVE_MAP\n    f_emissive *= texture(u_EmissiveSampler, getEmissiveUV()).rgb;\n#endif\n\n    vec3 color = vec3(0);\n\n    // Layer blending\n\n    float clearcoatFactor = 0.0;\n    vec3 clearcoatFresnel = vec3(0);\n\n#ifdef MATERIAL_CLEARCOAT\n    clearcoatFactor = materialInfo.clearcoatFactor;\n    clearcoatFresnel = F_Schlick(materialInfo.clearcoatF0, materialInfo.clearcoatF90, clampedDot(materialInfo.clearcoatNormal, v));\n    f_clearcoat = f_clearcoat * clearcoatFactor;\n#endif\n\n#ifdef MATERIAL_TRANSMISSION\n    vec3 diffuse = mix(f_diffuse, f_transmission, materialInfo.transmissionFactor);\n#else\n    vec3 diffuse = f_diffuse;\n#endif\n\n    color = f_emissive + diffuse + f_specular;\n    color = f_sheen + color * albedoSheenScaling;\n    color = color * (1.0 - clearcoatFactor * clearcoatFresnel) + f_clearcoat;\n\n#if DEBUG == DEBUG_NONE\n\n#if ALPHAMODE == ALPHAMODE_MASK\n    // Late discard to avoid samplig artifacts. See https://github.com/KhronosGroup/glTF-Sample-Viewer/issues/267\n    if (baseColor.a < u_AlphaCutoff)\n    {\n        discard;\n    }\n    baseColor.a = 1.0;\n#endif\n\n#ifdef LINEAR_OUTPUT\n    g_finalColor = vec4(color.rgb, baseColor.a);\n#else\n    g_finalColor = vec4(toneMap(color), baseColor.a);\n#endif\n\n#else\n    g_finalColor.a = 1.0;\n#endif\n\n#if DEBUG == DEBUG_METALLIC\n    g_finalColor.rgb = vec3(materialInfo.metallic);\n#endif\n\n#if DEBUG == DEBUG_ROUGHNESS\n    g_finalColor.rgb = vec3(materialInfo.perceptualRoughness);\n#endif\n\n#if DEBUG == DEBUG_NORMAL\n#ifdef HAS_NORMAL_MAP\n    g_finalColor.rgb = texture(u_NormalSampler, getNormalUV()).rgb;\n#else\n    g_finalColor.rgb = vec3(0.5, 0.5, 1.0);\n#endif\n#endif\n\n#if DEBUG == DEBUG_NORMAL_GEOMETRY\n    g_finalColor.rgb = (normalInfo.ng + 1.0) / 2.0;\n#endif\n\n#if DEBUG == DEBUG_NORMAL_WORLD\n    g_finalColor.rgb = (n + 1.0) / 2.0;\n#endif\n\n#if DEBUG == DEBUG_TANGENT\n    g_finalColor.rgb = t * 0.5 + vec3(0.5);\n#endif\n\n#if DEBUG == DEBUG_BITANGENT\n    g_finalColor.rgb = b * 0.5 + vec3(0.5);\n#endif\n\n#if DEBUG == DEBUG_BASE_COLOR_SRGB\n    g_finalColor.rgb = linearTosRGB(materialInfo.baseColor);\n#endif\n\n#if DEBUG == DEBUG_BASE_COLOR_LINEAR\n    g_finalColor.rgb = materialInfo.baseColor;\n#endif\n\n#if DEBUG == DEBUG_OCCLUSION\n    g_finalColor.rgb = vec3(ao);\n#endif\n\n#if DEBUG == DEBUG_F0\n    g_finalColor.rgb = materialInfo.f0;\n#endif\n\n#if DEBUG == DEBUG_EMISSIVE_SRGB\n    g_finalColor.rgb = linearTosRGB(f_emissive);\n#endif\n\n#if DEBUG == DEBUG_EMISSIVE_LINEAR\n    g_finalColor.rgb = f_emissive;\n#endif\n\n#if DEBUG == DEBUG_SPECULAR_SRGB\n    g_finalColor.rgb = linearTosRGB(f_specular);\n#endif\n\n#if DEBUG == DEBUG_DIFFUSE_SRGB\n    g_finalColor.rgb = linearTosRGB(f_diffuse);\n#endif\n\n#if DEBUG == DEBUG_CLEARCOAT_SRGB\n    g_finalColor.rgb = linearTosRGB(f_clearcoat);\n#endif\n\n#if DEBUG == DEBUG_SHEEN_SRGB\n    g_finalColor.rgb = linearTosRGB(f_sheen);\n#endif\n\n#if DEBUG == DEBUG_TRANSMISSION_SRGB\n    g_finalColor.rgb = linearTosRGB(f_transmission);\n#endif\n\n#if DEBUG == DEBUG_ALPHA\n    g_finalColor.rgb = vec3(baseColor.a);\n#endif\n}\n"; // eslint-disable-line
+  var pbrShader = "//\n// This fragment shader defines a reference implementation for Physically Based Shading of\n// a microfacet surface material defined by a glTF model.\n//\n// References:\n// [1] Real Shading in Unreal Engine 4\n//     http://blog.selfshadow.com/publications/s2013-shading-course/karis/s2013_pbs_epic_notes_v2.pdf\n// [2] Physically Based Shading at Disney\n//     http://blog.selfshadow.com/publications/s2012-shading-course/burley/s2012_pbs_disney_brdf_notes_v3.pdf\n// [3] README.md - Environment Maps\n//     https://github.com/KhronosGroup/glTF-WebGL-PBR/#environment-maps\n// [4] \"An Inexpensive BRDF Model for Physically based Rendering\" by Christophe Schlick\n//     https://www.cs.virginia.edu/~jdl/bib/appearance/analytic%20models/schlick94b.pdf\n// [5] \"KHR_materials_clearcoat\"\n//     https://github.com/KhronosGroup/glTF/tree/master/extensions/2.0/Khronos/KHR_materials_clearcoat\n\nprecision highp float;\n#define GLSLIFY 1\n\n#include <tonemapping.glsl>\n#include <textures.glsl>\n#include <functions.glsl>\n#include <brdf.glsl>\n#include <punctual.glsl>\n#include <ibl.glsl>\n#include <material_info.glsl>\n\nout vec4 g_finalColor;\n\nvoid main()\n{\n    vec4 baseColor = getBaseColor();\n\n#if ALPHAMODE == ALPHAMODE_OPAQUE\n    baseColor.a = 1.0;\n#endif\n\n#ifdef MATERIAL_UNLIT\n#if ALPHAMODE == ALPHAMODE_MASK\n    if (baseColor.a < u_AlphaCutoff)\n    {\n        discard;\n    }\n#endif\n    g_finalColor = (vec4(linearTosRGB(baseColor.rgb), baseColor.a));\n    return;\n#endif\n\n    vec3 v = normalize(u_Camera - v_Position);\n    NormalInfo normalInfo = getNormalInfo(v);\n    vec3 n = normalInfo.n;\n    vec3 t = normalInfo.t;\n    vec3 b = normalInfo.b;\n\n    float NdotV = clampedDot(n, v);\n    float TdotV = clampedDot(t, v);\n    float BdotV = clampedDot(b, v);\n\n    MaterialInfo materialInfo;\n    materialInfo.baseColor = baseColor.rgb;\n    \n    // The default index of refraction of 1.5 yields a dielectric normal incidence reflectance of 0.04.\n    materialInfo.ior = 1.5;\n    materialInfo.f0 = vec3(0.04);\n    materialInfo.specularWeight = 1.0;\n    \n#ifdef MATERIAL_IOR\n    materialInfo = getIorInfo(materialInfo);\n#endif\n\n#ifdef MATERIAL_SPECULARGLOSSINESS\n    materialInfo = getSpecularGlossinessInfo(materialInfo);\n#endif\n\n#ifdef MATERIAL_METALLICROUGHNESS\n    materialInfo = getMetallicRoughnessInfo(materialInfo);\n#endif\n\n#ifdef MATERIAL_SHEEN\n    materialInfo = getSheenInfo(materialInfo);\n#endif\n\n#ifdef MATERIAL_CLEARCOAT\n    materialInfo = getClearCoatInfo(materialInfo, normalInfo);\n#endif\n\n#ifdef MATERIAL_SPECULAR\n    materialInfo = getSpecularInfo(materialInfo);\n#endif\n\n#ifdef MATERIAL_TRANSMISSION\n    materialInfo = getTransmissionInfo(materialInfo);\n#endif\n\n#ifdef MATERIAL_VOLUME\n    materialInfo = getVolumeInfo(materialInfo);\n#endif\n\n    materialInfo.perceptualRoughness = clamp(materialInfo.perceptualRoughness, 0.0, 1.0);\n    materialInfo.metallic = clamp(materialInfo.metallic, 0.0, 1.0);\n\n    // Roughness is authored as perceptual roughness; as is convention,\n    // convert to material roughness by squaring the perceptual roughness.\n    materialInfo.alphaRoughness = materialInfo.perceptualRoughness * materialInfo.perceptualRoughness;\n\n    // Compute reflectance.\n    float reflectance = max(max(materialInfo.f0.r, materialInfo.f0.g), materialInfo.f0.b);\n\n    // Anything less than 2% is physically impossible and is instead considered to be shadowing. Compare to \"Real-Time-Rendering\" 4th editon on page 325.\n    materialInfo.f90 = vec3(1.0);\n\n    // LIGHTING\n    vec3 f_specular = vec3(0.0);\n    vec3 f_diffuse = vec3(0.0);\n    vec3 f_emissive = vec3(0.0);\n    vec3 f_clearcoat = vec3(0.0);\n    vec3 f_sheen = vec3(0.0);\n    vec3 f_transmission = vec3(0.0);\n\n    float albedoSheenScaling = 1.0;\n\n    // Calculate lighting contribution from image based lighting source (IBL)\n#ifdef USE_IBL\n    f_specular += getIBLRadianceGGX(n, v, materialInfo.perceptualRoughness, materialInfo.f0, materialInfo.specularWeight);\n    f_diffuse += getIBLRadianceLambertian(n, v, materialInfo.perceptualRoughness, materialInfo.c_diff, materialInfo.f0, materialInfo.specularWeight);\n\n#ifdef MATERIAL_CLEARCOAT\n    f_clearcoat += getIBLRadianceGGX(materialInfo.clearcoatNormal, v, materialInfo.clearcoatRoughness, materialInfo.clearcoatF0, 1.0);\n#endif\n\n#ifdef MATERIAL_SHEEN\n    f_sheen += getIBLRadianceCharlie(n, v, materialInfo.sheenRoughnessFactor, materialInfo.sheenColorFactor);\n#endif\n#endif\n\n#if (defined(MATERIAL_TRANSMISSION) || defined(MATERIAL_VOLUME)) && (defined(USE_PUNCTUAL) || defined(USE_IBL))\n    f_transmission += materialInfo.transmissionFactor * getIBLVolumeRefraction(\n        n, v,\n        materialInfo.perceptualRoughness,\n        materialInfo.baseColor, materialInfo.f0, materialInfo.f90,\n        v_Position, u_ModelMatrix, u_ViewMatrix, u_ProjectionMatrix,\n        materialInfo.ior, materialInfo.thickness, materialInfo.attenuationColor, materialInfo.attenuationDistance);\n#endif\n\n    float ao = 1.0;\n    // Apply optional PBR terms for additional (optional) shading\n#ifdef HAS_OCCLUSION_MAP\n    ao = texture(u_OcclusionSampler,  getOcclusionUV()).r;\n    f_diffuse = mix(f_diffuse, f_diffuse * ao, u_OcclusionStrength);\n    // apply ambient occlusion to all lighting that is not punctual\n    f_specular = mix(f_specular, f_specular * ao, u_OcclusionStrength);\n    f_sheen = mix(f_sheen, f_sheen * ao, u_OcclusionStrength);\n    f_clearcoat = mix(f_clearcoat, f_clearcoat * ao, u_OcclusionStrength);\n#endif\n\n#ifdef USE_PUNCTUAL\n    for (int i = 0; i < LIGHT_COUNT; ++i)\n    {\n        Light light = u_Lights[i];\n\n        vec3 pointToLight;\n        if (light.type != LightType_Directional)\n        {\n            pointToLight = light.position - v_Position;\n        }\n        else\n        {\n            pointToLight = -light.direction;\n        }\n\n        // BSTF\n        vec3 l = normalize(pointToLight);   // Direction from surface point to light\n        vec3 h = normalize(l + v);          // Direction of the vector between l and v, called halfway vector\n        float NdotL = clampedDot(n, l);\n        float NdotV = clampedDot(n, v);\n        float NdotH = clampedDot(n, h);\n        float LdotH = clampedDot(l, h);\n        float VdotH = clampedDot(v, h);\n        if (NdotL > 0.0 || NdotV > 0.0)\n        {\n            // Calculation of analytical light\n            // https://github.com/KhronosGroup/glTF/tree/master/specification/2.0#acknowledgments AppendixB\n            vec3 intensity = getLighIntensity(light, pointToLight);\n            f_diffuse += intensity * NdotL *  BRDF_lambertian(materialInfo.f0, materialInfo.f90, materialInfo.c_diff, materialInfo.specularWeight, VdotH);\n            f_specular += intensity * NdotL * BRDF_specularGGX(materialInfo.f0, materialInfo.f90, materialInfo.alphaRoughness, materialInfo.specularWeight, VdotH, NdotL, NdotV, NdotH);\n\n#ifdef MATERIAL_SHEEN\n            f_sheen += intensity * getPunctualRadianceSheen(materialInfo.sheenColorFactor, materialInfo.sheenRoughnessFactor, NdotL, NdotV, NdotH);\n            albedoSheenScaling = min(1.0 - max3(materialInfo.sheenColorFactor) * albedoSheenScalingLUT(NdotV, materialInfo.sheenRoughnessFactor),\n                1.0 - max3(materialInfo.sheenColorFactor) * albedoSheenScalingLUT(NdotL, materialInfo.sheenRoughnessFactor));\n#endif\n\n#ifdef MATERIAL_CLEARCOAT\n            f_clearcoat += intensity * getPunctualRadianceClearCoat(materialInfo.clearcoatNormal, v, l, h, VdotH,\n                materialInfo.clearcoatF0, materialInfo.clearcoatF90, materialInfo.clearcoatRoughness);\n#endif\n        }\n\n        // BDTF\n#ifdef MATERIAL_TRANSMISSION\n        // If the light ray travels through the geometry, use the point it exits the geometry again.\n        // That will change the angle to the light source, if the material refracts the light ray.\n        vec3 transmissionRay = getVolumeTransmissionRay(n, v, materialInfo.thickness, materialInfo.ior, u_ModelMatrix);\n        pointToLight -= transmissionRay;\n        l = normalize(pointToLight);\n\n        vec3 intensity = getLighIntensity(light, pointToLight);\n        vec3 transmittedLight = intensity * getPunctualRadianceTransmission(n, v, l, materialInfo.alphaRoughness, materialInfo.f0, materialInfo.f90, materialInfo.baseColor, materialInfo.ior);\n\n#ifdef MATERIAL_VOLUME\n        transmittedLight = applyVolumeAttenuation(transmittedLight, length(transmissionRay), materialInfo.attenuationColor, materialInfo.attenuationDistance);\n#endif\n\n        f_transmission += materialInfo.transmissionFactor * transmittedLight;\n#endif\n    }\n#endif\n\n    f_emissive = u_EmissiveFactor;\n#ifdef HAS_EMISSIVE_MAP\n    f_emissive *= texture(u_EmissiveSampler, getEmissiveUV()).rgb;\n#endif\n\n    vec3 color = vec3(0);\n\n    // Layer blending\n\n    float clearcoatFactor = 0.0;\n    vec3 clearcoatFresnel = vec3(0);\n\n#ifdef MATERIAL_CLEARCOAT\n    clearcoatFactor = materialInfo.clearcoatFactor;\n    clearcoatFresnel = F_Schlick(materialInfo.clearcoatF0, materialInfo.clearcoatF90, clampedDot(materialInfo.clearcoatNormal, v));\n    f_clearcoat = f_clearcoat * clearcoatFactor;\n#endif\n\n#ifdef MATERIAL_TRANSMISSION\n    vec3 diffuse = mix(f_diffuse, f_transmission, materialInfo.transmissionFactor);\n#else\n    vec3 diffuse = f_diffuse;\n#endif\n\n    color = f_emissive + diffuse + f_specular;\n    color = f_sheen + color * albedoSheenScaling;\n    color = color * (1.0 - clearcoatFactor * clearcoatFresnel) + f_clearcoat;\n\n#if DEBUG == DEBUG_NONE\n\n#if ALPHAMODE == ALPHAMODE_MASK\n    // Late discard to avoid samplig artifacts. See https://github.com/KhronosGroup/glTF-Sample-Viewer/issues/267\n    if (baseColor.a < u_AlphaCutoff)\n    {\n        discard;\n    }\n    baseColor.a = 1.0;\n#endif\n\n#ifdef LINEAR_OUTPUT\n    g_finalColor = vec4(color.rgb, baseColor.a);\n#else\n    g_finalColor = vec4(toneMap(color), baseColor.a);\n#endif\n\n#else\n    g_finalColor.a = 1.0;\n#endif\n\n#if DEBUG == DEBUG_METALLIC\n    g_finalColor.rgb = vec3(materialInfo.metallic);\n#endif\n\n#if DEBUG == DEBUG_ROUGHNESS\n    g_finalColor.rgb = vec3(materialInfo.perceptualRoughness);\n#endif\n\n#if DEBUG == DEBUG_NORMAL\n#ifdef HAS_NORMAL_MAP\n    g_finalColor.rgb = texture(u_NormalSampler, getNormalUV()).rgb;\n#else\n    g_finalColor.rgb = vec3(0.5, 0.5, 1.0);\n#endif\n#endif\n\n#if DEBUG == DEBUG_NORMAL_GEOMETRY\n    g_finalColor.rgb = (normalInfo.ng + 1.0) / 2.0;\n#endif\n\n#if DEBUG == DEBUG_NORMAL_WORLD\n    g_finalColor.rgb = (n + 1.0) / 2.0;\n#endif\n\n#if DEBUG == DEBUG_TANGENT\n    g_finalColor.rgb = t * 0.5 + vec3(0.5);\n#endif\n\n#if DEBUG == DEBUG_BITANGENT\n    g_finalColor.rgb = b * 0.5 + vec3(0.5);\n#endif\n\n#if DEBUG == DEBUG_BASE_COLOR_SRGB\n    g_finalColor.rgb = linearTosRGB(materialInfo.baseColor);\n#endif\n\n#if DEBUG == DEBUG_BASE_COLOR_LINEAR\n    g_finalColor.rgb = materialInfo.baseColor;\n#endif\n\n#if DEBUG == DEBUG_OCCLUSION\n    g_finalColor.rgb = vec3(ao);\n#endif\n\n#if DEBUG == DEBUG_F0\n    g_finalColor.rgb = materialInfo.f0;\n#endif\n\n#if DEBUG == DEBUG_EMISSIVE_SRGB\n    g_finalColor.rgb = linearTosRGB(f_emissive);\n#endif\n\n#if DEBUG == DEBUG_EMISSIVE_LINEAR\n    g_finalColor.rgb = f_emissive;\n#endif\n\n#if DEBUG == DEBUG_SPECULAR_SRGB\n    g_finalColor.rgb = linearTosRGB(f_specular);\n#endif\n\n#if DEBUG == DEBUG_DIFFUSE_SRGB\n    g_finalColor.rgb = linearTosRGB(f_diffuse);\n#endif\n\n#if DEBUG == DEBUG_CLEARCOAT_SRGB\n    g_finalColor.rgb = linearTosRGB(f_clearcoat);\n#endif\n\n#if DEBUG == DEBUG_SHEEN_SRGB\n    g_finalColor.rgb = linearTosRGB(f_sheen);\n#endif\n\n#if DEBUG == DEBUG_TRANSMISSION_SRGB\n    g_finalColor.rgb = linearTosRGB(f_transmission);\n#endif\n\n#if DEBUG == DEBUG_ALPHA\n    g_finalColor.rgb = vec3(baseColor.a);\n#endif\n}\n"; // eslint-disable-line
 
   var brdfShader = "#define GLSLIFY 1\n//\n// Fresnel\n//\n// http://graphicrants.blogspot.com/2013/08/specular-brdf-reference.html\n// https://github.com/wdas/brdf/tree/master/src/brdfs\n// https://google.github.io/filament/Filament.md.html\n//\n\n// The following equation models the Fresnel reflectance term of the spec equation (aka F())\n// Implementation of fresnel from [4], Equation 15\nvec3 F_Schlick(vec3 f0, vec3 f90, float VdotH)\n{\n    return f0 + (f90 - f0) * pow(clamp(1.0 - VdotH, 0.0, 1.0), 5.0);\n}\n\n// Smith Joint GGX\n// Note: Vis = G / (4 * NdotL * NdotV)\n// see Eric Heitz. 2014. Understanding the Masking-Shadowing Function in Microfacet-Based BRDFs. Journal of Computer Graphics Techniques, 3\n// see Real-Time Rendering. Page 331 to 336.\n// see https://google.github.io/filament/Filament.md.html#materialsystem/specularbrdf/geometricshadowing(specularg)\nfloat V_GGX(float NdotL, float NdotV, float alphaRoughness)\n{\n    float alphaRoughnessSq = alphaRoughness * alphaRoughness;\n\n    float GGXV = NdotL * sqrt(NdotV * NdotV * (1.0 - alphaRoughnessSq) + alphaRoughnessSq);\n    float GGXL = NdotV * sqrt(NdotL * NdotL * (1.0 - alphaRoughnessSq) + alphaRoughnessSq);\n\n    float GGX = GGXV + GGXL;\n    if (GGX > 0.0)\n    {\n        return 0.5 / GGX;\n    }\n    return 0.0;\n}\n\n// The following equation(s) model the distribution of microfacet normals across the area being drawn (aka D())\n// Implementation from \"Average Irregularity Representation of a Roughened Surface for Ray Reflection\" by T. S. Trowbridge, and K. P. Reitz\n// Follows the distribution function recommended in the SIGGRAPH 2013 course notes from EPIC Games [1], Equation 3.\nfloat D_GGX(float NdotH, float alphaRoughness)\n{\n    float alphaRoughnessSq = alphaRoughness * alphaRoughness;\n    float f = (NdotH * NdotH) * (alphaRoughnessSq - 1.0) + 1.0;\n    return alphaRoughnessSq / (M_PI * f * f);\n}\n\nfloat lambdaSheenNumericHelper(float x, float alphaG)\n{\n    float oneMinusAlphaSq = (1.0 - alphaG) * (1.0 - alphaG);\n    float a = mix(21.5473, 25.3245, oneMinusAlphaSq);\n    float b = mix(3.82987, 3.32435, oneMinusAlphaSq);\n    float c = mix(0.19823, 0.16801, oneMinusAlphaSq);\n    float d = mix(-1.97760, -1.27393, oneMinusAlphaSq);\n    float e = mix(-4.32054, -4.85967, oneMinusAlphaSq);\n    return a / (1.0 + b * pow(x, c)) + d * x + e;\n}\n\nfloat lambdaSheen(float cosTheta, float alphaG)\n{\n    if (abs(cosTheta) < 0.5)\n    {\n        return exp(lambdaSheenNumericHelper(cosTheta, alphaG));\n    }\n    else\n    {\n        return exp(2.0 * lambdaSheenNumericHelper(0.5, alphaG) - lambdaSheenNumericHelper(1.0 - cosTheta, alphaG));\n    }\n}\n\nfloat V_Sheen(float NdotL, float NdotV, float sheenRoughness)\n{\n    sheenRoughness = max(sheenRoughness, 0.000001); //clamp (0,1]\n    float alphaG = sheenRoughness * sheenRoughness;\n\n    return clamp(1.0 / ((1.0 + lambdaSheen(NdotV, alphaG) + lambdaSheen(NdotL, alphaG)) *\n        (4.0 * NdotV * NdotL)), 0.0, 1.0);\n}\n\n//Sheen implementation-------------------------------------------------------------------------------------\n// See  https://github.com/sebavan/glTF/tree/KHR_materials_sheen/extensions/2.0/Khronos/KHR_materials_sheen\n\n// Estevez and Kulla http://www.aconty.com/pdf/s2017_pbs_imageworks_sheen.pdf\nfloat D_Charlie(float sheenRoughness, float NdotH)\n{\n    sheenRoughness = max(sheenRoughness, 0.000001); //clamp (0,1]\n    float alphaG = sheenRoughness * sheenRoughness;\n    float invR = 1.0 / alphaG;\n    float cos2h = NdotH * NdotH;\n    float sin2h = 1.0 - cos2h;\n    return (2.0 + invR) * pow(sin2h, invR * 0.5) / (2.0 * M_PI);\n}\n\n//https://github.com/KhronosGroup/glTF/tree/master/specification/2.0#acknowledgments AppendixB\nvec3 BRDF_lambertian(vec3 f0, vec3 f90, vec3 diffuseColor, float specularWeight, float VdotH)\n{\n    // see https://seblagarde.wordpress.com/2012/01/08/pi-or-not-to-pi-in-game-lighting-equation/\n    return (1.0 - specularWeight * F_Schlick(f0, f90, VdotH)) * (diffuseColor / M_PI);\n}\n\n//  https://github.com/KhronosGroup/glTF/tree/master/specification/2.0#acknowledgments AppendixB\nvec3 BRDF_specularGGX(vec3 f0, vec3 f90, float alphaRoughness, float specularWeight, float VdotH, float NdotL, float NdotV, float NdotH)\n{\n    vec3 F = F_Schlick(f0, f90, VdotH);\n    float Vis = V_GGX(NdotL, NdotV, alphaRoughness);\n    float D = D_GGX(NdotH, alphaRoughness);\n\n    return specularWeight * F * Vis * D;\n}\n\n// f_sheen\nvec3 BRDF_specularSheen(vec3 sheenColor, float sheenRoughness, float NdotL, float NdotV, float NdotH)\n{\n    float sheenDistribution = D_Charlie(sheenRoughness, NdotH);\n    float sheenVisibility = V_Sheen(NdotL, NdotV, sheenRoughness);\n    return sheenColor * sheenDistribution * sheenVisibility;\n}\n"; // eslint-disable-line
 
@@ -3112,7 +3128,7 @@
 
   var punctualShader = "#define GLSLIFY 1\n// KHR_lights_punctual extension.\n// see https://github.com/KhronosGroup/glTF/tree/master/extensions/2.0/Khronos/KHR_lights_punctual\nstruct Light\n{\n    vec3 direction;\n    float range;\n\n    vec3 color;\n    float intensity;\n\n    vec3 position;\n    float innerConeCos;\n\n    float outerConeCos;\n    int type;\n};\n\nconst int LightType_Directional = 0;\nconst int LightType_Point = 1;\nconst int LightType_Spot = 2;\n\n#ifdef USE_PUNCTUAL\nuniform Light u_Lights[LIGHT_COUNT + 1]; //Array [0] is not allowed\n#endif\n\n// https://github.com/KhronosGroup/glTF/blob/master/extensions/2.0/Khronos/KHR_lights_punctual/README.md#range-property\nfloat getRangeAttenuation(float range, float distance)\n{\n    if (range <= 0.0)\n    {\n        // negative range means unlimited\n        return 1.0 / pow(distance, 2.0);\n    }\n    return max(min(1.0 - pow(distance / range, 4.0), 1.0), 0.0) / pow(distance, 2.0);\n}\n\n// https://github.com/KhronosGroup/glTF/blob/master/extensions/2.0/Khronos/KHR_lights_punctual/README.md#inner-and-outer-cone-angles\nfloat getSpotAttenuation(vec3 pointToLight, vec3 spotDirection, float outerConeCos, float innerConeCos)\n{\n    float actualCos = dot(normalize(spotDirection), normalize(-pointToLight));\n    if (actualCos > outerConeCos)\n    {\n        if (actualCos < innerConeCos)\n        {\n            return smoothstep(outerConeCos, innerConeCos, actualCos);\n        }\n        return 1.0;\n    }\n    return 0.0;\n}\n\nvec3 getLighIntensity(Light light, vec3 pointToLight)\n{\n    float rangeAttenuation = 1.0;\n    float spotAttenuation = 1.0;\n\n    if (light.type != LightType_Directional)\n    {\n        rangeAttenuation = getRangeAttenuation(light.range, length(pointToLight));\n    }\n    if (light.type == LightType_Spot)\n    {\n        spotAttenuation = getSpotAttenuation(pointToLight, light.direction, light.outerConeCos, light.innerConeCos);\n    }\n\n    return rangeAttenuation * spotAttenuation * light.intensity * light.color;\n}\n\nvec3 getPunctualRadianceTransmission(vec3 normal, vec3 view, vec3 pointToLight, float alphaRoughness,\n    vec3 f0, vec3 f90, vec3 baseColor, float ior)\n{\n    float transmissionRougness = applyIorToRoughness(alphaRoughness, ior);\n\n    vec3 n = normalize(normal);           // Outward direction of surface point\n    vec3 v = normalize(view);             // Direction from surface point to view\n    vec3 l = normalize(pointToLight);\n    vec3 l_mirror = normalize(l + 2.0*n*dot(-l, n));     // Mirror light reflection vector on surface\n    vec3 h = normalize(l_mirror + v);            // Halfway vector between transmission light vector and v\n\n    float D = D_GGX(clamp(dot(n, h), 0.0, 1.0), transmissionRougness);\n    vec3 F = F_Schlick(f0, f90, clamp(dot(v, h), 0.0, 1.0));\n    float Vis = V_GGX(clamp(dot(n, l_mirror), 0.0, 1.0), clamp(dot(n, v), 0.0, 1.0), transmissionRougness);\n\n    // Transmission BTDF\n    return (1.0 - F) * baseColor * D * Vis;\n}\n\nvec3 getPunctualRadianceClearCoat(vec3 clearcoatNormal, vec3 v, vec3 l, vec3 h, float VdotH, vec3 f0, vec3 f90, float clearcoatRoughness)\n{\n    float NdotL = clampedDot(clearcoatNormal, l);\n    float NdotV = clampedDot(clearcoatNormal, v);\n    float NdotH = clampedDot(clearcoatNormal, h);\n    return NdotL * BRDF_specularGGX(f0, f90, clearcoatRoughness * clearcoatRoughness, 1.0, VdotH, NdotL, NdotV, NdotH);\n}\n\nvec3 getPunctualRadianceSheen(vec3 sheenColor, float sheenRoughness, float NdotL, float NdotV, float NdotH)\n{\n    return NdotL * BRDF_specularSheen(sheenColor, sheenRoughness, NdotL, NdotV, NdotH);\n}\n\n// Compute attenuated light as it travels through a volume.\nvec3 applyVolumeAttenuation(vec3 radiance, float transmissionDistance, vec3 attenuationColor, float attenuationDistance)\n{\n    if (attenuationDistance == 0.0)\n    {\n        // Attenuation distance is +∞ (which we indicate by zero), i.e. the transmitted color is not attenuated at all.\n        return radiance;\n    }\n    else\n    {\n        // Compute light attenuation using Beer's law.\n        vec3 attenuationCoefficient = -log(attenuationColor) / attenuationDistance;\n        vec3 transmittance = exp(-attenuationCoefficient * transmissionDistance); // Beer's law\n        return transmittance * radiance;\n    }\n}\n\nvec3 getVolumeTransmissionRay(vec3 n, vec3 v, float thickness, float ior, mat4 modelMatrix)\n{\n    // Direction of refracted light.\n    vec3 refractionVector = refract(-v, normalize(n), 1.0 / ior);\n\n    // Compute rotation-independant scaling of the model matrix.\n    vec3 modelScale;\n    modelScale.x = length(vec3(modelMatrix[0].xyz));\n    modelScale.y = length(vec3(modelMatrix[1].xyz));\n    modelScale.z = length(vec3(modelMatrix[2].xyz));\n\n    // The thickness is specified in local space.\n    return normalize(refractionVector) * thickness * modelScale;\n}\n"; // eslint-disable-line
 
-  var primitiveShader = "#define GLSLIFY 1\n#include <animation.glsl>\n\nuniform mat4 u_ViewProjectionMatrix;\nuniform mat4 u_ModelMatrix;\nuniform mat4 u_NormalMatrix;\n\nin vec3 a_position;\nout vec3 v_Position;\n\n#ifdef HAS_NORMAL_VEC3\nin vec3 a_normal;\n#endif\n\n#ifdef HAS_TANGENT_VEC4\nin vec4 a_tangent;\n#endif\n\n#ifdef HAS_NORMAL_VEC3\n#ifdef HAS_TANGENT_VEC4\nout mat3 v_TBN;\n#else\nout vec3 v_Normal;\n#endif\n#endif\n\n#ifdef HAS_TEXCOORD_0_VEC2\nin vec2 a_texcoord_0;\n#endif\n\n#ifdef HAS_TEXCOORD_1_VEC2\nin vec2 a_texcoord_1;\n#endif\n\nout vec2 v_texcoord_0;\nout vec2 v_texcoord_1;\n\n#ifdef HAS_COLOR_0_VEC3\nin vec3 a_color_0;\nout vec3 v_Color;\n#endif\n\n#ifdef HAS_COLOR_0_VEC4\nin vec4 a_color_0;\nout vec4 v_Color;\n#endif\n\nvec4 getPosition()\n{\n    vec4 pos = vec4(a_position, 1.0);\n\n#ifdef USE_MORPHING\n    pos += getTargetPosition();\n#endif\n\n#ifdef USE_SKINNING\n    pos = getSkinningMatrix() * pos;\n#endif\n\n    return pos;\n}\n\n#ifdef HAS_NORMAL_VEC3\nvec3 getNormal()\n{\n    vec3 normal = a_normal;\n\n#ifdef USE_MORPHING\n    normal += getTargetNormal();\n#endif\n\n#ifdef USE_SKINNING\n    normal = mat3(getSkinningNormalMatrix()) * normal;\n#endif\n\n    return normalize(normal);\n}\n#endif\n\n#ifdef HAS_TANGENT_VEC4\nvec3 getTangent()\n{\n    vec3 tangent = a_tangent.xyz;\n\n#ifdef USE_MORPHING\n    tangent += getTargetTangent();\n#endif\n\n#ifdef USE_SKINNING\n    tangent = mat3(getSkinningMatrix()) * tangent;\n#endif\n\n    return normalize(tangent);\n}\n#endif\n\nvoid main()\n{\n    vec4 pos = u_ModelMatrix * getPosition();\n    v_Position = vec3(pos.xyz) / pos.w;\n\n#ifdef HAS_NORMAL_VEC3\n#ifdef HAS_TANGENT_VEC4\n    vec3 tangent = getTangent();\n    vec3 normalW = normalize(vec3(u_NormalMatrix * vec4(getNormal(), 0.0)));\n    vec3 tangentW = normalize(vec3(u_ModelMatrix * vec4(tangent, 0.0)));\n    vec3 bitangentW = cross(normalW, tangentW) * a_tangent.w;\n    v_TBN = mat3(tangentW, bitangentW, normalW);\n#else\n    v_Normal = normalize(vec3(u_NormalMatrix * vec4(getNormal(), 0.0)));\n#endif\n#endif\n\n    v_texcoord_0 = vec2(0.0, 0.0);\n    v_texcoord_1 = vec2(0.0, 0.0);\n\n#ifdef HAS_TEXCOORD_0_VEC2\n    v_texcoord_0 = a_texcoord_0;\n#endif\n\n#ifdef HAS_TEXCOORD_1_VEC2\n    v_texcoord_1 = a_texcoord_1;\n#endif\n\n#if defined(HAS_COLOR_0_VEC3) || defined(HAS_COLOR_0_VEC4)\n    v_Color = a_color_0;\n#endif\n\n    gl_Position = u_ViewProjectionMatrix * pos;\n}\n"; // eslint-disable-line
+  var primitiveShader = "#define GLSLIFY 1\n#include <animation.glsl>\n\nuniform mat4 u_ViewProjectionMatrix;\nuniform mat4 u_ModelMatrix;\nuniform mat4 u_NormalMatrix;\n\nin vec3 a_position;\nout vec3 v_Position;\n\n#ifdef HAS_NORMAL_VEC3\nin vec3 a_normal;\n#endif\n\n#ifdef HAS_TANGENT_VEC4\nin vec4 a_tangent;\n#endif\n\n#ifdef HAS_NORMAL_VEC3\n#ifdef HAS_TANGENT_VEC4\nout mat3 v_TBN;\n#else\nout vec3 v_Normal;\n#endif\n#endif\n\n#ifdef HAS_TEXCOORD_0_VEC2\nin vec2 a_texcoord_0;\n#endif\n\n#ifdef HAS_TEXCOORD_1_VEC2\nin vec2 a_texcoord_1;\n#endif\n\nout vec2 v_texcoord_0;\nout vec2 v_texcoord_1;\n\n#ifdef HAS_COLOR_0_VEC3\nin vec3 a_color_0;\nout vec3 v_Color;\n#endif\n\n#ifdef HAS_COLOR_0_VEC4\nin vec4 a_color_0;\nout vec4 v_Color;\n#endif\n\nvec4 getPosition()\n{\n    vec4 pos = vec4(a_position, 1.0);\n\n#ifdef USE_MORPHING\n    pos += getTargetPosition();\n#endif\n\n#ifdef USE_SKINNING\n    pos = getSkinningMatrix() * pos;\n#endif\n\n    return pos;\n}\n\n#ifdef HAS_NORMAL_VEC3\nvec3 getNormal()\n{\n    vec3 normal = a_normal;\n\n#ifdef USE_MORPHING\n    normal += getTargetNormal();\n#endif\n\n#ifdef USE_SKINNING\n    normal = mat3(getSkinningNormalMatrix()) * normal;\n#endif\n\n    return normalize(normal);\n}\n#endif\n\n#ifdef HAS_TANGENT_VEC4\nvec3 getTangent()\n{\n    vec3 tangent = a_tangent.xyz;\n\n#ifdef USE_MORPHING\n    tangent += getTargetTangent();\n#endif\n\n#ifdef USE_SKINNING\n    tangent = mat3(getSkinningMatrix()) * tangent;\n#endif\n\n    return normalize(tangent);\n}\n#endif\n\nvoid main()\n{\n    gl_PointSize = 1.0f;\n    vec4 pos = u_ModelMatrix * getPosition();\n    v_Position = vec3(pos.xyz) / pos.w;\n\n#ifdef HAS_NORMAL_VEC3\n#ifdef HAS_TANGENT_VEC4\n    vec3 tangent = getTangent();\n    vec3 normalW = normalize(vec3(u_NormalMatrix * vec4(getNormal(), 0.0)));\n    vec3 tangentW = normalize(vec3(u_ModelMatrix * vec4(tangent, 0.0)));\n    vec3 bitangentW = cross(normalW, tangentW) * a_tangent.w;\n    v_TBN = mat3(tangentW, bitangentW, normalW);\n#else\n    v_Normal = normalize(vec3(u_NormalMatrix * vec4(getNormal(), 0.0)));\n#endif\n#endif\n\n    v_texcoord_0 = vec2(0.0, 0.0);\n    v_texcoord_1 = vec2(0.0, 0.0);\n\n#ifdef HAS_TEXCOORD_0_VEC2\n    v_texcoord_0 = a_texcoord_0;\n#endif\n\n#ifdef HAS_TEXCOORD_1_VEC2\n    v_texcoord_1 = a_texcoord_1;\n#endif\n\n#if defined(HAS_COLOR_0_VEC3) || defined(HAS_COLOR_0_VEC4)\n    v_Color = a_color_0;\n#endif\n\n    gl_Position = u_ViewProjectionMatrix * pos;\n}\n"; // eslint-disable-line
 
   var texturesShader = "#define GLSLIFY 1\n// IBL\n\nuniform int u_MipCount;\nuniform samplerCube u_LambertianEnvSampler;\nuniform samplerCube u_GGXEnvSampler;\nuniform sampler2D u_GGXLUT;\nuniform samplerCube u_CharlieEnvSampler;\nuniform sampler2D u_CharlieLUT;\nuniform sampler2D u_SheenELUT;\nuniform mat3 u_EnvRotation;\n\n// General Material\n\nuniform sampler2D u_NormalSampler;\nuniform float u_NormalScale;\nuniform int u_NormalUVSet;\nuniform mat3 u_NormalUVTransform;\n\nuniform vec3 u_EmissiveFactor;\nuniform sampler2D u_EmissiveSampler;\nuniform int u_EmissiveUVSet;\nuniform mat3 u_EmissiveUVTransform;\n\nuniform sampler2D u_OcclusionSampler;\nuniform int u_OcclusionUVSet;\nuniform float u_OcclusionStrength;\nuniform mat3 u_OcclusionUVTransform;\n\nin vec2 v_texcoord_0;\nin vec2 v_texcoord_1;\n\nvec2 getNormalUV()\n{\n    vec3 uv = vec3(u_NormalUVSet < 1 ? v_texcoord_0 : v_texcoord_1, 1.0);\n\n#ifdef HAS_NORMAL_UV_TRANSFORM\n    uv = u_NormalUVTransform * uv;\n#endif\n\n    return uv.xy;\n}\n\nvec2 getEmissiveUV()\n{\n    vec3 uv = vec3(u_EmissiveUVSet < 1 ? v_texcoord_0 : v_texcoord_1, 1.0);\n\n#ifdef HAS_EMISSIVE_UV_TRANSFORM\n    uv = u_EmissiveUVTransform * uv;\n#endif\n\n    return uv.xy;\n}\n\nvec2 getOcclusionUV()\n{\n    vec3 uv = vec3(u_OcclusionUVSet < 1 ? v_texcoord_0 : v_texcoord_1, 1.0);\n\n#ifdef HAS_OCCLUSION_UV_TRANSFORM\n    uv = u_OcclusionUVTransform * uv;\n#endif\n\n    return uv.xy;\n}\n\n// Metallic Roughness Material\n\n#ifdef MATERIAL_METALLICROUGHNESS\n\nuniform sampler2D u_BaseColorSampler;\nuniform int u_BaseColorUVSet;\nuniform mat3 u_BaseColorUVTransform;\n\nuniform sampler2D u_MetallicRoughnessSampler;\nuniform int u_MetallicRoughnessUVSet;\nuniform mat3 u_MetallicRoughnessUVTransform;\n\nvec2 getBaseColorUV()\n{\n    vec3 uv = vec3(u_BaseColorUVSet < 1 ? v_texcoord_0 : v_texcoord_1, 1.0);\n\n#ifdef HAS_BASECOLOR_UV_TRANSFORM\n    uv = u_BaseColorUVTransform * uv;\n#endif\n\n    return uv.xy;\n}\n\nvec2 getMetallicRoughnessUV()\n{\n    vec3 uv = vec3(u_MetallicRoughnessUVSet < 1 ? v_texcoord_0 : v_texcoord_1, 1.0);\n\n#ifdef HAS_METALLICROUGHNESS_UV_TRANSFORM\n    uv = u_MetallicRoughnessUVTransform * uv;\n#endif\n\n    return uv.xy;\n}\n\n#endif\n\n// Specular Glossiness Material\n\n#ifdef MATERIAL_SPECULARGLOSSINESS\n\nuniform sampler2D u_DiffuseSampler;\nuniform int u_DiffuseUVSet;\nuniform mat3 u_DiffuseUVTransform;\n\nuniform sampler2D u_SpecularGlossinessSampler;\nuniform int u_SpecularGlossinessUVSet;\nuniform mat3 u_SpecularGlossinessUVTransform;\n\nvec2 getSpecularGlossinessUV()\n{\n    vec3 uv = vec3(u_SpecularGlossinessUVSet < 1 ? v_texcoord_0 : v_texcoord_1, 1.0);\n\n#ifdef HAS_SPECULARGLOSSINESS_UV_TRANSFORM\n    uv = u_SpecularGlossinessUVTransform * uv;\n#endif\n\n    return uv.xy;\n}\n\nvec2 getDiffuseUV()\n{\n    vec3 uv = vec3(u_DiffuseUVSet < 1 ? v_texcoord_0 : v_texcoord_1, 1.0);\n\n#ifdef HAS_DIFFUSE_UV_TRANSFORM\n    uv = u_DiffuseUVTransform * uv;\n#endif\n\n    return uv.xy;\n}\n\n#endif\n\n// Clearcoat Material\n\n#ifdef MATERIAL_CLEARCOAT\n\nuniform sampler2D u_ClearcoatSampler;\nuniform int u_ClearcoatUVSet;\nuniform mat3 u_ClearcoatUVTransform;\n\nuniform sampler2D u_ClearcoatRoughnessSampler;\nuniform int u_ClearcoatRoughnessUVSet;\nuniform mat3 u_ClearcoatRoughnessUVTransform;\n\nuniform sampler2D u_ClearcoatNormalSampler;\nuniform int u_ClearcoatNormalUVSet;\nuniform mat3 u_ClearcoatNormalUVTransform;\nuniform float u_ClearcoatNormalScale;\n\nvec2 getClearcoatUV()\n{\n    vec3 uv = vec3(u_ClearcoatUVSet < 1 ? v_texcoord_0 : v_texcoord_1, 1.0);\n#ifdef HAS_CLEARCOAT_UV_TRANSFORM\n    uv = u_ClearcoatUVTransform * uv;\n#endif\n    return uv.xy;\n}\n\nvec2 getClearcoatRoughnessUV()\n{\n    vec3 uv = vec3(u_ClearcoatRoughnessUVSet < 1 ? v_texcoord_0 : v_texcoord_1, 1.0);\n#ifdef HAS_CLEARCOATROUGHNESS_UV_TRANSFORM\n    uv = u_ClearcoatRoughnessUVTransform * uv;\n#endif\n    return uv.xy;\n}\n\nvec2 getClearcoatNormalUV()\n{\n    vec3 uv = vec3(u_ClearcoatNormalUVSet < 1 ? v_texcoord_0 : v_texcoord_1, 1.0);\n#ifdef HAS_CLEARCOATNORMAL_UV_TRANSFORM\n    uv = u_ClearcoatNormalUVTransform * uv;\n#endif\n    return uv.xy;\n}\n\n#endif\n\n// Sheen Material\n\n#ifdef MATERIAL_SHEEN\n\nuniform sampler2D u_SheenColorSampler;\nuniform int u_SheenColorUVSet;\nuniform mat3 u_SheenColorUVTransform;\nuniform sampler2D u_SheenRoughnessSampler;\nuniform int u_SheenRoughnessUVSet;\nuniform mat3 u_SheenRoughnessUVTransform;\n\nvec2 getSheenColorUV()\n{\n    vec3 uv = vec3(u_SheenColorUVSet < 1 ? v_texcoord_0 : v_texcoord_1, 1.0);\n#ifdef HAS_SHEENCOLOR_UV_TRANSFORM\n    uv = u_SheenColorUVTransform * uv;\n#endif\n    return uv.xy;\n}\n\nvec2 getSheenRoughnessUV()\n{\n    vec3 uv = vec3(u_SheenRoughnessUVSet < 1 ? v_texcoord_0 : v_texcoord_1, 1.0);\n#ifdef HAS_SHEENROUGHNESS_UV_TRANSFORM\n    uv = u_SheenRoughnessUVTransform * uv;\n#endif\n    return uv.xy;\n}\n\n#endif\n\n// Specular Material\n\n#ifdef MATERIAL_SPECULAR\n\nuniform sampler2D u_SpecularSampler;\nuniform int u_SpecularUVSet;\nuniform mat3 u_SpecularUVTransform;\nuniform sampler2D u_SpecularColorSampler;\nuniform int u_SpecularColorUVSet;\nuniform mat3 u_SpecularColorUVTransform;\n\nvec2 getSpecularUV()\n{\n    vec3 uv = vec3(u_SpecularUVSet < 1 ? v_texcoord_0 : v_texcoord_1, 1.0);\n#ifdef HAS_SPECULAR_UV_TRANSFORM\n    uv = u_SpecularUVTransform * uv;\n#endif\n    return uv.xy;\n}\n\nvec2 getSpecularColorUV()\n{\n    vec3 uv = vec3(u_SpecularColorUVSet < 1 ? v_texcoord_0 : v_texcoord_1, 1.0);\n#ifdef HAS_SPECULARCOLOR_UV_TRANSFORM\n    uv = u_SpecularColorUVTransform * uv;\n#endif\n    return uv.xy;\n}\n\n#endif\n\n// Transmission Material\n\n#ifdef MATERIAL_TRANSMISSION\n\nuniform sampler2D u_TransmissionSampler;\nuniform int u_TransmissionUVSet;\nuniform mat3 u_TransmissionUVTransform;\nuniform sampler2D u_TransmissionFramebufferSampler;\nuniform ivec2 u_TransmissionFramebufferSize;\n\nvec2 getTransmissionUV()\n{\n    vec3 uv = vec3(u_TransmissionUVSet < 1 ? v_texcoord_0 : v_texcoord_1, 1.0);\n#ifdef HAS_TRANSMISSION_UV_TRANSFORM\n    uv = u_TransmissionUVTransform * uv;\n#endif\n    return uv.xy;\n}\n\n#endif\n\n// Volume Material\n\n#ifdef MATERIAL_VOLUME\n\nuniform sampler2D u_ThicknessSampler;\nuniform int u_ThicknessUVSet;\nuniform mat3 u_ThicknessUVTransform;\n\nvec2 getThicknessUV()\n{\n    vec3 uv = vec3(u_ThicknessUVSet < 1 ? v_texcoord_0 : v_texcoord_1, 1.0);\n#ifdef HAS_THICKNESS_UV_TRANSFORM\n    uv = u_ThicknessUVTransform * uv;\n#endif\n    return uv.xy;\n}\n\n#endif\n"; // eslint-disable-line
 
@@ -3979,8 +3995,6 @@
     };
   };
 
-  /*global toString:true*/
-
   // utils is a library of generic helper functions non-specific to axios
 
   var toString = Object.prototype.toString;
@@ -4164,7 +4178,7 @@
    * @returns {String} The String freed of excess whitespace
    */
   function trim(str) {
-    return str.replace(/^\s*/, '').replace(/\s*$/, '');
+    return str.trim ? str.trim() : str.replace(/^\s+|\s+$/g, '');
   }
 
   /**
@@ -4406,10 +4420,12 @@
    *
    * @return {Number} An ID used to remove interceptor later
    */
-  InterceptorManager.prototype.use = function use(fulfilled, rejected) {
+  InterceptorManager.prototype.use = function use(fulfilled, rejected, options) {
     this.handlers.push({
       fulfilled: fulfilled,
-      rejected: rejected
+      rejected: rejected,
+      synchronous: options ? options.synchronous : false,
+      runWhen: options ? options.runWhen : null
     });
     return this.handlers.length - 1;
   };
@@ -4442,27 +4458,6 @@
   };
 
   var InterceptorManager_1 = InterceptorManager;
-
-  /**
-   * Transform the data for a request or a response
-   *
-   * @param {Object|String} data The data to be transformed
-   * @param {Array} headers The headers for the request or response
-   * @param {Array|Function} fns A single function or Array of functions
-   * @returns {*} The resulting transformed data
-   */
-  var transformData = function transformData(data, headers, fns) {
-    /*eslint no-param-reassign:0*/
-    utils.forEach(fns, function transform(fn) {
-      data = fn(data, headers);
-    });
-
-    return data;
-  };
-
-  var isCancel = function isCancel(value) {
-    return !!(value && value.__CANCEL__);
-  };
 
   var normalizeHeaderName = function normalizeHeaderName(headers, normalizedName) {
     utils.forEach(headers, function processHeader(value, name) {
@@ -4762,6 +4757,7 @@
     return new Promise(function dispatchXhrRequest(resolve, reject) {
       var requestData = config.data;
       var requestHeaders = config.headers;
+      var responseType = config.responseType;
 
       if (utils.isFormData(requestData)) {
         delete requestHeaders['Content-Type']; // Let the browser set it
@@ -4782,23 +4778,14 @@
       // Set the request timeout in MS
       request.timeout = config.timeout;
 
-      // Listen for ready state
-      request.onreadystatechange = function handleLoad() {
-        if (!request || request.readyState !== 4) {
+      function onloadend() {
+        if (!request) {
           return;
         }
-
-        // The request errored out and we didn't get a response, this will be
-        // handled by onerror instead
-        // With one exception: request that using file: protocol, most browsers
-        // will return status as 0 even though it's a successful request
-        if (request.status === 0 && !(request.responseURL && request.responseURL.indexOf('file:') === 0)) {
-          return;
-        }
-
         // Prepare the response
         var responseHeaders = 'getAllResponseHeaders' in request ? parseHeaders(request.getAllResponseHeaders()) : null;
-        var responseData = !config.responseType || config.responseType === 'text' ? request.responseText : request.response;
+        var responseData = !responseType || responseType === 'text' ||  responseType === 'json' ?
+          request.responseText : request.response;
         var response = {
           data: responseData,
           status: request.status,
@@ -4812,7 +4799,30 @@
 
         // Clean up request
         request = null;
-      };
+      }
+
+      if ('onloadend' in request) {
+        // Use onloadend if available
+        request.onloadend = onloadend;
+      } else {
+        // Listen for ready state to emulate onloadend
+        request.onreadystatechange = function handleLoad() {
+          if (!request || request.readyState !== 4) {
+            return;
+          }
+
+          // The request errored out and we didn't get a response, this will be
+          // handled by onerror instead
+          // With one exception: request that using file: protocol, most browsers
+          // will return status as 0 even though it's a successful request
+          if (request.status === 0 && !(request.responseURL && request.responseURL.indexOf('file:') === 0)) {
+            return;
+          }
+          // readystate handler is calling before onerror or ontimeout handlers,
+          // so we should call onloadend on the next 'tick'
+          setTimeout(onloadend);
+        };
+      }
 
       // Handle browser request cancellation (as opposed to a manual cancellation)
       request.onabort = function handleAbort() {
@@ -4842,7 +4852,10 @@
         if (config.timeoutErrorMessage) {
           timeoutErrorMessage = config.timeoutErrorMessage;
         }
-        reject(createError(timeoutErrorMessage, config, 'ECONNABORTED',
+        reject(createError(
+          timeoutErrorMessage,
+          config,
+          config.transitional && config.transitional.clarifyTimeoutError ? 'ETIMEDOUT' : 'ECONNABORTED',
           request));
 
         // Clean up request
@@ -4882,16 +4895,8 @@
       }
 
       // Add responseType to request if needed
-      if (config.responseType) {
-        try {
-          request.responseType = config.responseType;
-        } catch (e) {
-          // Expected DOMException thrown by browsers not compatible XMLHttpRequest Level 2.
-          // But, this can be suppressed for 'json' type as it can be parsed by default 'transformResponse' function.
-          if (config.responseType !== 'json') {
-            throw e;
-          }
-        }
+      if (responseType && responseType !== 'json') {
+        request.responseType = config.responseType;
       }
 
       // Handle progress if needed
@@ -4949,12 +4954,35 @@
     return adapter;
   }
 
+  function stringifySafely(rawValue, parser, encoder) {
+    if (utils.isString(rawValue)) {
+      try {
+        (parser || JSON.parse)(rawValue);
+        return utils.trim(rawValue);
+      } catch (e) {
+        if (e.name !== 'SyntaxError') {
+          throw e;
+        }
+      }
+    }
+
+    return (encoder || JSON.stringify)(rawValue);
+  }
+
   var defaults = {
+
+    transitional: {
+      silentJSONParsing: true,
+      forcedJSONParsing: true,
+      clarifyTimeoutError: false
+    },
+
     adapter: getDefaultAdapter(),
 
     transformRequest: [function transformRequest(data, headers) {
       normalizeHeaderName(headers, 'Accept');
       normalizeHeaderName(headers, 'Content-Type');
+
       if (utils.isFormData(data) ||
         utils.isArrayBuffer(data) ||
         utils.isBuffer(data) ||
@@ -4971,20 +4999,32 @@
         setContentTypeIfUnset(headers, 'application/x-www-form-urlencoded;charset=utf-8');
         return data.toString();
       }
-      if (utils.isObject(data)) {
-        setContentTypeIfUnset(headers, 'application/json;charset=utf-8');
-        return JSON.stringify(data);
+      if (utils.isObject(data) || (headers && headers['Content-Type'] === 'application/json')) {
+        setContentTypeIfUnset(headers, 'application/json');
+        return stringifySafely(data);
       }
       return data;
     }],
 
     transformResponse: [function transformResponse(data) {
-      /*eslint no-param-reassign:0*/
-      if (typeof data === 'string') {
+      var transitional = this.transitional;
+      var silentJSONParsing = transitional && transitional.silentJSONParsing;
+      var forcedJSONParsing = transitional && transitional.forcedJSONParsing;
+      var strictJSONParsing = !silentJSONParsing && this.responseType === 'json';
+
+      if (strictJSONParsing || (forcedJSONParsing && utils.isString(data) && data.length)) {
         try {
-          data = JSON.parse(data);
-        } catch (e) { /* Ignore */ }
+          return JSON.parse(data);
+        } catch (e) {
+          if (strictJSONParsing) {
+            if (e.name === 'SyntaxError') {
+              throw enhanceError(e, this, 'E_JSON_PARSE');
+            }
+            throw e;
+          }
+        }
       }
+
       return data;
     }],
 
@@ -5022,6 +5062,28 @@
   var defaults_1 = defaults;
 
   /**
+   * Transform the data for a request or a response
+   *
+   * @param {Object|String} data The data to be transformed
+   * @param {Array} headers The headers for the request or response
+   * @param {Array|Function} fns A single function or Array of functions
+   * @returns {*} The resulting transformed data
+   */
+  var transformData = function transformData(data, headers, fns) {
+    var context = this || defaults_1;
+    /*eslint no-param-reassign:0*/
+    utils.forEach(fns, function transform(fn) {
+      data = fn.call(context, data, headers);
+    });
+
+    return data;
+  };
+
+  var isCancel = function isCancel(value) {
+    return !!(value && value.__CANCEL__);
+  };
+
+  /**
    * Throws a `Cancel` if cancellation has been requested.
    */
   function throwIfCancellationRequested(config) {
@@ -5043,7 +5105,8 @@
     config.headers = config.headers || {};
 
     // Transform request data
-    config.data = transformData(
+    config.data = transformData.call(
+      config,
       config.data,
       config.headers,
       config.transformRequest
@@ -5069,7 +5132,8 @@
       throwIfCancellationRequested(config);
 
       // Transform response data
-      response.data = transformData(
+      response.data = transformData.call(
+        config,
         response.data,
         response.headers,
         config.transformResponse
@@ -5082,7 +5146,8 @@
 
         // Transform response data
         if (reason && reason.response) {
-          reason.response.data = transformData(
+          reason.response.data = transformData.call(
+            config,
             reason.response.data,
             reason.response.headers,
             config.transformResponse
@@ -5178,6 +5243,301 @@
     return config;
   };
 
+  var _from = "axios@^0.21.1";
+  var _id = "axios@0.21.4";
+  var _inBundle = false;
+  var _integrity = "sha512-ut5vewkiu8jjGBdqpM44XxjuCjq9LAKeHVmoVfHVzy8eHgxxq8SbAVQNovDA8mVi05kP0Ea/n/UzcSHcTJQfNg==";
+  var _location = "/gltf-viewer-source/axios";
+  var _phantomChildren = {
+  };
+  var _requested = {
+  	type: "range",
+  	registry: true,
+  	raw: "axios@^0.21.1",
+  	name: "axios",
+  	escapedName: "axios",
+  	rawSpec: "^0.21.1",
+  	saveSpec: null,
+  	fetchSpec: "^0.21.1"
+  };
+  var _requiredBy = [
+  	"/gltf-viewer-source"
+  ];
+  var _resolved = "https://registry.npmjs.org/axios/-/axios-0.21.4.tgz";
+  var _shasum = "c67b90dc0568e5c1cf2b0b858c43ba28e2eda575";
+  var _spec = "axios@^0.21.1";
+  var _where = "/home/runner/work/glTF-Sample-Viewer/glTF-Sample-Viewer/source";
+  var author = {
+  	name: "Matt Zabriskie"
+  };
+  var browser = {
+  	"./lib/adapters/http.js": "./lib/adapters/xhr.js"
+  };
+  var bugs = {
+  	url: "https://github.com/axios/axios/issues"
+  };
+  var bundleDependencies = false;
+  var bundlesize = [
+  	{
+  		path: "./dist/axios.min.js",
+  		threshold: "5kB"
+  	}
+  ];
+  var dependencies = {
+  	"follow-redirects": "^1.14.0"
+  };
+  var deprecated = false;
+  var description = "Promise based HTTP client for the browser and node.js";
+  var devDependencies = {
+  	coveralls: "^3.0.0",
+  	"es6-promise": "^4.2.4",
+  	grunt: "^1.3.0",
+  	"grunt-banner": "^0.6.0",
+  	"grunt-cli": "^1.2.0",
+  	"grunt-contrib-clean": "^1.1.0",
+  	"grunt-contrib-watch": "^1.0.0",
+  	"grunt-eslint": "^23.0.0",
+  	"grunt-karma": "^4.0.0",
+  	"grunt-mocha-test": "^0.13.3",
+  	"grunt-ts": "^6.0.0-beta.19",
+  	"grunt-webpack": "^4.0.2",
+  	"istanbul-instrumenter-loader": "^1.0.0",
+  	"jasmine-core": "^2.4.1",
+  	karma: "^6.3.2",
+  	"karma-chrome-launcher": "^3.1.0",
+  	"karma-firefox-launcher": "^2.1.0",
+  	"karma-jasmine": "^1.1.1",
+  	"karma-jasmine-ajax": "^0.1.13",
+  	"karma-safari-launcher": "^1.0.0",
+  	"karma-sauce-launcher": "^4.3.6",
+  	"karma-sinon": "^1.0.5",
+  	"karma-sourcemap-loader": "^0.3.8",
+  	"karma-webpack": "^4.0.2",
+  	"load-grunt-tasks": "^3.5.2",
+  	minimist: "^1.2.0",
+  	mocha: "^8.2.1",
+  	sinon: "^4.5.0",
+  	"terser-webpack-plugin": "^4.2.3",
+  	typescript: "^4.0.5",
+  	"url-search-params": "^0.10.0",
+  	webpack: "^4.44.2",
+  	"webpack-dev-server": "^3.11.0"
+  };
+  var homepage = "https://axios-http.com";
+  var jsdelivr = "dist/axios.min.js";
+  var keywords = [
+  	"xhr",
+  	"http",
+  	"ajax",
+  	"promise",
+  	"node"
+  ];
+  var license = "MIT";
+  var main = "index.js";
+  var name$1 = "axios";
+  var repository = {
+  	type: "git",
+  	url: "git+https://github.com/axios/axios.git"
+  };
+  var scripts = {
+  	build: "NODE_ENV=production grunt build",
+  	coveralls: "cat coverage/lcov.info | ./node_modules/coveralls/bin/coveralls.js",
+  	examples: "node ./examples/server.js",
+  	fix: "eslint --fix lib/**/*.js",
+  	postversion: "git push && git push --tags",
+  	preversion: "npm test",
+  	start: "node ./sandbox/server.js",
+  	test: "grunt test",
+  	version: "npm run build && grunt version && git add -A dist && git add CHANGELOG.md bower.json package.json"
+  };
+  var typings = "./index.d.ts";
+  var unpkg = "dist/axios.min.js";
+  var version = "0.21.4";
+  var _package = {
+  	_from: _from,
+  	_id: _id,
+  	_inBundle: _inBundle,
+  	_integrity: _integrity,
+  	_location: _location,
+  	_phantomChildren: _phantomChildren,
+  	_requested: _requested,
+  	_requiredBy: _requiredBy,
+  	_resolved: _resolved,
+  	_shasum: _shasum,
+  	_spec: _spec,
+  	_where: _where,
+  	author: author,
+  	browser: browser,
+  	bugs: bugs,
+  	bundleDependencies: bundleDependencies,
+  	bundlesize: bundlesize,
+  	dependencies: dependencies,
+  	deprecated: deprecated,
+  	description: description,
+  	devDependencies: devDependencies,
+  	homepage: homepage,
+  	jsdelivr: jsdelivr,
+  	keywords: keywords,
+  	license: license,
+  	main: main,
+  	name: name$1,
+  	repository: repository,
+  	scripts: scripts,
+  	typings: typings,
+  	unpkg: unpkg,
+  	version: version
+  };
+
+  var _package$1 = /*#__PURE__*/Object.freeze({
+    __proto__: null,
+    _from: _from,
+    _id: _id,
+    _inBundle: _inBundle,
+    _integrity: _integrity,
+    _location: _location,
+    _phantomChildren: _phantomChildren,
+    _requested: _requested,
+    _requiredBy: _requiredBy,
+    _resolved: _resolved,
+    _shasum: _shasum,
+    _spec: _spec,
+    _where: _where,
+    author: author,
+    browser: browser,
+    bugs: bugs,
+    bundleDependencies: bundleDependencies,
+    bundlesize: bundlesize,
+    dependencies: dependencies,
+    deprecated: deprecated,
+    description: description,
+    devDependencies: devDependencies,
+    homepage: homepage,
+    jsdelivr: jsdelivr,
+    keywords: keywords,
+    license: license,
+    main: main,
+    name: name$1,
+    repository: repository,
+    scripts: scripts,
+    typings: typings,
+    unpkg: unpkg,
+    version: version,
+    'default': _package
+  });
+
+  function createCommonjsModule(fn, module) {
+  	return module = { exports: {} }, fn(module, module.exports), module.exports;
+  }
+
+  function getCjsExportFromNamespace (n) {
+  	return n && n['default'] || n;
+  }
+
+  var pkg = getCjsExportFromNamespace(_package$1);
+
+  var validators = {};
+
+  // eslint-disable-next-line func-names
+  ['object', 'boolean', 'number', 'function', 'string', 'symbol'].forEach(function(type, i) {
+    validators[type] = function validator(thing) {
+      return typeof thing === type || 'a' + (i < 1 ? 'n ' : ' ') + type;
+    };
+  });
+
+  var deprecatedWarnings = {};
+  var currentVerArr = pkg.version.split('.');
+
+  /**
+   * Compare package versions
+   * @param {string} version
+   * @param {string?} thanVersion
+   * @returns {boolean}
+   */
+  function isOlderVersion(version, thanVersion) {
+    var pkgVersionArr = thanVersion ? thanVersion.split('.') : currentVerArr;
+    var destVer = version.split('.');
+    for (var i = 0; i < 3; i++) {
+      if (pkgVersionArr[i] > destVer[i]) {
+        return true;
+      } else if (pkgVersionArr[i] < destVer[i]) {
+        return false;
+      }
+    }
+    return false;
+  }
+
+  /**
+   * Transitional option validator
+   * @param {function|boolean?} validator
+   * @param {string?} version
+   * @param {string} message
+   * @returns {function}
+   */
+  validators.transitional = function transitional(validator, version, message) {
+    var isDeprecated = version && isOlderVersion(version);
+
+    function formatMessage(opt, desc) {
+      return '[Axios v' + pkg.version + '] Transitional option \'' + opt + '\'' + desc + (message ? '. ' + message : '');
+    }
+
+    // eslint-disable-next-line func-names
+    return function(value, opt, opts) {
+      if (validator === false) {
+        throw new Error(formatMessage(opt, ' has been removed in ' + version));
+      }
+
+      if (isDeprecated && !deprecatedWarnings[opt]) {
+        deprecatedWarnings[opt] = true;
+        // eslint-disable-next-line no-console
+        console.warn(
+          formatMessage(
+            opt,
+            ' has been deprecated since v' + version + ' and will be removed in the near future'
+          )
+        );
+      }
+
+      return validator ? validator(value, opt, opts) : true;
+    };
+  };
+
+  /**
+   * Assert object's properties type
+   * @param {object} options
+   * @param {object} schema
+   * @param {boolean?} allowUnknown
+   */
+
+  function assertOptions(options, schema, allowUnknown) {
+    if (typeof options !== 'object') {
+      throw new TypeError('options must be an object');
+    }
+    var keys = Object.keys(options);
+    var i = keys.length;
+    while (i-- > 0) {
+      var opt = keys[i];
+      var validator = schema[opt];
+      if (validator) {
+        var value = options[opt];
+        var result = value === undefined || validator(value, opt, options);
+        if (result !== true) {
+          throw new TypeError('option ' + opt + ' must be ' + result);
+        }
+        continue;
+      }
+      if (allowUnknown !== true) {
+        throw Error('Unknown option ' + opt);
+      }
+    }
+  }
+
+  var validator = {
+    isOlderVersion: isOlderVersion,
+    assertOptions: assertOptions,
+    validators: validators
+  };
+
+  var validators$1 = validator.validators;
   /**
    * Create a new instance of Axios
    *
@@ -5217,20 +5577,71 @@
       config.method = 'get';
     }
 
-    // Hook up interceptors middleware
-    var chain = [dispatchRequest, undefined];
-    var promise = Promise.resolve(config);
+    var transitional = config.transitional;
 
+    if (transitional !== undefined) {
+      validator.assertOptions(transitional, {
+        silentJSONParsing: validators$1.transitional(validators$1.boolean, '1.0.0'),
+        forcedJSONParsing: validators$1.transitional(validators$1.boolean, '1.0.0'),
+        clarifyTimeoutError: validators$1.transitional(validators$1.boolean, '1.0.0')
+      }, false);
+    }
+
+    // filter out skipped interceptors
+    var requestInterceptorChain = [];
+    var synchronousRequestInterceptors = true;
     this.interceptors.request.forEach(function unshiftRequestInterceptors(interceptor) {
-      chain.unshift(interceptor.fulfilled, interceptor.rejected);
+      if (typeof interceptor.runWhen === 'function' && interceptor.runWhen(config) === false) {
+        return;
+      }
+
+      synchronousRequestInterceptors = synchronousRequestInterceptors && interceptor.synchronous;
+
+      requestInterceptorChain.unshift(interceptor.fulfilled, interceptor.rejected);
     });
 
+    var responseInterceptorChain = [];
     this.interceptors.response.forEach(function pushResponseInterceptors(interceptor) {
-      chain.push(interceptor.fulfilled, interceptor.rejected);
+      responseInterceptorChain.push(interceptor.fulfilled, interceptor.rejected);
     });
 
-    while (chain.length) {
-      promise = promise.then(chain.shift(), chain.shift());
+    var promise;
+
+    if (!synchronousRequestInterceptors) {
+      var chain = [dispatchRequest, undefined];
+
+      Array.prototype.unshift.apply(chain, requestInterceptorChain);
+      chain = chain.concat(responseInterceptorChain);
+
+      promise = Promise.resolve(config);
+      while (chain.length) {
+        promise = promise.then(chain.shift(), chain.shift());
+      }
+
+      return promise;
+    }
+
+
+    var newConfig = config;
+    while (requestInterceptorChain.length) {
+      var onFulfilled = requestInterceptorChain.shift();
+      var onRejected = requestInterceptorChain.shift();
+      try {
+        newConfig = onFulfilled(newConfig);
+      } catch (error) {
+        onRejected(error);
+        break;
+      }
+    }
+
+    try {
+      promise = dispatchRequest(newConfig);
+    } catch (error) {
+      return Promise.reject(error);
+    }
+
+    while (responseInterceptorChain.length) {
+      promise = promise.then(responseInterceptorChain.shift(), responseInterceptorChain.shift());
     }
 
     return promise;
@@ -5900,10 +6311,6 @@
               reader.readAsDataURL(path);
           });
       }
-  }
-
-  function createCommonjsModule(fn, module) {
-  	return module = { exports: {} }, fn(module, module.exports), module.exports;
   }
 
   var encoder = createCommonjsModule(function (module) {
@@ -16609,7 +17016,7 @@
       computeCentroid(gltf)
       {
           const positionsAccessor = gltf.accessors[this.attributes.POSITION];
-          const positions = positionsAccessor.getTypedView(gltf);
+          const positions = positionsAccessor.getNormalizedTypedView(gltf);
 
           if(this.indices !== undefined)
           {
@@ -48625,9 +49032,12 @@
               specularEnabled: true,
 
               activeTab: 0,
+              tabsHidden: false,
               loadingComponent: {},
               showDropDownOverlay: false,
               uploadedHDR: undefined,
+              uiVisible: true,
+              
 
               // these are handls for certain ui change related things
               environmentVisiblePrefState: true,
@@ -48647,6 +49057,21 @@
               "Please try again with another browser, or check https://get.webgl.org/webgl2/ " +
               "if you believe you are seeing this message in error.", 15000);
           }
+
+          // add github logo to navbar
+          this.$nextTick(function () {
+              // Code that will run only after the
+              // entire view has been rendered
+              var a = document.createElement('a');
+              a.href = "https://github.com/KhronosGroup/glTF-Sample-Viewer";
+              var img = document.createElement('img');
+              img.src ="assets/ui/GitHub-Mark-Light-32px.png";
+              img.style.width = "22px";
+              img.style.height = "22px";
+              document.getElementById("tabsContainer").childNodes[0].childNodes[0].appendChild(a);
+              a.appendChild(img);
+          });
+
       },
       methods:
       {
@@ -48675,6 +49100,32 @@
               else {
                   this.volumeEnabled = this.volumeEnabledPrefState;
               }
+          },
+          collapseActiveTab : function(event, item) {
+              if (item === this.activeTab)
+              {
+                  this.tabsHidden = !this.tabsHidden;
+                  
+                  if(this.tabsHidden) {
+                      // remove is-active class if tabs are hidden
+                      event.stopPropagation();
+                      
+                      let navElements = document.getElementById("tabsContainer").childNodes[0].childNodes[0].childNodes;
+                      for(let elem of navElements) {
+                          elem.classList.remove('is-active');
+                      }
+                  } else {
+                      // add is-active class to correct element
+                      let activeNavElement = document.getElementById("tabsContainer").childNodes[0].childNodes[0].childNodes[item];
+                      activeNavElement.classList.add('is-active');
+                  }
+                  return;
+              }
+              else {
+                  // reset tab visibility
+                  this.tabsHidden = false;
+              }
+              
           },
           warn(message) {
               this.$buefy.toast.open({
@@ -48710,8 +49161,45 @@
               const file = e.target.files[0];
               this.uploadedHDR = file;
           },
+          hide() {
+              this.uiVisible = false;
+          },
+          show() {
+              this.uiVisible = true;
+          },
       }
   }).$mount('#app');
+
+  const canvasUI = new Vue$1({
+      data() {
+          return {
+              fullscreen: false,
+              timer: null
+          };
+      },
+      methods:
+      {
+          toggleFullscreen() {
+              if(this.fullscreen) {
+                  app.show();
+              } else {
+                  app.hide();
+              }
+              this.fullscreen = !this.fullscreen;
+          },
+          mouseMove() {
+              this.$refs.fullscreenIcon.style.display = "block";
+              this.setFullscreenIconTimer();
+          },
+          setFullscreenIconTimer() {
+              clearTimeout(this.timer);
+              this.timer = window.setTimeout( () => {
+                  this.$refs.fullscreenIcon.style.display = "none";
+              }, 1000);
+          }
+      }
+
+  }).$mount('#canvasUI');
 
   // pipe error messages to UI
   (function(){
@@ -48749,8 +49237,6 @@
       return fn.apply(thisArg, args);
     };
   };
-
-  /*global toString:true*/
 
   // utils is a library of generic helper functions non-specific to axios
 
@@ -48935,7 +49421,7 @@
    * @returns {String} The String freed of excess whitespace
    */
   function trim$1(str) {
-    return str.replace(/^\s*/, '').replace(/\s*$/, '');
+    return str.trim ? str.trim() : str.replace(/^\s+|\s+$/g, '');
   }
 
   /**
@@ -49177,10 +49663,12 @@
    *
    * @return {Number} An ID used to remove interceptor later
    */
-  InterceptorManager$1.prototype.use = function use(fulfilled, rejected) {
+  InterceptorManager$1.prototype.use = function use(fulfilled, rejected, options) {
     this.handlers.push({
       fulfilled: fulfilled,
-      rejected: rejected
+      rejected: rejected,
+      synchronous: options ? options.synchronous : false,
+      runWhen: options ? options.runWhen : null
     });
     return this.handlers.length - 1;
   };
@@ -49213,27 +49701,6 @@
   };
 
   var InterceptorManager_1$1 = InterceptorManager$1;
-
-  /**
-   * Transform the data for a request or a response
-   *
-   * @param {Object|String} data The data to be transformed
-   * @param {Array} headers The headers for the request or response
-   * @param {Array|Function} fns A single function or Array of functions
-   * @returns {*} The resulting transformed data
-   */
-  var transformData$1 = function transformData(data, headers, fns) {
-    /*eslint no-param-reassign:0*/
-    utils$1.forEach(fns, function transform(fn) {
-      data = fn(data, headers);
-    });
-
-    return data;
-  };
-
-  var isCancel$1 = function isCancel(value) {
-    return !!(value && value.__CANCEL__);
-  };
 
   var normalizeHeaderName$1 = function normalizeHeaderName(headers, normalizedName) {
     utils$1.forEach(headers, function processHeader(value, name) {
@@ -49533,6 +50000,7 @@
     return new Promise(function dispatchXhrRequest(resolve, reject) {
       var requestData = config.data;
       var requestHeaders = config.headers;
+      var responseType = config.responseType;
 
       if (utils$1.isFormData(requestData)) {
         delete requestHeaders['Content-Type']; // Let the browser set it
@@ -49553,23 +50021,14 @@
       // Set the request timeout in MS
       request.timeout = config.timeout;
 
-      // Listen for ready state
-      request.onreadystatechange = function handleLoad() {
-        if (!request || request.readyState !== 4) {
+      function onloadend() {
+        if (!request) {
           return;
         }
-
-        // The request errored out and we didn't get a response, this will be
-        // handled by onerror instead
-        // With one exception: request that using file: protocol, most browsers
-        // will return status as 0 even though it's a successful request
-        if (request.status === 0 && !(request.responseURL && request.responseURL.indexOf('file:') === 0)) {
-          return;
-        }
-
         // Prepare the response
         var responseHeaders = 'getAllResponseHeaders' in request ? parseHeaders$1(request.getAllResponseHeaders()) : null;
-        var responseData = !config.responseType || config.responseType === 'text' ? request.responseText : request.response;
+        var responseData = !responseType || responseType === 'text' ||  responseType === 'json' ?
+          request.responseText : request.response;
         var response = {
           data: responseData,
           status: request.status,
@@ -49583,7 +50042,30 @@
 
         // Clean up request
         request = null;
-      };
+      }
+
+      if ('onloadend' in request) {
+        // Use onloadend if available
+        request.onloadend = onloadend;
+      } else {
+        // Listen for ready state to emulate onloadend
+        request.onreadystatechange = function handleLoad() {
+          if (!request || request.readyState !== 4) {
+            return;
+          }
+
+          // The request errored out and we didn't get a response, this will be
+          // handled by onerror instead
+          // With one exception: request that using file: protocol, most browsers
+          // will return status as 0 even though it's a successful request
+          if (request.status === 0 && !(request.responseURL && request.responseURL.indexOf('file:') === 0)) {
+            return;
+          }
+          // readystate handler is calling before onerror or ontimeout handlers,
+          // so we should call onloadend on the next 'tick'
+          setTimeout(onloadend);
+        };
+      }
 
       // Handle browser request cancellation (as opposed to a manual cancellation)
       request.onabort = function handleAbort() {
@@ -49613,7 +50095,10 @@
         if (config.timeoutErrorMessage) {
           timeoutErrorMessage = config.timeoutErrorMessage;
         }
-        reject(createError$1(timeoutErrorMessage, config, 'ECONNABORTED',
+        reject(createError$1(
+          timeoutErrorMessage,
+          config,
+          config.transitional && config.transitional.clarifyTimeoutError ? 'ETIMEDOUT' : 'ECONNABORTED',
           request));
 
         // Clean up request
@@ -49653,16 +50138,8 @@
       }
 
       // Add responseType to request if needed
-      if (config.responseType) {
-        try {
-          request.responseType = config.responseType;
-        } catch (e) {
-          // Expected DOMException thrown by browsers not compatible XMLHttpRequest Level 2.
-          // But, this can be suppressed for 'json' type as it can be parsed by default 'transformResponse' function.
-          if (config.responseType !== 'json') {
-            throw e;
-          }
-        }
+      if (responseType && responseType !== 'json') {
+        request.responseType = config.responseType;
       }
 
       // Handle progress if needed
@@ -49720,12 +50197,35 @@
     return adapter;
   }
 
+  function stringifySafely$1(rawValue, parser, encoder) {
+    if (utils$1.isString(rawValue)) {
+      try {
+        (parser || JSON.parse)(rawValue);
+        return utils$1.trim(rawValue);
+      } catch (e) {
+        if (e.name !== 'SyntaxError') {
+          throw e;
+        }
+      }
+    }
+
+    return (encoder || JSON.stringify)(rawValue);
+  }
+
   var defaults$1 = {
+
+    transitional: {
+      silentJSONParsing: true,
+      forcedJSONParsing: true,
+      clarifyTimeoutError: false
+    },
+
     adapter: getDefaultAdapter$1(),
 
     transformRequest: [function transformRequest(data, headers) {
       normalizeHeaderName$1(headers, 'Accept');
       normalizeHeaderName$1(headers, 'Content-Type');
+
       if (utils$1.isFormData(data) ||
         utils$1.isArrayBuffer(data) ||
         utils$1.isBuffer(data) ||
@@ -49742,20 +50242,32 @@
         setContentTypeIfUnset$1(headers, 'application/x-www-form-urlencoded;charset=utf-8');
         return data.toString();
       }
-      if (utils$1.isObject(data)) {
-        setContentTypeIfUnset$1(headers, 'application/json;charset=utf-8');
-        return JSON.stringify(data);
+      if (utils$1.isObject(data) || (headers && headers['Content-Type'] === 'application/json')) {
+        setContentTypeIfUnset$1(headers, 'application/json');
+        return stringifySafely$1(data);
       }
       return data;
     }],
 
     transformResponse: [function transformResponse(data) {
-      /*eslint no-param-reassign:0*/
-      if (typeof data === 'string') {
+      var transitional = this.transitional;
+      var silentJSONParsing = transitional && transitional.silentJSONParsing;
+      var forcedJSONParsing = transitional && transitional.forcedJSONParsing;
+      var strictJSONParsing = !silentJSONParsing && this.responseType === 'json';
+
+      if (strictJSONParsing || (forcedJSONParsing && utils$1.isString(data) && data.length)) {
         try {
-          data = JSON.parse(data);
-        } catch (e) { /* Ignore */ }
+          return JSON.parse(data);
+        } catch (e) {
+          if (strictJSONParsing) {
+            if (e.name === 'SyntaxError') {
+              throw enhanceError$1(e, this, 'E_JSON_PARSE');
+            }
+            throw e;
+          }
+        }
       }
+
       return data;
     }],
 
@@ -49793,6 +50305,28 @@
   var defaults_1$1 = defaults$1;
 
   /**
+   * Transform the data for a request or a response
+   *
+   * @param {Object|String} data The data to be transformed
+   * @param {Array} headers The headers for the request or response
+   * @param {Array|Function} fns A single function or Array of functions
+   * @returns {*} The resulting transformed data
+   */
+  var transformData$1 = function transformData(data, headers, fns) {
+    var context = this || defaults_1$1;
+    /*eslint no-param-reassign:0*/
+    utils$1.forEach(fns, function transform(fn) {
+      data = fn.call(context, data, headers);
+    });
+
+    return data;
+  };
+
+  var isCancel$1 = function isCancel(value) {
+    return !!(value && value.__CANCEL__);
+  };
+
+  /**
    * Throws a `Cancel` if cancellation has been requested.
    */
   function throwIfCancellationRequested$1(config) {
@@ -49814,7 +50348,8 @@
     config.headers = config.headers || {};
 
     // Transform request data
-    config.data = transformData$1(
+    config.data = transformData$1.call(
+      config,
       config.data,
       config.headers,
       config.transformRequest
@@ -49840,7 +50375,8 @@
       throwIfCancellationRequested$1(config);
 
       // Transform response data
-      response.data = transformData$1(
+      response.data = transformData$1.call(
+        config,
         response.data,
         response.headers,
         config.transformResponse
@@ -49853,7 +50389,8 @@
 
         // Transform response data
         if (reason && reason.response) {
-          reason.response.data = transformData$1(
+          reason.response.data = transformData$1.call(
+            config,
             reason.response.data,
             reason.response.headers,
             config.transformResponse
@@ -49949,6 +50486,294 @@
     return config;
   };
 
+  var _from$1 = "axios@^0.21.1";
+  var _id$1 = "axios@0.21.4";
+  var _inBundle$1 = false;
+  var _integrity$1 = "sha512-ut5vewkiu8jjGBdqpM44XxjuCjq9LAKeHVmoVfHVzy8eHgxxq8SbAVQNovDA8mVi05kP0Ea/n/UzcSHcTJQfNg==";
+  var _location$1 = "/axios";
+  var _phantomChildren$1 = {
+  };
+  var _requested$1 = {
+  	type: "range",
+  	registry: true,
+  	raw: "axios@^0.21.1",
+  	name: "axios",
+  	escapedName: "axios",
+  	rawSpec: "^0.21.1",
+  	saveSpec: null,
+  	fetchSpec: "^0.21.1"
+  };
+  var _requiredBy$1 = [
+  	"/",
+  	"/@khronosgroup/gltf-viewer"
+  ];
+  var _resolved$1 = "https://registry.npmjs.org/axios/-/axios-0.21.4.tgz";
+  var _shasum$1 = "c67b90dc0568e5c1cf2b0b858c43ba28e2eda575";
+  var _spec$1 = "axios@^0.21.1";
+  var _where$1 = "/home/runner/work/glTF-Sample-Viewer/glTF-Sample-Viewer/app_web";
+  var author$1 = {
+  	name: "Matt Zabriskie"
+  };
+  var browser$1 = {
+  	"./lib/adapters/http.js": "./lib/adapters/xhr.js"
+  };
+  var bugs$1 = {
+  	url: "https://github.com/axios/axios/issues"
+  };
+  var bundleDependencies$1 = false;
+  var bundlesize$1 = [
+  	{
+  		path: "./dist/axios.min.js",
+  		threshold: "5kB"
+  	}
+  ];
+  var dependencies$1 = {
+  	"follow-redirects": "^1.14.0"
+  };
+  var deprecated$1 = false;
+  var description$1 = "Promise based HTTP client for the browser and node.js";
+  var devDependencies$1 = {
+  	coveralls: "^3.0.0",
+  	"es6-promise": "^4.2.4",
+  	grunt: "^1.3.0",
+  	"grunt-banner": "^0.6.0",
+  	"grunt-cli": "^1.2.0",
+  	"grunt-contrib-clean": "^1.1.0",
+  	"grunt-contrib-watch": "^1.0.0",
+  	"grunt-eslint": "^23.0.0",
+  	"grunt-karma": "^4.0.0",
+  	"grunt-mocha-test": "^0.13.3",
+  	"grunt-ts": "^6.0.0-beta.19",
+  	"grunt-webpack": "^4.0.2",
+  	"istanbul-instrumenter-loader": "^1.0.0",
+  	"jasmine-core": "^2.4.1",
+  	karma: "^6.3.2",
+  	"karma-chrome-launcher": "^3.1.0",
+  	"karma-firefox-launcher": "^2.1.0",
+  	"karma-jasmine": "^1.1.1",
+  	"karma-jasmine-ajax": "^0.1.13",
+  	"karma-safari-launcher": "^1.0.0",
+  	"karma-sauce-launcher": "^4.3.6",
+  	"karma-sinon": "^1.0.5",
+  	"karma-sourcemap-loader": "^0.3.8",
+  	"karma-webpack": "^4.0.2",
+  	"load-grunt-tasks": "^3.5.2",
+  	minimist: "^1.2.0",
+  	mocha: "^8.2.1",
+  	sinon: "^4.5.0",
+  	"terser-webpack-plugin": "^4.2.3",
+  	typescript: "^4.0.5",
+  	"url-search-params": "^0.10.0",
+  	webpack: "^4.44.2",
+  	"webpack-dev-server": "^3.11.0"
+  };
+  var homepage$1 = "https://axios-http.com";
+  var jsdelivr$1 = "dist/axios.min.js";
+  var keywords$1 = [
+  	"xhr",
+  	"http",
+  	"ajax",
+  	"promise",
+  	"node"
+  ];
+  var license$1 = "MIT";
+  var main$1 = "index.js";
+  var name$2 = "axios";
+  var repository$1 = {
+  	type: "git",
+  	url: "git+https://github.com/axios/axios.git"
+  };
+  var scripts$1 = {
+  	build: "NODE_ENV=production grunt build",
+  	coveralls: "cat coverage/lcov.info | ./node_modules/coveralls/bin/coveralls.js",
+  	examples: "node ./examples/server.js",
+  	fix: "eslint --fix lib/**/*.js",
+  	postversion: "git push && git push --tags",
+  	preversion: "npm test",
+  	start: "node ./sandbox/server.js",
+  	test: "grunt test",
+  	version: "npm run build && grunt version && git add -A dist && git add CHANGELOG.md bower.json package.json"
+  };
+  var typings$1 = "./index.d.ts";
+  var unpkg$1 = "dist/axios.min.js";
+  var version$1 = "0.21.4";
+  var _package$2 = {
+  	_from: _from$1,
+  	_id: _id$1,
+  	_inBundle: _inBundle$1,
+  	_integrity: _integrity$1,
+  	_location: _location$1,
+  	_phantomChildren: _phantomChildren$1,
+  	_requested: _requested$1,
+  	_requiredBy: _requiredBy$1,
+  	_resolved: _resolved$1,
+  	_shasum: _shasum$1,
+  	_spec: _spec$1,
+  	_where: _where$1,
+  	author: author$1,
+  	browser: browser$1,
+  	bugs: bugs$1,
+  	bundleDependencies: bundleDependencies$1,
+  	bundlesize: bundlesize$1,
+  	dependencies: dependencies$1,
+  	deprecated: deprecated$1,
+  	description: description$1,
+  	devDependencies: devDependencies$1,
+  	homepage: homepage$1,
+  	jsdelivr: jsdelivr$1,
+  	keywords: keywords$1,
+  	license: license$1,
+  	main: main$1,
+  	name: name$2,
+  	repository: repository$1,
+  	scripts: scripts$1,
+  	typings: typings$1,
+  	unpkg: unpkg$1,
+  	version: version$1
+  };
+
+  var _package$3 = /*#__PURE__*/Object.freeze({
+    __proto__: null,
+    _from: _from$1,
+    _id: _id$1,
+    _inBundle: _inBundle$1,
+    _integrity: _integrity$1,
+    _location: _location$1,
+    _phantomChildren: _phantomChildren$1,
+    _requested: _requested$1,
+    _requiredBy: _requiredBy$1,
+    _resolved: _resolved$1,
+    _shasum: _shasum$1,
+    _spec: _spec$1,
+    _where: _where$1,
+    author: author$1,
+    browser: browser$1,
+    bugs: bugs$1,
+    bundleDependencies: bundleDependencies$1,
+    bundlesize: bundlesize$1,
+    dependencies: dependencies$1,
+    deprecated: deprecated$1,
+    description: description$1,
+    devDependencies: devDependencies$1,
+    homepage: homepage$1,
+    jsdelivr: jsdelivr$1,
+    keywords: keywords$1,
+    license: license$1,
+    main: main$1,
+    name: name$2,
+    repository: repository$1,
+    scripts: scripts$1,
+    typings: typings$1,
+    unpkg: unpkg$1,
+    version: version$1,
+    'default': _package$2
+  });
+
+  var pkg$1 = getCjsExportFromNamespace(_package$3);
+
+  var validators$2 = {};
+
+  // eslint-disable-next-line func-names
+  ['object', 'boolean', 'number', 'function', 'string', 'symbol'].forEach(function(type, i) {
+    validators$2[type] = function validator(thing) {
+      return typeof thing === type || 'a' + (i < 1 ? 'n ' : ' ') + type;
+    };
+  });
+
+  var deprecatedWarnings$1 = {};
+  var currentVerArr$1 = pkg$1.version.split('.');
+
+  /**
+   * Compare package versions
+   * @param {string} version
+   * @param {string?} thanVersion
+   * @returns {boolean}
+   */
+  function isOlderVersion$1(version, thanVersion) {
+    var pkgVersionArr = thanVersion ? thanVersion.split('.') : currentVerArr$1;
+    var destVer = version.split('.');
+    for (var i = 0; i < 3; i++) {
+      if (pkgVersionArr[i] > destVer[i]) {
+        return true;
+      } else if (pkgVersionArr[i] < destVer[i]) {
+        return false;
+      }
+    }
+    return false;
+  }
+
+  /**
+   * Transitional option validator
+   * @param {function|boolean?} validator
+   * @param {string?} version
+   * @param {string} message
+   * @returns {function}
+   */
+  validators$2.transitional = function transitional(validator, version, message) {
+    var isDeprecated = version && isOlderVersion$1(version);
+
+    function formatMessage(opt, desc) {
+      return '[Axios v' + pkg$1.version + '] Transitional option \'' + opt + '\'' + desc + (message ? '. ' + message : '');
+    }
+
+    // eslint-disable-next-line func-names
+    return function(value, opt, opts) {
+      if (validator === false) {
+        throw new Error(formatMessage(opt, ' has been removed in ' + version));
+      }
+
+      if (isDeprecated && !deprecatedWarnings$1[opt]) {
+        deprecatedWarnings$1[opt] = true;
+        // eslint-disable-next-line no-console
+        console.warn(
+          formatMessage(
+            opt,
+            ' has been deprecated since v' + version + ' and will be removed in the near future'
+          )
+        );
+      }
+
+      return validator ? validator(value, opt, opts) : true;
+    };
+  };
+
+  /**
+   * Assert object's properties type
+   * @param {object} options
+   * @param {object} schema
+   * @param {boolean?} allowUnknown
+   */
+
+  function assertOptions$1(options, schema, allowUnknown) {
+    if (typeof options !== 'object') {
+      throw new TypeError('options must be an object');
+    }
+    var keys = Object.keys(options);
+    var i = keys.length;
+    while (i-- > 0) {
+      var opt = keys[i];
+      var validator = schema[opt];
+      if (validator) {
+        var value = options[opt];
+        var result = value === undefined || validator(value, opt, options);
+        if (result !== true) {
+          throw new TypeError('option ' + opt + ' must be ' + result);
+        }
+        continue;
+      }
+      if (allowUnknown !== true) {
+        throw Error('Unknown option ' + opt);
+      }
+    }
+  }
+
+  var validator$1 = {
+    isOlderVersion: isOlderVersion$1,
+    assertOptions: assertOptions$1,
+    validators: validators$2
+  };
+
+  var validators$3 = validator$1.validators;
   /**
    * Create a new instance of Axios
    *
@@ -49988,20 +50813,71 @@
       config.method = 'get';
     }
 
-    // Hook up interceptors middleware
-    var chain = [dispatchRequest$1, undefined];
-    var promise = Promise.resolve(config);
+    var transitional = config.transitional;
 
+    if (transitional !== undefined) {
+      validator$1.assertOptions(transitional, {
+        silentJSONParsing: validators$3.transitional(validators$3.boolean, '1.0.0'),
+        forcedJSONParsing: validators$3.transitional(validators$3.boolean, '1.0.0'),
+        clarifyTimeoutError: validators$3.transitional(validators$3.boolean, '1.0.0')
+      }, false);
+    }
+
+    // filter out skipped interceptors
+    var requestInterceptorChain = [];
+    var synchronousRequestInterceptors = true;
     this.interceptors.request.forEach(function unshiftRequestInterceptors(interceptor) {
-      chain.unshift(interceptor.fulfilled, interceptor.rejected);
+      if (typeof interceptor.runWhen === 'function' && interceptor.runWhen(config) === false) {
+        return;
+      }
+
+      synchronousRequestInterceptors = synchronousRequestInterceptors && interceptor.synchronous;
+
+      requestInterceptorChain.unshift(interceptor.fulfilled, interceptor.rejected);
     });
 
+    var responseInterceptorChain = [];
     this.interceptors.response.forEach(function pushResponseInterceptors(interceptor) {
-      chain.push(interceptor.fulfilled, interceptor.rejected);
+      responseInterceptorChain.push(interceptor.fulfilled, interceptor.rejected);
     });
 
-    while (chain.length) {
-      promise = promise.then(chain.shift(), chain.shift());
+    var promise;
+
+    if (!synchronousRequestInterceptors) {
+      var chain = [dispatchRequest$1, undefined];
+
+      Array.prototype.unshift.apply(chain, requestInterceptorChain);
+      chain = chain.concat(responseInterceptorChain);
+
+      promise = Promise.resolve(config);
+      while (chain.length) {
+        promise = promise.then(chain.shift(), chain.shift());
+      }
+
+      return promise;
+    }
+
+
+    var newConfig = config;
+    while (requestInterceptorChain.length) {
+      var onFulfilled = requestInterceptorChain.shift();
+      var onRejected = requestInterceptorChain.shift();
+      try {
+        newConfig = onFulfilled(newConfig);
+      } catch (error) {
+        onRejected(error);
+        break;
+      }
+    }
+
+    try {
+      promise = dispatchRequest$1(newConfig);
+    } catch (error) {
+      return Promise.reject(error);
+    }
+
+    while (responseInterceptorChain.length) {
+      promise = promise.then(responseInterceptorChain.shift(), responseInterceptorChain.shift());
     }
 
     return promise;
@@ -50512,7 +51388,7 @@
       return environmentNames;
   }
 
-  async function main()
+  async function main$2()
   {
       const canvas = document.getElementById("canvas");
       const context = canvas.getContext("webgl2", { alpha: false, antialias: true });
@@ -50533,8 +51409,9 @@
           "helipad": "Helipad Goldenhour",
           "papermill": "Papermill Ruins",
           "neutral": "Studio Neutral",
-          "chromatic": "Studio Chromatic",
-          "directional": "Studio Directional",
+          "Cannon_Exterior": "Cannon Exterior",
+          "Colorful_Studio": "Colorful Studio",
+          "Wide_Street" : "Wide Street",
       }, "assets/environments/");
 
       const uiModel = new UIModel(app, pathProvider, environmentPaths);
@@ -50811,7 +51688,7 @@
       window.requestAnimationFrame(update);
   }
 
-  exports.main = main;
+  exports.main = main$2;
 
   Object.defineProperty(exports, '__esModule', { value: true });
 
