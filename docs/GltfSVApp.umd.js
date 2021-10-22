@@ -22099,16 +22099,34 @@
 
           this.app.models = this.pathProvider.getAllKeys();
 
-          const dropdownGltfChanged = app.modelChanged$.pipe(
-              pluck("event", "msg"),
-              startWith("DamagedHelmet"),
-              map(value => {
-                  app.flavours = this.pathProvider.getModelFlavours(value);
-                  app.selectedFlavour = "glTF";
-                  return this.pathProvider.resolve(value, app.selectedFlavour);
-              }),
-              map( value => ({mainFile: value, additionalFiles: undefined})),
-          );
+          const queryString = window.location.search;
+          const urlParams = new URLSearchParams(queryString);
+          const modelURL = urlParams.get("model");
+
+          let dropdownGltfChanged = undefined;
+          if (modelURL === null)
+          {
+              dropdownGltfChanged = app.modelChanged$.pipe(
+                  pluck("event", "msg"),
+                  startWith("DamagedHelmet"),
+                  map(value => {
+                      app.flavours = this.pathProvider.getModelFlavours(value);
+                      app.selectedFlavour = "glTF";
+                      return this.pathProvider.resolve(value, app.selectedFlavour);
+                  }),
+                  map( value => ({mainFile: value, additionalFiles: undefined})),
+              );
+          } else {
+              dropdownGltfChanged = app.modelChanged$.pipe(
+                  pluck("event", "msg"),
+                  map(value => {
+                      app.flavours = this.pathProvider.getModelFlavours(value);
+                      app.selectedFlavour = "glTF";
+                      return this.pathProvider.resolve(value, app.selectedFlavour);
+                  }),
+                  map( value => ({mainFile: value, additionalFiles: undefined})),
+              );
+          }       
 
           const dropdownFlavourChanged = app.flavourChanged$.pipe(
               pluck("event", "msg"),
@@ -22219,11 +22237,18 @@
               }
           });
 
-          const dropedGLtfFileName = inputObservables.gltfDropped.pipe(
+          let dropedGLtfFileName = inputObservables.gltfDropped.pipe(
               map( (data) => {
                   return data.mainFile.name;
               })
           );
+
+          if (modelURL !== null){
+              let loadFromUrlObservable = new Observable(subscriber => { subscriber.next({mainFile: modelURL, additionalFiles: undefined});});
+              dropedGLtfFileName = merge$1(dropedGLtfFileName, loadFromUrlObservable.pipe(map((data) => {return data.mainFile;} )));
+              this.model = merge$1(this.model, loadFromUrlObservable);
+          }
+
           dropedGLtfFileName.subscribe( (filename) => {
               if(filename !== undefined)
               {
@@ -49035,7 +49060,7 @@
 
               activeTab: 0,
               tabsHidden: false,
-              loadingComponent: {},
+              loadingComponent: undefined,
               showDropDownOverlay: false,
               uploadedHDR: undefined,
               uiVisible: true,
@@ -49143,7 +49168,7 @@
               });
           },
           goToLoadingState() {
-              if(this.loadingComponent === undefined)
+              if(this.loadingComponent !== undefined)
               {
                   return;
               }
@@ -49158,6 +49183,7 @@
                   return;
               }
               this.loadingComponent.close();
+              this.loadingComponent = undefined;
           },
           onFileChange(e) {
               const file = e.target.files[0];
