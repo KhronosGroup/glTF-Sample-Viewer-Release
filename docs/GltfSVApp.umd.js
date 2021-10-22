@@ -2370,7 +2370,9 @@
                */
               environmentRotation: 90.0,
               /** If this is set to true, directional lights will be generated if IBL is disabled */
-              useDirectionalLightsWithDisabledIBL: false
+              useDirectionalLightsWithDisabledIBL: false,
+              /** MSAA used for cases which are not handled by the browser (e.g. Transmission)*/
+              internalMSAA: 4
           };
 
           // retain a reference to the view with which the state was created, so that it can be validated
@@ -3301,6 +3303,8 @@
           this.currentHeight = 0;
 
           this.webGl = new gltfWebGl(context);
+          this.initialized = false;
+          this.samples = 4;
 
           // create render target for non transmission materials
           this.opaqueRenderTexture = 0;
@@ -3357,10 +3361,6 @@
           this.lightFill.direction = create$2();
           transformQuat(this.lightKey.direction, [0, 0, -1], quatKey);
           transformQuat(this.lightFill.direction, [0, 0, -1], quatFill);
-
-          this.init();
-
-          this.environmentRenderer = new EnvironmentRenderer(this.webGl);
       }
 
       /////////////////////////////////////////////////////////////////////
@@ -3368,56 +3368,108 @@
       /////////////////////////////////////////////////////////////////////
 
       // app state
-      init()
+      init(state)
       {
           const context = this.webGl.context;
-          context.pixelStorei(GL.UNPACK_COLORSPACE_CONVERSION_WEBGL, GL.NONE);
-          context.enable(GL.DEPTH_TEST);
-          context.depthFunc(GL.LEQUAL);
-          context.colorMask(true, true, true, true);
-          context.clearDepth(1.0);
+          const maxSamples = context.getParameter(context.MAX_SAMPLES);
+          const samples = state.internalMSAA < maxSamples ? state.internalMSAA : maxSamples;
+          if (!this.initialized){
 
-          this.opaqueRenderTexture = context.createTexture();
-          context.bindTexture(context.TEXTURE_2D, this.opaqueRenderTexture);
-          context.texParameteri(context.TEXTURE_2D, context.TEXTURE_MIN_FILTER, context.LINEAR_MIPMAP_LINEAR);
-          context.texParameteri(context.TEXTURE_2D, context.TEXTURE_WRAP_S, context.CLAMP_TO_EDGE);
-          context.texParameteri(context.TEXTURE_2D, context.TEXTURE_WRAP_T, context.CLAMP_TO_EDGE);
-          context.texParameteri(context.TEXTURE_2D, context.TEXTURE_MAG_FILTER, context.NEAREST);
-          context.texImage2D( context.TEXTURE_2D,
-                              0,
-                              context.RGBA,
-                              this.opaqueFramebufferWidth,
-                              this.opaqueFramebufferHeight,
-                              0,
-                              context.RGBA,
-                              context.UNSIGNED_BYTE,
-                              null);
-          context.bindTexture(context.TEXTURE_2D, null);
+              context.pixelStorei(GL.UNPACK_COLORSPACE_CONVERSION_WEBGL, GL.NONE);
+              context.enable(GL.DEPTH_TEST);
+              context.depthFunc(GL.LEQUAL);
+              context.colorMask(true, true, true, true);
+              context.clearDepth(1.0);
 
-          this.opaqueDepthTexture = context.createTexture();
-          context.bindTexture(context.TEXTURE_2D, this.opaqueDepthTexture);
-          context.texParameteri(context.TEXTURE_2D, context.TEXTURE_MIN_FILTER, context.NEAREST);
-          context.texParameteri(context.TEXTURE_2D, context.TEXTURE_WRAP_S, context.CLAMP_TO_EDGE);
-          context.texParameteri(context.TEXTURE_2D, context.TEXTURE_WRAP_T, context.CLAMP_TO_EDGE);
-          context.texParameteri(context.TEXTURE_2D, context.TEXTURE_MAG_FILTER, context.NEAREST);
-          context.texImage2D( context.TEXTURE_2D,
-                              0,
-                              context.DEPTH_COMPONENT16,
-                              this.opaqueFramebufferWidth,
-                              this.opaqueFramebufferHeight,
-                              0,
-                              context.DEPTH_COMPONENT,
-                              context.UNSIGNED_SHORT,
-                              null);
-          context.bindTexture(context.TEXTURE_2D, null);
+              this.opaqueRenderTexture = context.createTexture();
+              context.bindTexture(context.TEXTURE_2D, this.opaqueRenderTexture);
+              context.texParameteri(context.TEXTURE_2D, context.TEXTURE_MIN_FILTER, context.LINEAR_MIPMAP_LINEAR);
+              context.texParameteri(context.TEXTURE_2D, context.TEXTURE_WRAP_S, context.CLAMP_TO_EDGE);
+              context.texParameteri(context.TEXTURE_2D, context.TEXTURE_WRAP_T, context.CLAMP_TO_EDGE);
+              context.texParameteri(context.TEXTURE_2D, context.TEXTURE_MAG_FILTER, context.NEAREST);
+              context.texImage2D( context.TEXTURE_2D,
+                                  0,
+                                  context.RGBA,
+                                  this.opaqueFramebufferWidth,
+                                  this.opaqueFramebufferHeight,
+                                  0,
+                                  context.RGBA,
+                                  context.UNSIGNED_BYTE,
+                                  null);
+              context.bindTexture(context.TEXTURE_2D, null);
 
-          this.opaqueFramebuffer = context.createFramebuffer();
-          context.bindFramebuffer(context.FRAMEBUFFER, this.opaqueFramebuffer);
-          context.framebufferTexture2D(context.FRAMEBUFFER, context.COLOR_ATTACHMENT0, context.TEXTURE_2D, this.opaqueRenderTexture, 0);
-          context.framebufferTexture2D(context.FRAMEBUFFER, context.DEPTH_ATTACHMENT, context.TEXTURE_2D, this.opaqueDepthTexture, 0);
-          context.viewport(0, 0, this.currentWidth, this.currentHeight);
-          context.bindFramebuffer(context.FRAMEBUFFER, null);
+              this.opaqueDepthTexture = context.createTexture();
+              context.bindTexture(context.TEXTURE_2D, this.opaqueDepthTexture);
+              context.texParameteri(context.TEXTURE_2D, context.TEXTURE_MIN_FILTER, context.NEAREST);
+              context.texParameteri(context.TEXTURE_2D, context.TEXTURE_WRAP_S, context.CLAMP_TO_EDGE);
+              context.texParameteri(context.TEXTURE_2D, context.TEXTURE_WRAP_T, context.CLAMP_TO_EDGE);
+              context.texParameteri(context.TEXTURE_2D, context.TEXTURE_MAG_FILTER, context.NEAREST);
+              context.texImage2D( context.TEXTURE_2D,
+                                  0,
+                                  context.DEPTH_COMPONENT16,
+                                  this.opaqueFramebufferWidth,
+                                  this.opaqueFramebufferHeight,
+                                  0,
+                                  context.DEPTH_COMPONENT,
+                                  context.UNSIGNED_SHORT,
+                                  null);
+              context.bindTexture(context.TEXTURE_2D, null);
 
+
+              this.colorRenderBuffer = context.createRenderbuffer();
+              context.bindRenderbuffer(context.RENDERBUFFER, this.colorRenderBuffer);
+              context.renderbufferStorageMultisample( context.RENDERBUFFER,
+                                                      samples,
+                                                      context.RGBA8, 
+                                                      this.opaqueFramebufferWidth,
+                                                      this.opaqueFramebufferHeight);
+
+              this.depthRenderBuffer = context.createRenderbuffer();
+              context.bindRenderbuffer(context.RENDERBUFFER, this.depthRenderBuffer);
+              context.renderbufferStorageMultisample( context.RENDERBUFFER,
+                  samples,
+                  context.DEPTH_COMPONENT16, 
+                  this.opaqueFramebufferWidth,
+                  this.opaqueFramebufferHeight);
+
+              this.samples = samples;
+
+              this.opaqueFramebufferMSAA = context.createFramebuffer();
+              context.bindFramebuffer(context.FRAMEBUFFER, this.opaqueFramebufferMSAA);
+              context.framebufferRenderbuffer(context.FRAMEBUFFER, context.COLOR_ATTACHMENT0, context.RENDERBUFFER, this.colorRenderBuffer);
+              context.framebufferRenderbuffer(context.FRAMEBUFFER, context.DEPTH_ATTACHMENT, context.RENDERBUFFER, this.depthRenderBuffer);
+
+
+              this.opaqueFramebuffer = context.createFramebuffer();
+              context.bindFramebuffer(context.FRAMEBUFFER, this.opaqueFramebuffer);
+              context.framebufferTexture2D(context.FRAMEBUFFER, context.COLOR_ATTACHMENT0, context.TEXTURE_2D, this.opaqueRenderTexture, 0);
+              context.framebufferTexture2D(context.FRAMEBUFFER, context.DEPTH_ATTACHMENT, context.TEXTURE_2D, this.opaqueDepthTexture, 0);
+              context.viewport(0, 0, this.opaqueFramebufferWidth, this.opaqueFramebufferHeight);
+              context.bindFramebuffer(context.FRAMEBUFFER, null);
+
+              this.initialized = true;
+
+              this.environmentRenderer = new EnvironmentRenderer(this.webGl);
+          }
+          else {
+              if (this.samples != samples)
+              {
+                  this.samples = samples;
+                  context.bindRenderbuffer(context.RENDERBUFFER, this.colorRenderBuffer);
+                  context.renderbufferStorageMultisample( context.RENDERBUFFER,
+                      samples,
+                      context.RGBA8, 
+                      this.opaqueFramebufferWidth,
+                      this.opaqueFramebufferHeight);
+                  
+                  context.bindRenderbuffer(context.RENDERBUFFER, this.depthRenderBuffer);
+                  context.renderbufferStorageMultisample( context.RENDERBUFFER,
+                      samples,
+                      context.DEPTH_COMPONENT16, 
+                      this.opaqueFramebufferWidth,
+                      this.opaqueFramebufferHeight);
+              }
+          }
       }
 
       resize(width, height)
@@ -3437,6 +3489,10 @@
           this.webGl.context.clearColor(clearColor[0] / 255.0, clearColor[1] / 255.0, clearColor[2] / 255.0, clearColor[3] / 255.0);
           this.webGl.context.clear(GL.COLOR_BUFFER_BIT | GL.DEPTH_BUFFER_BIT);
           this.webGl.context.bindFramebuffer(this.webGl.context.FRAMEBUFFER, this.opaqueFramebuffer);
+          this.webGl.context.clearColor(clearColor[0] / 255.0, clearColor[1] / 255.0, clearColor[2] / 255.0, clearColor[3] / 255.0);
+          this.webGl.context.clear(GL.COLOR_BUFFER_BIT | GL.DEPTH_BUFFER_BIT);
+          this.webGl.context.bindFramebuffer(this.webGl.context.FRAMEBUFFER, null);
+          this.webGl.context.bindFramebuffer(this.webGl.context.FRAMEBUFFER, this.opaqueFramebufferMSAA);
           this.webGl.context.clearColor(clearColor[0] / 255.0, clearColor[1] / 255.0, clearColor[2] / 255.0, clearColor[3] / 255.0);
           this.webGl.context.clear(GL.COLOR_BUFFER_BIT | GL.DEPTH_BUFFER_BIT);
           this.webGl.context.bindFramebuffer(this.webGl.context.FRAMEBUFFER, null);
@@ -3506,7 +3562,7 @@
           transparentDrawables = currentCamera.sortPrimitivesByDepth(state.gltf, transparentDrawables);
 
           // Render transmission sample texture
-          this.webGl.context.bindFramebuffer(this.webGl.context.FRAMEBUFFER, this.opaqueFramebuffer);
+          this.webGl.context.bindFramebuffer(this.webGl.context.FRAMEBUFFER, this.opaqueFramebufferMSAA);
           this.webGl.context.viewport(0, 0, this.opaqueFramebufferWidth, this.opaqueFramebufferHeight);
 
           // Render environment for the transmission background
@@ -3525,11 +3581,21 @@
               this.drawPrimitive(state, renderpassConfiguration, drawable.primitive, drawable.node, this.viewProjectionMatrix);
           }
 
+          // "blit" the multisampled opaque texture into the color buffer, which adds antialiasing
+          this.webGl.context.bindFramebuffer(this.webGl.context.READ_FRAMEBUFFER, this.opaqueFramebufferMSAA);
+          this.webGl.context.bindFramebuffer(this.webGl.context.DRAW_FRAMEBUFFER, this.opaqueFramebuffer);
+          this.webGl.context.blitFramebuffer(0, 0, this.opaqueFramebufferWidth, this.opaqueFramebufferHeight,
+                              0, 0, this.opaqueFramebufferWidth, this.opaqueFramebufferHeight,
+                              this.webGl.context.COLOR_BUFFER_BIT, this.webGl.context.NEAREST);
+
+          this.webGl.context.bindFramebuffer(this.webGl.context.FRAMEBUFFER, null);
+
           //Reset Viewport
           this.webGl.context.viewport(0, 0,  this.currentWidth, this.currentHeight);
 
           //Create Framebuffer Mipmaps
           this.webGl.context.bindTexture(this.webGl.context.TEXTURE_2D, this.opaqueRenderTexture);
+
           this.webGl.context.generateMipmap(this.webGl.context.TEXTURE_2D);
 
           // Render to canvas
@@ -19575,6 +19641,7 @@
        */
       renderFrame(state, width, height)
       {
+          this.renderer.init(state);
           this._animate(state);
 
           this.renderer.resize(width, height);
