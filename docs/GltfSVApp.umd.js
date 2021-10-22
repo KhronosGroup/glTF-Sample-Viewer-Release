@@ -50599,8 +50599,7 @@
   	fetchSpec: "^0.21.1"
   };
   var _requiredBy$1 = [
-  	"/",
-  	"/@khronosgroup/gltf-viewer"
+  	"/"
   ];
   var _resolved$1 = "https://registry.npmjs.org/axios/-/axios-0.21.4.tgz";
   var _shasum$1 = "c67b90dc0568e5c1cf2b0b858c43ba28e2eda575";
