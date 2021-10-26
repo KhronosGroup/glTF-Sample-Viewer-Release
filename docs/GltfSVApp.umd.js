@@ -17681,11 +17681,16 @@
       {
           if(this.transform === undefined || this.changed)
           {
-              this.transform = create$1();
-              const translation = this.animationTranslation !== undefined ? this.animationTranslation : this.translation;
-              const rotation = this.animationRotation !== undefined ? this.animationRotation : this.rotation;
-              const scale = this.animationScale !== undefined ? this.animationScale : this.scale;
-              fromRotationTranslationScale(this.transform, rotation, translation, scale);
+              // if no animation is applied and the transform matrix is present use it directly
+              if(this.animationTranslation === undefined && this.animationRotation === undefined && this.animationScale === undefined && this.matrix !== undefined) {
+                  this.transform = clone(this.matrix);
+              } else {
+                  this.transform = create$1();
+                  const translation = this.animationTranslation !== undefined ? this.animationTranslation : this.translation;
+                  const rotation = this.animationRotation !== undefined ? this.animationRotation : this.rotation;
+                  const scale = this.animationScale !== undefined ? this.animationScale : this.scale;
+                  fromRotationTranslationScale(this.transform, rotation, translation, scale);
+              }
               this.changed = false;
           }
 
