@@ -9196,11 +9196,12 @@ a.has-text-danger-dark:hover, a.has-text-danger-dark:focus {
   display: none;
   justify-content: center;
   overflow: hidden;
-  z-index: 999; }
+  z-index: 29; }
   .loading-overlay.is-active {
     display: flex; }
   .loading-overlay.is-full-page {
-    position: fixed; }
+    position: fixed;
+    z-index: 999; }
     .loading-overlay.is-full-page .loading-icon:after {
       top: calc(50% - 2.5em);
       left: calc(50% - 2.5em);
@@ -9243,6 +9244,10 @@ a.has-text-danger-dark:hover, a.has-text-danger-dark:focus {
 .notification .media {
   padding-top: 0;
   border: 0; }
+
+.message progress,
+.notification progress {
+  height: 5px; }
 
 .modal.is-full-screen > .animation-content,
 .modal.is-full-screen > .animation-content > .modal-card {
@@ -9428,6 +9433,12 @@ a.has-text-danger-dark:hover, a.has-text-danger-dark:focus {
       padding: 0;
       position: fixed !important; } }
 
+.notification .progress-wrapper {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  width: 100%; }
+
 .b-numberinput.field {
   margin-bottom: 0; }
   .b-numberinput.field.is-grouped div.control {
@@ -9522,6 +9533,8 @@ a.has-text-danger-dark:hover, a.has-text-danger-dark:focus {
       color: rgba(0, 0, 0, 0.7); }
     .progress-wrapper .progress.is-more-than-half.is-danger + .progress-value, .progress-wrapper .is-more-than-half.is-danger.progress-wrapper.is-not-native + .progress-value, .progress-wrapper .progress-bar.is-more-than-half.is-danger + .progress-value {
       color: #fff; }
+    .progress-wrapper .progress.is-squared, .progress-wrapper .is-squared.progress-wrapper.is-not-native, .progress-wrapper .progress-bar.is-squared {
+      border-radius: 0; }
   .progress-wrapper.is-not-native {
     white-space: nowrap;
     background-color: #ededed;
@@ -9574,6 +9587,8 @@ a.has-text-danger-dark:hover, a.has-text-danger-dark:focus {
         background-color: #f14668; }
         .progress-wrapper.is-not-native .progress-bar.is-danger .progress-value {
           color: #fff; }
+  .progress-wrapper.is-squared {
+    border-radius: 0; }
 
 .b-radio.radio {
   outline: none;
