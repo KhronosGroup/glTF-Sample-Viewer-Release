@@ -3498,9 +3498,43 @@
           this.webGl.context.bindFramebuffer(this.webGl.context.FRAMEBUFFER, null);
       }
 
+      prepareScene(state, scene) {
+          this.nodes = scene.gatherNodes(state.gltf);
+
+          // collect drawables by essentially zipping primitives (for geometry and material)
+          // and nodes for the transform
+          const drawables = this.nodes
+              .filter(node => node.mesh !== undefined)
+              .reduce((acc, node) => acc.concat(state.gltf.meshes[node.mesh].primitives.map( primitive => {
+                  return  {node: node, primitive: primitive};
+              })), [])
+              .filter(({node, primitive}) => primitive.material !== undefined);
+
+          // opaque drawables don't need sorting
+          this.opaqueDrawables = drawables
+              .filter(({node, primitive}) => state.gltf.materials[primitive.material].alphaMode !== "BLEND"
+                  && (state.gltf.materials[primitive.material].extensions === undefined
+                      || state.gltf.materials[primitive.material].extensions.KHR_materials_transmission === undefined));
+
+          // transparent drawables need sorting before they can be drawn
+          this.transparentDrawables = drawables
+              .filter(({node, primitive}) => state.gltf.materials[primitive.material].alphaMode === "BLEND"
+                  && (state.gltf.materials[primitive.material].extensions === undefined
+                      || state.gltf.materials[primitive.material].extensions.KHR_materials_transmission === undefined));
+
+          this.transmissionDrawables = drawables
+              .filter(({node, primitive}) => state.gltf.materials[primitive.material].extensions !== undefined
+                  && state.gltf.materials[primitive.material].extensions.KHR_materials_transmission !== undefined);
+      }
+
       // render complete gltf scene with given camera
       drawScene(state, scene)
       {
+          if (this.preparedScene !== scene) {
+              this.prepareScene(state, scene);
+              this.preparedScene = scene;
+          }
+
           let currentCamera = undefined;
 
           if (state.cameraIndex === undefined)
@@ -3528,10 +3562,8 @@
 
           multiply$1(this.viewProjectionMatrix, this.projMatrix, this.viewMatrix);
 
-          const nodes = scene.gatherNodes(state.gltf);
-
           // Update skins.
-          for (const node of nodes)
+          for (const node of this.nodes)
           {
               if (node.mesh !== undefined && node.skin !== undefined)
               {
@@ -3539,64 +3571,42 @@
               }
           }
 
-          // collect drawables by essentially zipping primitives (for geometry and material)
-          // and nodes for the transform
-          const drawables = nodes
-              .filter(node => node.mesh !== undefined)
-              .reduce((acc, node) => acc.concat(state.gltf.meshes[node.mesh].primitives.map( primitive => {
-                  return  {node: node, primitive: primitive};
-              })), [])
-              .filter(({node, primitive}) => primitive.material !== undefined);
+          // If any transmissive drawables are present, render all opaque and transparent drawables into a separate framebuffer.
+          if (this.transmissionDrawables.length > 0) {
+              // Render transmission sample texture
+              this.webGl.context.bindFramebuffer(this.webGl.context.FRAMEBUFFER, this.opaqueFramebufferMSAA);
+              this.webGl.context.viewport(0, 0, this.opaqueFramebufferWidth, this.opaqueFramebufferHeight);
 
-          // opaque drawables don't need sorting
-          const opaqueDrawables = drawables
-              .filter(({node, primitive}) => state.gltf.materials[primitive.material].alphaMode !== "BLEND"
-                  && (state.gltf.materials[primitive.material].extensions === undefined
-                      || state.gltf.materials[primitive.material].extensions.KHR_materials_transmission === undefined));
+              // Render environment for the transmission background
+              this.environmentRenderer.drawEnvironmentMap(this.webGl, this.viewProjectionMatrix, state, this.shaderCache, ["LINEAR_OUTPUT 1"]);
 
-          // transparent drawables need sorting before they can be drawn
-          let transparentDrawables = drawables
-              .filter(({node, primitive}) => state.gltf.materials[primitive.material].alphaMode === "BLEND"
-                  && (state.gltf.materials[primitive.material].extensions === undefined
-                      || state.gltf.materials[primitive.material].extensions.KHR_materials_transmission === undefined));
-          transparentDrawables = currentCamera.sortPrimitivesByDepth(state.gltf, transparentDrawables);
+              for (const drawable of this.opaqueDrawables)
+              {
+                  var renderpassConfiguration = {};
+                  renderpassConfiguration.linearOutput = true;
+                  this.drawPrimitive(state, renderpassConfiguration, drawable.primitive, drawable.node, this.viewProjectionMatrix);
+              }
 
-          // Render transmission sample texture
-          this.webGl.context.bindFramebuffer(this.webGl.context.FRAMEBUFFER, this.opaqueFramebufferMSAA);
-          this.webGl.context.viewport(0, 0, this.opaqueFramebufferWidth, this.opaqueFramebufferHeight);
+              this.transparentDrawables = currentCamera.sortPrimitivesByDepth(state.gltf, this.transparentDrawables);
+              for (const drawable of this.transparentDrawables)
+              {
+                  var renderpassConfiguration = {};
+                  renderpassConfiguration.linearOutput = true;
+                  this.drawPrimitive(state, renderpassConfiguration, drawable.primitive, drawable.node, this.viewProjectionMatrix);
+              }
 
-          // Render environment for the transmission background
-          this.environmentRenderer.drawEnvironmentMap(this.webGl, this.viewProjectionMatrix, state, this.shaderCache, ["LINEAR_OUTPUT 1"]);
+              // "blit" the multisampled opaque texture into the color buffer, which adds antialiasing
+              this.webGl.context.bindFramebuffer(this.webGl.context.READ_FRAMEBUFFER, this.opaqueFramebufferMSAA);
+              this.webGl.context.bindFramebuffer(this.webGl.context.DRAW_FRAMEBUFFER, this.opaqueFramebuffer);
+              this.webGl.context.blitFramebuffer(0, 0, this.opaqueFramebufferWidth, this.opaqueFramebufferHeight,
+                                  0, 0, this.opaqueFramebufferWidth, this.opaqueFramebufferHeight,
+                                  this.webGl.context.COLOR_BUFFER_BIT, this.webGl.context.NEAREST);
 
-          for (const drawable of opaqueDrawables)
-          {
-              var renderpassConfiguration = {};
-              renderpassConfiguration.linearOutput = true;
-              this.drawPrimitive(state, renderpassConfiguration, drawable.primitive, drawable.node, this.viewProjectionMatrix);
+              // Create Framebuffer Mipmaps
+              this.webGl.context.bindTexture(this.webGl.context.TEXTURE_2D, this.opaqueRenderTexture);
+
+              this.webGl.context.generateMipmap(this.webGl.context.TEXTURE_2D);
           }
-          for (const drawable of transparentDrawables)
-          {
-              var renderpassConfiguration = {};
-              renderpassConfiguration.linearOutput = true;
-              this.drawPrimitive(state, renderpassConfiguration, drawable.primitive, drawable.node, this.viewProjectionMatrix);
-          }
-
-          // "blit" the multisampled opaque texture into the color buffer, which adds antialiasing
-          this.webGl.context.bindFramebuffer(this.webGl.context.READ_FRAMEBUFFER, this.opaqueFramebufferMSAA);
-          this.webGl.context.bindFramebuffer(this.webGl.context.DRAW_FRAMEBUFFER, this.opaqueFramebuffer);
-          this.webGl.context.blitFramebuffer(0, 0, this.opaqueFramebufferWidth, this.opaqueFramebufferHeight,
-                              0, 0, this.opaqueFramebufferWidth, this.opaqueFramebufferHeight,
-                              this.webGl.context.COLOR_BUFFER_BIT, this.webGl.context.NEAREST);
-
-          this.webGl.context.bindFramebuffer(this.webGl.context.FRAMEBUFFER, null);
-
-          //Reset Viewport
-          this.webGl.context.viewport(0, 0,  this.currentWidth, this.currentHeight);
-
-          //Create Framebuffer Mipmaps
-          this.webGl.context.bindTexture(this.webGl.context.TEXTURE_2D, this.opaqueRenderTexture);
-
-          this.webGl.context.generateMipmap(this.webGl.context.TEXTURE_2D);
 
           // Render to canvas
           this.webGl.context.bindFramebuffer(this.webGl.context.FRAMEBUFFER, null);
@@ -3607,7 +3617,7 @@
           this.pushFragParameterDefines(fragDefines, state);
           this.environmentRenderer.drawEnvironmentMap(this.webGl, this.viewProjectionMatrix, state, this.shaderCache, fragDefines);
 
-          for (const drawable of opaqueDrawables)
+          for (const drawable of this.opaqueDrawables)
           {  
               var renderpassConfiguration = {};
               renderpassConfiguration.linearOutput = false;
@@ -3615,18 +3625,15 @@
           }
 
           // filter materials with transmission extension
-          let transmissionDrawables = drawables
-              .filter(({node, primitive}) => state.gltf.materials[primitive.material].extensions !== undefined
-                  && state.gltf.materials[primitive.material].extensions.KHR_materials_transmission !== undefined);
-          transmissionDrawables = currentCamera.sortPrimitivesByDepth(state.gltf, transmissionDrawables);
-          for (const drawable of transmissionDrawables)
+          this.transmissionDrawables = currentCamera.sortPrimitivesByDepth(state.gltf, this.transmissionDrawables);
+          for (const drawable of this.transmissionDrawables)
           {
               var renderpassConfiguration = {};
               renderpassConfiguration.linearOutput = false;
               this.drawPrimitive(state, renderpassConfiguration, drawable.primitive, drawable.node, this.viewProjectionMatrix, this.opaqueRenderTexture);
           }
 
-          for (const drawable of transparentDrawables)
+          for (const drawable of this.transparentDrawables)
           {
               var renderpassConfiguration = {};
               renderpassConfiguration.linearOutput = false;
@@ -3666,11 +3673,11 @@
 
           let fragDefines = material.getDefines(state.renderingParameters).concat(vertDefines);
           if(renderpassConfiguration.linearOutput === true)
-          { 
+          {
              fragDefines.push("LINEAR_OUTPUT 1");
           }
           this.pushFragParameterDefines(fragDefines, state);
-
+          
           const fragmentHash = this.shaderCache.selectShader(material.getShaderIdentifier(), fragDefines);
           const vertexHash = this.shaderCache.selectShader(primitive.getShaderIdentifier(), vertDefines);
 
@@ -3800,7 +3807,6 @@
               this.webGl.context.uniformMatrix4fv(this.shader.getUniformLocation("u_ModelMatrix"),false, node.worldTransform);
               this.webGl.context.uniformMatrix4fv(this.shader.getUniformLocation("u_ViewMatrix"),false, this.viewMatrix);
               this.webGl.context.uniformMatrix4fv(this.shader.getUniformLocation("u_ProjectionMatrix"),false, this.projMatrix);
-
           }
 
           if (drawIndexed)
@@ -33701,8 +33707,7 @@
     }
 
     var dtf = new Intl.DateTimeFormat(locale, {
-      month: format,
-      timeZone: 'UTC'
+      month: format
     });
     return dates.map(function (d) {
       return dtf.format(d);
@@ -35671,6 +35676,312 @@
   });
 
   var script$5 = {
+    name: 'BImage',
+    props: {
+      src: String,
+      alt: String,
+      srcFallback: String,
+      webpFallback: {
+        type: String,
+        default: function _default() {
+          return config$2.defaultImageWebpFallback;
+        }
+      },
+      lazy: {
+        type: Boolean,
+        default: function _default() {
+          return config$2.defaultImageLazy;
+        }
+      },
+      responsive: {
+        type: Boolean,
+        default: function _default() {
+          return config$2.defaultImageResponsive;
+        }
+      },
+      ratio: {
+        type: String,
+        default: function _default() {
+          return config$2.defaultImageRatio;
+        }
+      },
+      placeholder: String,
+      srcset: String,
+      srcsetSizes: Array,
+      srcsetFormatter: {
+        type: Function,
+        default: function _default(src, size, vm) {
+          if (typeof config$2.defaultImageSrcsetFormatter === 'function') {
+            return config$2.defaultImageSrcsetFormatter(src, size);
+          } else {
+            return vm.formatSrcset(src, size);
+          }
+        }
+      },
+      rounded: {
+        type: Boolean,
+        default: false
+      },
+      captionFirst: {
+        type: Boolean,
+        default: false
+      },
+      customClass: String
+    },
+    data: function data() {
+      return {
+        clientWidth: 0,
+        webpSupportVerified: false,
+        webpSupported: false,
+        useNativeLazy: false,
+        observer: null,
+        inViewPort: false,
+        bulmaKnownRatio: ['square', '1by1', '5by4', '4by3', '3by2', '5by3', '16by9', 'b2y1', '3by1', '4by5', '3by4', '2by3', '3by5', '9by16', '1by2', '1by3'],
+        loaded: false,
+        failed: false
+      };
+    },
+    computed: {
+      ratioPattern: function ratioPattern() {
+        return new RegExp(/([0-9]+)by([0-9]+)/);
+      },
+      hasRatio: function hasRatio() {
+        return this.ratio && this.ratioPattern.test(this.ratio);
+      },
+      figureClasses: function figureClasses() {
+        var classes = {
+          image: this.responsive
+        };
+
+        if (this.hasRatio && this.bulmaKnownRatio.indexOf(this.ratio) >= 0) {
+          classes["is-".concat(this.ratio)] = true;
+        }
+
+        return classes;
+      },
+      figureStyles: function figureStyles() {
+        if (this.hasRatio && this.bulmaKnownRatio.indexOf(this.ratio) < 0) {
+          var ratioValues = this.ratioPattern.exec(this.ratio);
+          return {
+            paddingTop: "".concat(ratioValues[2] / ratioValues[1] * 100, "%")
+          };
+        }
+      },
+      imgClasses: function imgClasses() {
+        return _defineProperty({
+          'is-rounded': this.rounded,
+          'has-ratio': this.hasRatio
+        }, this.customClass, !!this.customClass);
+      },
+      srcExt: function srcExt() {
+        return this.getExt(this.src);
+      },
+      isWepb: function isWepb() {
+        return this.srcExt === 'webp';
+      },
+      computedSrc: function computedSrc() {
+        var src = this.src;
+
+        if (this.failed && this.srcFallback) {
+          src = this.srcFallback;
+        }
+
+        if (!this.webpSupported && this.isWepb && this.webpFallback) {
+          if (this.webpFallback.startsWith('.')) {
+            return src.replace(/\.webp/gi, "".concat(this.webpFallback));
+          }
+
+          return this.webpFallback;
+        }
+
+        return src;
+      },
+      computedWidth: function computedWidth() {
+        if (this.responsive && this.clientWidth > 0) {
+          return this.clientWidth;
+        }
+      },
+      computedNativeLazy: function computedNativeLazy() {
+        if (this.lazy && this.useNativeLazy) {
+          return 'lazy';
+        }
+      },
+      isDisplayed: function isDisplayed() {
+        return (this.webpSupportVerified || !this.isWepb) && (!this.lazy || this.useNativeLazy || this.inViewPort);
+      },
+      placeholderExt: function placeholderExt() {
+        if (this.placeholder) {
+          return this.getExt(this.placeholder);
+        }
+      },
+      isPlaceholderWepb: function isPlaceholderWepb() {
+        if (this.placeholder) {
+          return this.placeholderExt === 'webp';
+        }
+      },
+      computedPlaceholder: function computedPlaceholder() {
+        if (!this.webpSupported && this.isPlaceholderWepb && this.webpFallback && this.webpFallback.startsWith('.')) {
+          return this.placeholder.replace(/\.webp/gi, "".concat(this.webpFallback));
+        }
+
+        return this.placeholder;
+      },
+      isPlaceholderDisplayed: function isPlaceholderDisplayed() {
+        return !this.loaded && (this.$slots.placeholder || this.placeholder && (this.webpSupportVerified || !this.isPlaceholderWepb));
+      },
+      computedSrcset: function computedSrcset() {
+        var _this = this;
+
+        if (this.srcset) {
+          if (!this.webpSupported && this.isWepb && this.webpFallback && this.webpFallback.startsWith('.')) {
+            return this.srcset.replace(/\.webp/gi, "".concat(this.webpFallback));
+          }
+
+          return this.srcset;
+        }
+
+        if (this.srcsetSizes && Array.isArray(this.srcsetSizes) && this.srcsetSizes.length > 0) {
+          return this.srcsetSizes.map(function (size) {
+            return "".concat(_this.srcsetFormatter(_this.computedSrc, size, _this), " ").concat(size, "w");
+          }).join(',');
+        }
+      },
+      computedSizes: function computedSizes() {
+        if (this.computedSrcset && this.computedWidth) {
+          return "".concat(this.computedWidth, "px");
+        }
+      },
+      isCaptionFirst: function isCaptionFirst() {
+        return this.$slots.caption && this.captionFirst;
+      },
+      isCaptionLast: function isCaptionLast() {
+        return this.$slots.caption && !this.captionFirst;
+      }
+    },
+    methods: {
+      getExt: function getExt(filename) {
+        var clean = arguments.length > 1 && arguments[1] !== undefined ? arguments[1] : true;
+
+        if (filename) {
+          var noParam = clean ? filename.split('?')[0] : filename;
+          return noParam.split('.').pop();
+        }
+
+        return '';
+      },
+      setWidth: function setWidth() {
+        this.clientWidth = this.$el.clientWidth;
+      },
+      formatSrcset: function formatSrcset(src, size) {
+        var ext = this.getExt(src, false);
+        var name = src.split('.').slice(0, -1).join('.');
+        return "".concat(name, "-").concat(size, ".").concat(ext);
+      },
+      onLoad: function onLoad(event) {
+        this.loaded = true;
+        this.emit('load', event);
+      },
+      onError: function onError(event) {
+        this.emit('error', event);
+
+        if (!this.failed) {
+          this.failed = true;
+        }
+      },
+      emit: function emit(eventName, event) {
+        var target = event.target;
+        this.$emit(eventName, event, target.currentSrc || target.src || this.computedSrc);
+      }
+    },
+    created: function created() {
+      var _this2 = this;
+
+      if (this.isWepb) {
+        isWebpSupported().then(function (supported) {
+          _this2.webpSupportVerified = true;
+          _this2.webpSupported = supported;
+        });
+      }
+
+      if (this.lazy) {
+        // We use native lazy loading if supported
+        // We try to use Intersection Observer if native lazy loading is not supported
+        // We use the lazy attribute anyway if we cannot detect support (SSR for example).
+        var nativeLazySupported = typeof window !== 'undefined' && 'HTMLImageElement' in window && 'loading' in HTMLImageElement.prototype;
+        var intersectionObserverSupported = typeof window !== 'undefined' && 'IntersectionObserver' in window;
+
+        if (!nativeLazySupported && intersectionObserverSupported) {
+          this.observer = new IntersectionObserver(function (events) {
+            var _events$ = events[0],
+                target = _events$.target,
+                isIntersecting = _events$.isIntersecting;
+
+            if (isIntersecting && !_this2.inViewPort) {
+              _this2.inViewPort = true;
+
+              _this2.observer.unobserve(target);
+            }
+          });
+        } else {
+          this.useNativeLazy = true;
+        }
+      }
+    },
+    mounted: function mounted() {
+      if (this.lazy && this.observer) {
+        this.observer.observe(this.$el);
+      }
+
+      this.setWidth();
+
+      if (typeof window !== 'undefined') {
+        window.addEventListener('resize', this.setWidth);
+      }
+    },
+    beforeDestroy: function beforeDestroy() {
+      if (this.observer) {
+        this.observer.disconnect();
+      }
+
+      if (typeof window !== 'undefined') {
+        window.removeEventListener('resize', this.setWidth);
+      }
+    }
+  };
+
+  /* script */
+  const __vue_script__$5 = script$5;
+
+  /* template */
+  var __vue_render__$5 = function () {var _vm=this;var _h=_vm.$createElement;var _c=_vm._self._c||_h;return _c('figure',{staticClass:"b-image-wrapper",class:_vm.figureClasses,style:(_vm.figureStyles)},[(_vm.isCaptionFirst)?_c('figcaption',[_vm._t("caption")],2):_vm._e(),_c('transition',{attrs:{"name":"fade"}},[(_vm.isDisplayed)?_c('img',{class:_vm.imgClasses,attrs:{"srcset":_vm.computedSrcset,"src":_vm.computedSrc,"alt":_vm.alt,"width":_vm.computedWidth,"sizes":_vm.computedSizes,"loading":_vm.computedNativeLazy},on:{"load":_vm.onLoad,"error":_vm.onError}}):_vm._e()]),_c('transition',{attrs:{"name":"fade"}},[(_vm.isPlaceholderDisplayed)?_vm._t("placeholder",[_c('img',{staticClass:"placeholder",class:_vm.imgClasses,attrs:{"src":_vm.computedPlaceholder,"alt":_vm.alt}})]):_vm._e()],2),(_vm.isCaptionLast)?_c('figcaption',[_vm._t("caption")],2):_vm._e()],1)};
+  var __vue_staticRenderFns__$5 = [];
+
+    /* style */
+    const __vue_inject_styles__$5 = undefined;
+    /* scoped */
+    const __vue_scope_id__$5 = undefined;
+    /* module identifier */
+    const __vue_module_identifier__$5 = undefined;
+    /* functional template */
+    const __vue_is_functional_template__$5 = false;
+    /* style inject */
+    
+    /* style inject SSR */
+    
+
+    
+    var Image$1 = normalizeComponent_1(
+      { render: __vue_render__$5, staticRenderFns: __vue_staticRenderFns__$5 },
+      __vue_inject_styles__$5,
+      __vue_script__$5,
+      __vue_scope_id__$5,
+      __vue_is_functional_template__$5,
+      __vue_module_identifier__$5,
+      undefined,
+      undefined
+    );
+
+  var script$6 = {
     name: 'BCarousel',
     components: _defineProperty({}, Icon.name, Icon),
     mixins: [ProviderParentMixin('carousel', Sorted)],
@@ -35934,20 +36245,20 @@
   };
 
   /* script */
-  const __vue_script__$5 = script$5;
+  const __vue_script__$6 = script$6;
 
   /* template */
-  var __vue_render__$5 = function () {var _vm=this;var _h=_vm.$createElement;var _c=_vm._self._c||_h;return _c('div',{staticClass:"carousel",class:{'is-overlay': _vm.overlay},on:{"mouseenter":_vm.checkPause,"mouseleave":_vm.startTimer}},[(_vm.progress)?_c('progress',{staticClass:"progress",class:_vm.progressType,attrs:{"max":_vm.childItems.length - 1},domProps:{"value":_vm.activeChild}},[_vm._v(" "+_vm._s(_vm.childItems.length - 1)+" ")]):_vm._e(),_c('div',{staticClass:"carousel-items",on:{"mousedown":_vm.dragStart,"mouseup":_vm.dragEnd,"touchstart":function($event){$event.stopPropagation();return _vm.dragStart($event)},"touchend":function($event){$event.stopPropagation();return _vm.dragEnd($event)}}},[_vm._t("default"),(_vm.arrow)?_c('div',{staticClass:"carousel-arrow",class:{'is-hovered': _vm.arrowHover}},[_c('b-icon',{directives:[{name:"show",rawName:"v-show",value:(_vm.hasPrev),expression:"hasPrev"}],staticClass:"has-icons-left",attrs:{"pack":_vm.iconPack,"icon":_vm.iconPrev,"size":_vm.iconSize,"both":""},nativeOn:{"click":function($event){return _vm.prev($event)}}}),_c('b-icon',{directives:[{name:"show",rawName:"v-show",value:(_vm.hasNext),expression:"hasNext"}],staticClass:"has-icons-right",attrs:{"pack":_vm.iconPack,"icon":_vm.iconNext,"size":_vm.iconSize,"both":""},nativeOn:{"click":function($event){return _vm.next($event)}}})],1):_vm._e()],2),(_vm.autoplay && _vm.pauseHover && _vm.pauseInfo && _vm.isPause)?_c('div',{staticClass:"carousel-pause"},[_c('span',{staticClass:"tag",class:_vm.pauseInfoType},[_vm._v(" "+_vm._s(_vm.pauseText)+" ")])]):_vm._e(),(_vm.withCarouselList && !_vm.indicator)?[_vm._t("list",null,{"active":_vm.activeChild,"switch":_vm.changeActive})]:_vm._e(),(_vm.indicator)?_c('div',{staticClass:"carousel-indicator",class:_vm.indicatorClasses},_vm._l((_vm.sortedItems),function(item,index){return _c('a',{key:item._uid,staticClass:"indicator-item",class:{'is-active': item.isActive},on:{"mouseover":function($event){return _vm.modeChange('hover', index)},"click":function($event){return _vm.modeChange('click', index)}}},[_vm._t("indicators",[_c('span',{staticClass:"indicator-style",class:_vm.indicatorStyle})],{"i":index})],2)}),0):_vm._e(),(_vm.overlay)?[_vm._t("overlay")]:_vm._e()],2)};
-  var __vue_staticRenderFns__$5 = [];
+  var __vue_render__$6 = function () {var _vm=this;var _h=_vm.$createElement;var _c=_vm._self._c||_h;return _c('div',{staticClass:"carousel",class:{'is-overlay': _vm.overlay},on:{"mouseenter":_vm.checkPause,"mouseleave":_vm.startTimer}},[(_vm.progress)?_c('progress',{staticClass:"progress",class:_vm.progressType,attrs:{"max":_vm.childItems.length - 1},domProps:{"value":_vm.activeChild}},[_vm._v(" "+_vm._s(_vm.childItems.length - 1)+" ")]):_vm._e(),_c('div',{staticClass:"carousel-items",on:{"mousedown":_vm.dragStart,"mouseup":_vm.dragEnd,"touchstart":function($event){$event.stopPropagation();return _vm.dragStart($event)},"touchend":function($event){$event.stopPropagation();return _vm.dragEnd($event)}}},[_vm._t("default"),(_vm.arrow)?_c('div',{staticClass:"carousel-arrow",class:{'is-hovered': _vm.arrowHover}},[_c('b-icon',{directives:[{name:"show",rawName:"v-show",value:(_vm.hasPrev),expression:"hasPrev"}],staticClass:"has-icons-left",attrs:{"pack":_vm.iconPack,"icon":_vm.iconPrev,"size":_vm.iconSize,"both":""},nativeOn:{"click":function($event){return _vm.prev($event)}}}),_c('b-icon',{directives:[{name:"show",rawName:"v-show",value:(_vm.hasNext),expression:"hasNext"}],staticClass:"has-icons-right",attrs:{"pack":_vm.iconPack,"icon":_vm.iconNext,"size":_vm.iconSize,"both":""},nativeOn:{"click":function($event){return _vm.next($event)}}})],1):_vm._e()],2),(_vm.autoplay && _vm.pauseHover && _vm.pauseInfo && _vm.isPause)?_c('div',{staticClass:"carousel-pause"},[_c('span',{staticClass:"tag",class:_vm.pauseInfoType},[_vm._v(" "+_vm._s(_vm.pauseText)+" ")])]):_vm._e(),(_vm.withCarouselList && !_vm.indicator)?[_vm._t("list",null,{"active":_vm.activeChild,"switch":_vm.changeActive})]:_vm._e(),(_vm.indicator)?_c('div',{staticClass:"carousel-indicator",class:_vm.indicatorClasses},_vm._l((_vm.sortedItems),function(item,index){return _c('a',{key:item._uid,staticClass:"indicator-item",class:{'is-active': item.isActive},on:{"mouseover":function($event){return _vm.modeChange('hover', index)},"click":function($event){return _vm.modeChange('click', index)}}},[_vm._t("indicators",[_c('span',{staticClass:"indicator-style",class:_vm.indicatorStyle})],{"i":index})],2)}),0):_vm._e(),(_vm.overlay)?[_vm._t("overlay")]:_vm._e()],2)};
+  var __vue_staticRenderFns__$6 = [];
 
     /* style */
-    const __vue_inject_styles__$5 = undefined;
+    const __vue_inject_styles__$6 = undefined;
     /* scoped */
-    const __vue_scope_id__$5 = undefined;
+    const __vue_scope_id__$6 = undefined;
     /* module identifier */
-    const __vue_module_identifier__$5 = undefined;
+    const __vue_module_identifier__$6 = undefined;
     /* functional template */
-    const __vue_is_functional_template__$5 = false;
+    const __vue_is_functional_template__$6 = false;
     /* style inject */
     
     /* style inject SSR */
@@ -35955,12 +36266,12 @@
 
     
     var Carousel = normalizeComponent_1(
-      { render: __vue_render__$5, staticRenderFns: __vue_staticRenderFns__$5 },
-      __vue_inject_styles__$5,
-      __vue_script__$5,
-      __vue_scope_id__$5,
-      __vue_is_functional_template__$5,
-      __vue_module_identifier__$5,
+      { render: __vue_render__$6, staticRenderFns: __vue_staticRenderFns__$6 },
+      __vue_inject_styles__$6,
+      __vue_script__$6,
+      __vue_scope_id__$6,
+      __vue_is_functional_template__$6,
+      __vue_module_identifier__$6,
       undefined,
       undefined
     );
@@ -36020,9 +36331,10 @@
       undefined
     );
 
+  var _components;
   var script$2$1 = {
     name: 'BCarouselList',
-    components: _defineProperty({}, Icon.name, Icon),
+    components: (_components = {}, _defineProperty(_components, Icon.name, Icon), _defineProperty(_components, Image$1.name, Image$1), _components),
     props: {
       data: {
         type: Array,
@@ -36368,7 +36680,7 @@
   };
 
   //
-  var script$6 = {
+  var script$7 = {
     name: 'BCheckbox',
     mixins: [CheckRadioMixin],
     props: {
@@ -36390,20 +36702,20 @@
   };
 
   /* script */
-  const __vue_script__$6 = script$6;
+  const __vue_script__$7 = script$7;
 
   /* template */
-  var __vue_render__$6 = function () {var _vm=this;var _h=_vm.$createElement;var _c=_vm._self._c||_h;return _c('label',{ref:"label",staticClass:"b-checkbox checkbox",class:[_vm.size, { 'is-disabled': _vm.disabled }],attrs:{"disabled":_vm.disabled},on:{"click":_vm.focus,"keydown":function($event){if(!$event.type.indexOf('key')&&_vm._k($event.keyCode,"enter",13,$event.key,"Enter")){ return null; }$event.preventDefault();return _vm.$refs.label.click()}}},[_c('input',{directives:[{name:"model",rawName:"v-model",value:(_vm.computedValue),expression:"computedValue"}],ref:"input",attrs:{"type":"checkbox","autocomplete":_vm.autocomplete,"disabled":_vm.disabled,"required":_vm.required,"name":_vm.name,"true-value":_vm.trueValue,"false-value":_vm.falseValue,"aria-labelledby":_vm.ariaLabelledby},domProps:{"indeterminate":_vm.indeterminate,"value":_vm.nativeValue,"checked":Array.isArray(_vm.computedValue)?_vm._i(_vm.computedValue,_vm.nativeValue)>-1:_vm._q(_vm.computedValue,_vm.trueValue)},on:{"click":function($event){$event.stopPropagation();},"change":function($event){var $$a=_vm.computedValue,$$el=$event.target,$$c=$$el.checked?(_vm.trueValue):(_vm.falseValue);if(Array.isArray($$a)){var $$v=_vm.nativeValue,$$i=_vm._i($$a,$$v);if($$el.checked){$$i<0&&(_vm.computedValue=$$a.concat([$$v]));}else {$$i>-1&&(_vm.computedValue=$$a.slice(0,$$i).concat($$a.slice($$i+1)));}}else {_vm.computedValue=$$c;}}}}),_c('span',{staticClass:"check",class:_vm.type}),_c('span',{staticClass:"control-label",attrs:{"id":_vm.ariaLabelledby}},[_vm._t("default")],2)])};
-  var __vue_staticRenderFns__$6 = [];
+  var __vue_render__$7 = function () {var _vm=this;var _h=_vm.$createElement;var _c=_vm._self._c||_h;return _c('label',{ref:"label",staticClass:"b-checkbox checkbox",class:[_vm.size, { 'is-disabled': _vm.disabled }],attrs:{"disabled":_vm.disabled},on:{"click":_vm.focus,"keydown":function($event){if(!$event.type.indexOf('key')&&_vm._k($event.keyCode,"enter",13,$event.key,"Enter")){ return null; }$event.preventDefault();return _vm.$refs.label.click()}}},[_c('input',{directives:[{name:"model",rawName:"v-model",value:(_vm.computedValue),expression:"computedValue"}],ref:"input",attrs:{"type":"checkbox","autocomplete":_vm.autocomplete,"disabled":_vm.disabled,"required":_vm.required,"name":_vm.name,"true-value":_vm.trueValue,"false-value":_vm.falseValue,"aria-labelledby":_vm.ariaLabelledby},domProps:{"indeterminate":_vm.indeterminate,"value":_vm.nativeValue,"checked":Array.isArray(_vm.computedValue)?_vm._i(_vm.computedValue,_vm.nativeValue)>-1:_vm._q(_vm.computedValue,_vm.trueValue)},on:{"click":function($event){$event.stopPropagation();},"change":function($event){var $$a=_vm.computedValue,$$el=$event.target,$$c=$$el.checked?(_vm.trueValue):(_vm.falseValue);if(Array.isArray($$a)){var $$v=_vm.nativeValue,$$i=_vm._i($$a,$$v);if($$el.checked){$$i<0&&(_vm.computedValue=$$a.concat([$$v]));}else {$$i>-1&&(_vm.computedValue=$$a.slice(0,$$i).concat($$a.slice($$i+1)));}}else {_vm.computedValue=$$c;}}}}),_c('span',{staticClass:"check",class:_vm.type}),_c('span',{staticClass:"control-label",attrs:{"id":_vm.ariaLabelledby}},[_vm._t("default")],2)])};
+  var __vue_staticRenderFns__$7 = [];
 
     /* style */
-    const __vue_inject_styles__$6 = undefined;
+    const __vue_inject_styles__$7 = undefined;
     /* scoped */
-    const __vue_scope_id__$6 = undefined;
+    const __vue_scope_id__$7 = undefined;
     /* module identifier */
-    const __vue_module_identifier__$6 = undefined;
+    const __vue_module_identifier__$7 = undefined;
     /* functional template */
-    const __vue_is_functional_template__$6 = false;
+    const __vue_is_functional_template__$7 = false;
     /* style inject */
     
     /* style inject SSR */
@@ -36411,18 +36723,18 @@
 
     
     var Checkbox = normalizeComponent_1(
-      { render: __vue_render__$6, staticRenderFns: __vue_staticRenderFns__$6 },
-      __vue_inject_styles__$6,
-      __vue_script__$6,
-      __vue_scope_id__$6,
-      __vue_is_functional_template__$6,
-      __vue_module_identifier__$6,
+      { render: __vue_render__$7, staticRenderFns: __vue_staticRenderFns__$7 },
+      __vue_inject_styles__$7,
+      __vue_script__$7,
+      __vue_scope_id__$7,
+      __vue_is_functional_template__$7,
+      __vue_module_identifier__$7,
       undefined,
       undefined
     );
 
   //
-  var script$7 = {
+  var script$8 = {
     name: 'BCheckboxButton',
     mixins: [CheckRadioMixin],
     props: {
@@ -36449,23 +36761,23 @@
   };
 
   /* script */
-  const __vue_script__$7 = script$7;
+  const __vue_script__$8 = script$8;
 
   /* template */
-  var __vue_render__$7 = function () {var _vm=this;var _h=_vm.$createElement;var _c=_vm._self._c||_h;return _c('div',{staticClass:"control",class:{ 'is-expanded': _vm.expanded }},[_c('label',{ref:"label",staticClass:"b-checkbox checkbox button",class:[_vm.checked ? _vm.type : null, _vm.size, {
+  var __vue_render__$8 = function () {var _vm=this;var _h=_vm.$createElement;var _c=_vm._self._c||_h;return _c('div',{staticClass:"control",class:{ 'is-expanded': _vm.expanded }},[_c('label',{ref:"label",staticClass:"b-checkbox checkbox button",class:[_vm.checked ? _vm.type : null, _vm.size, {
               'is-disabled': _vm.disabled,
               'is-focused': _vm.isFocused
           }],attrs:{"disabled":_vm.disabled},on:{"click":_vm.focus,"keydown":function($event){if(!$event.type.indexOf('key')&&_vm._k($event.keyCode,"enter",13,$event.key,"Enter")){ return null; }$event.preventDefault();return _vm.$refs.label.click()}}},[_vm._t("default"),_c('input',{directives:[{name:"model",rawName:"v-model",value:(_vm.computedValue),expression:"computedValue"}],ref:"input",attrs:{"type":"checkbox","disabled":_vm.disabled,"required":_vm.required,"name":_vm.name},domProps:{"value":_vm.nativeValue,"checked":Array.isArray(_vm.computedValue)?_vm._i(_vm.computedValue,_vm.nativeValue)>-1:(_vm.computedValue)},on:{"click":function($event){$event.stopPropagation();},"focus":function($event){_vm.isFocused = true;},"blur":function($event){_vm.isFocused = false;},"change":function($event){var $$a=_vm.computedValue,$$el=$event.target,$$c=$$el.checked?(true):(false);if(Array.isArray($$a)){var $$v=_vm.nativeValue,$$i=_vm._i($$a,$$v);if($$el.checked){$$i<0&&(_vm.computedValue=$$a.concat([$$v]));}else {$$i>-1&&(_vm.computedValue=$$a.slice(0,$$i).concat($$a.slice($$i+1)));}}else {_vm.computedValue=$$c;}}}})],2)])};
-  var __vue_staticRenderFns__$7 = [];
+  var __vue_staticRenderFns__$8 = [];
 
     /* style */
-    const __vue_inject_styles__$7 = undefined;
+    const __vue_inject_styles__$8 = undefined;
     /* scoped */
-    const __vue_scope_id__$7 = undefined;
+    const __vue_scope_id__$8 = undefined;
     /* module identifier */
-    const __vue_module_identifier__$7 = undefined;
+    const __vue_module_identifier__$8 = undefined;
     /* functional template */
-    const __vue_is_functional_template__$7 = false;
+    const __vue_is_functional_template__$8 = false;
     /* style inject */
     
     /* style inject SSR */
@@ -36473,12 +36785,12 @@
 
     
     var CheckboxButton = normalizeComponent_1(
-      { render: __vue_render__$7, staticRenderFns: __vue_staticRenderFns__$7 },
-      __vue_inject_styles__$7,
-      __vue_script__$7,
-      __vue_scope_id__$7,
-      __vue_is_functional_template__$7,
-      __vue_module_identifier__$7,
+      { render: __vue_render__$8, staticRenderFns: __vue_staticRenderFns__$8 },
+      __vue_inject_styles__$8,
+      __vue_script__$8,
+      __vue_scope_id__$8,
+      __vue_is_functional_template__$8,
+      __vue_module_identifier__$8,
       undefined,
       undefined
     );
@@ -36491,7 +36803,7 @@
   };
   use(Plugin$4);
 
-  var script$8 = {
+  var script$9 = {
     name: 'BCollapse',
     // deprecated, to replace with default 'value' in the next breaking change
     model: {
@@ -36570,18 +36882,18 @@
   };
 
   /* script */
-  const __vue_script__$8 = script$8;
+  const __vue_script__$9 = script$9;
 
   /* template */
 
     /* style */
-    const __vue_inject_styles__$8 = undefined;
+    const __vue_inject_styles__$9 = undefined;
     /* scoped */
-    const __vue_scope_id__$8 = undefined;
+    const __vue_scope_id__$9 = undefined;
     /* module identifier */
-    const __vue_module_identifier__$8 = undefined;
+    const __vue_module_identifier__$9 = undefined;
     /* functional template */
-    const __vue_is_functional_template__$8 = undefined;
+    const __vue_is_functional_template__$9 = undefined;
     /* style inject */
     
     /* style inject SSR */
@@ -36590,11 +36902,11 @@
     
     var Collapse = normalizeComponent_1(
       {},
-      __vue_inject_styles__$8,
-      __vue_script__$8,
-      __vue_scope_id__$8,
-      __vue_is_functional_template__$8,
-      __vue_module_identifier__$8,
+      __vue_inject_styles__$9,
+      __vue_script__$9,
+      __vue_scope_id__$9,
+      __vue_is_functional_template__$9,
+      __vue_module_identifier__$9,
       undefined,
       undefined
     );
@@ -37387,7 +37699,7 @@
   };
 
   var DEFAULT_CLOSE_OPTIONS = ['escape', 'outside'];
-  var script$9 = {
+  var script$a = {
     name: 'BDropdown',
     directives: {
       trapFocus: directive$1
@@ -37777,20 +38089,20 @@
   };
 
   /* script */
-  const __vue_script__$9 = script$9;
+  const __vue_script__$a = script$a;
 
   /* template */
-  var __vue_render__$8 = function () {var _vm=this;var _h=_vm.$createElement;var _c=_vm._self._c||_h;return _c('div',{ref:"dropdown",staticClass:"dropdown dropdown-menu-animation",class:_vm.rootClasses},[(!_vm.inline)?_c('div',{ref:"trigger",staticClass:"dropdown-trigger",attrs:{"role":"button","tabindex":_vm.disabled ? false : 0,"aria-haspopup":"true"},on:{"click":_vm.onClick,"contextmenu":function($event){$event.preventDefault();return _vm.onContextMenu($event)},"mouseenter":_vm.onHover,"!focus":function($event){return _vm.onFocus($event)}}},[_vm._t("trigger",null,{"active":_vm.isActive})],2):_vm._e(),_c('transition',{attrs:{"name":_vm.animation}},[(_vm.isMobileModal)?_c('div',{directives:[{name:"show",rawName:"v-show",value:(_vm.isActive),expression:"isActive"}],staticClass:"background",attrs:{"aria-hidden":!_vm.isActive}}):_vm._e()]),_c('transition',{attrs:{"name":_vm.animation}},[_c('div',{directives:[{name:"show",rawName:"v-show",value:((!_vm.disabled && (_vm.isActive || _vm.isHoverable)) || _vm.inline),expression:"(!disabled && (isActive || isHoverable)) || inline"},{name:"trap-focus",rawName:"v-trap-focus",value:(_vm.trapFocus),expression:"trapFocus"}],ref:"dropdownMenu",staticClass:"dropdown-menu",style:(_vm.style),attrs:{"aria-hidden":!_vm.isActive}},[_c('div',{staticClass:"dropdown-content",style:(_vm.contentStyle),attrs:{"role":_vm.ariaRole}},[_vm._t("default")],2)])])],1)};
-  var __vue_staticRenderFns__$8 = [];
+  var __vue_render__$9 = function () {var _vm=this;var _h=_vm.$createElement;var _c=_vm._self._c||_h;return _c('div',{ref:"dropdown",staticClass:"dropdown dropdown-menu-animation",class:_vm.rootClasses},[(!_vm.inline)?_c('div',{ref:"trigger",staticClass:"dropdown-trigger",attrs:{"role":"button","tabindex":_vm.disabled ? false : 0,"aria-haspopup":"true"},on:{"click":_vm.onClick,"contextmenu":function($event){$event.preventDefault();return _vm.onContextMenu($event)},"mouseenter":_vm.onHover,"!focus":function($event){return _vm.onFocus($event)}}},[_vm._t("trigger",null,{"active":_vm.isActive})],2):_vm._e(),_c('transition',{attrs:{"name":_vm.animation}},[(_vm.isMobileModal)?_c('div',{directives:[{name:"show",rawName:"v-show",value:(_vm.isActive),expression:"isActive"}],staticClass:"background",attrs:{"aria-hidden":!_vm.isActive}}):_vm._e()]),_c('transition',{attrs:{"name":_vm.animation}},[_c('div',{directives:[{name:"show",rawName:"v-show",value:((!_vm.disabled && (_vm.isActive || _vm.isHoverable)) || _vm.inline),expression:"(!disabled && (isActive || isHoverable)) || inline"},{name:"trap-focus",rawName:"v-trap-focus",value:(_vm.trapFocus),expression:"trapFocus"}],ref:"dropdownMenu",staticClass:"dropdown-menu",style:(_vm.style),attrs:{"aria-hidden":!_vm.isActive}},[_c('div',{staticClass:"dropdown-content",style:(_vm.contentStyle),attrs:{"role":_vm.ariaRole}},[_vm._t("default")],2)])])],1)};
+  var __vue_staticRenderFns__$9 = [];
 
     /* style */
-    const __vue_inject_styles__$9 = undefined;
+    const __vue_inject_styles__$a = undefined;
     /* scoped */
-    const __vue_scope_id__$9 = undefined;
+    const __vue_scope_id__$a = undefined;
     /* module identifier */
-    const __vue_module_identifier__$9 = undefined;
+    const __vue_module_identifier__$a = undefined;
     /* functional template */
-    const __vue_is_functional_template__$9 = false;
+    const __vue_is_functional_template__$a = false;
     /* style inject */
     
     /* style inject SSR */
@@ -37798,12 +38110,12 @@
 
     
     var Dropdown = normalizeComponent_1(
-      { render: __vue_render__$8, staticRenderFns: __vue_staticRenderFns__$8 },
-      __vue_inject_styles__$9,
-      __vue_script__$9,
-      __vue_scope_id__$9,
-      __vue_is_functional_template__$9,
-      __vue_module_identifier__$9,
+      { render: __vue_render__$9, staticRenderFns: __vue_staticRenderFns__$9 },
+      __vue_inject_styles__$a,
+      __vue_script__$a,
+      __vue_scope_id__$a,
+      __vue_is_functional_template__$a,
+      __vue_module_identifier__$a,
       undefined,
       undefined
     );
@@ -37907,7 +38219,7 @@
       undefined
     );
 
-  var script$a = {
+  var script$b = {
     name: 'BFieldBody',
     props: {
       message: {
@@ -37949,18 +38261,18 @@
   };
 
   /* script */
-  const __vue_script__$a = script$a;
+  const __vue_script__$b = script$b;
 
   /* template */
 
     /* style */
-    const __vue_inject_styles__$a = undefined;
+    const __vue_inject_styles__$b = undefined;
     /* scoped */
-    const __vue_scope_id__$a = undefined;
+    const __vue_scope_id__$b = undefined;
     /* module identifier */
-    const __vue_module_identifier__$a = undefined;
+    const __vue_module_identifier__$b = undefined;
     /* functional template */
-    const __vue_is_functional_template__$a = undefined;
+    const __vue_is_functional_template__$b = undefined;
     /* style inject */
     
     /* style inject SSR */
@@ -37969,11 +38281,11 @@
     
     var FieldBody = normalizeComponent_1(
       {},
-      __vue_inject_styles__$a,
-      __vue_script__$a,
-      __vue_scope_id__$a,
-      __vue_is_functional_template__$a,
-      __vue_module_identifier__$a,
+      __vue_inject_styles__$b,
+      __vue_script__$b,
+      __vue_scope_id__$b,
+      __vue_is_functional_template__$b,
+      __vue_module_identifier__$b,
       undefined,
       undefined
     );
@@ -38152,7 +38464,9 @@
             this.parent.newType = this.newType;
           }
 
-          this.parent.newMessage = value;
+          if (!this.parent.message) {
+            this.parent.newMessage = value;
+          }
         }
       }
     },
@@ -38195,8 +38509,8 @@
   const __vue_script__$1$4 = script$1$4;
 
   /* template */
-  var __vue_render__$9 = function () {var _vm=this;var _h=_vm.$createElement;var _c=_vm._self._c||_h;return _c('div',{staticClass:"field",class:_vm.rootClasses},[(_vm.horizontal)?_c('div',{staticClass:"field-label",class:[_vm.customClass, _vm.fieldLabelSize]},[(_vm.hasLabel)?_c('label',{staticClass:"label",class:_vm.customClass,attrs:{"for":_vm.labelFor}},[(_vm.$slots.label)?_vm._t("label"):[_vm._v(_vm._s(_vm.label))]],2):_vm._e()]):[(_vm.hasLabel)?_c('label',{staticClass:"label",class:_vm.customClass,attrs:{"for":_vm.labelFor}},[(_vm.$slots.label)?_vm._t("label"):[_vm._v(_vm._s(_vm.label))]],2):_vm._e()],(_vm.horizontal)?_c('b-field-body',{attrs:{"message":_vm.newMessage ? _vm.formattedMessage : '',"type":_vm.newType}},[_vm._t("default")],2):(_vm.hasInnerField)?_c('div',{staticClass:"field-body"},[_c('b-field',{class:_vm.innerFieldClasses,attrs:{"addons":false,"type":_vm.newType,"message":_vm.newMessage ? _vm.formattedMessage : ''}},[_vm._t("default")],2)],1):[_vm._t("default")],(_vm.hasMessage && !_vm.horizontal)?_c('p',{staticClass:"help",class:_vm.newType},[(_vm.$slots.message)?_vm._t("message"):[_vm._l((_vm.formattedMessage),function(mess,i){return [_vm._v(" "+_vm._s(mess)+" "),((i + 1) < _vm.formattedMessage.length)?_c('br',{key:i}):_vm._e()]})]],2):_vm._e()],2)};
-  var __vue_staticRenderFns__$9 = [];
+  var __vue_render__$a = function () {var _vm=this;var _h=_vm.$createElement;var _c=_vm._self._c||_h;return _c('div',{staticClass:"field",class:_vm.rootClasses},[(_vm.horizontal)?_c('div',{staticClass:"field-label",class:[_vm.customClass, _vm.fieldLabelSize]},[(_vm.hasLabel)?_c('label',{staticClass:"label",class:_vm.customClass,attrs:{"for":_vm.labelFor}},[(_vm.$slots.label)?_vm._t("label"):[_vm._v(_vm._s(_vm.label))]],2):_vm._e()]):[(_vm.hasLabel)?_c('label',{staticClass:"label",class:_vm.customClass,attrs:{"for":_vm.labelFor}},[(_vm.$slots.label)?_vm._t("label"):[_vm._v(_vm._s(_vm.label))]],2):_vm._e()],(_vm.horizontal)?_c('b-field-body',{attrs:{"message":_vm.newMessage ? _vm.formattedMessage : '',"type":_vm.newType}},[_vm._t("default")],2):(_vm.hasInnerField)?_c('div',{staticClass:"field-body"},[_c('b-field',{class:_vm.innerFieldClasses,attrs:{"addons":false}},[_vm._t("default")],2)],1):[_vm._t("default")],(_vm.hasMessage && !_vm.horizontal)?_c('p',{staticClass:"help",class:_vm.newType},[(_vm.$slots.message)?_vm._t("message"):[_vm._l((_vm.formattedMessage),function(mess,i){return [_vm._v(" "+_vm._s(mess)+" "),((i + 1) < _vm.formattedMessage.length)?_c('br',{key:i}):_vm._e()]})]],2):_vm._e()],2)};
+  var __vue_staticRenderFns__$a = [];
 
     /* style */
     const __vue_inject_styles__$1$4 = undefined;
@@ -38213,7 +38527,7 @@
 
     
     var Field = normalizeComponent_1(
-      { render: __vue_render__$9, staticRenderFns: __vue_staticRenderFns__$9 },
+      { render: __vue_render__$a, staticRenderFns: __vue_staticRenderFns__$a },
       __vue_inject_styles__$1$4,
       __vue_script__$1$4,
       __vue_scope_id__$1$4,
@@ -38253,7 +38567,7 @@
   // These should match the variables in clockpicker.scss
   var indicatorSize = 40;
   var paddingInner = 5;
-  var script$b = {
+  var script$c = {
     name: 'BClockpickerFace',
     props: {
       pickerSize: Number,
@@ -38496,20 +38810,20 @@
   };
 
   /* script */
-  const __vue_script__$b = script$b;
+  const __vue_script__$c = script$c;
 
   /* template */
-  var __vue_render__$a = function () {var _vm=this;var _h=_vm.$createElement;var _c=_vm._self._c||_h;return _c('div',{staticClass:"b-clockpicker-face",on:{"mousedown":_vm.onMouseDown,"mouseup":_vm.onMouseUp,"mousemove":_vm.onDragMove,"touchstart":_vm.onMouseDown,"touchend":_vm.onMouseUp,"touchmove":_vm.onDragMove}},[_c('div',{ref:"clock",staticClass:"b-clockpicker-face-outer-ring"},[_c('div',{staticClass:"b-clockpicker-face-hand",style:(_vm.handStyle)}),_vm._l((_vm.faceNumbers),function(num,index){return _c('span',{key:index,staticClass:"b-clockpicker-face-number",class:_vm.getFaceNumberClasses(num),style:({ transform: _vm.getNumberTranslate(num.value) })},[_c('span',[_vm._v(_vm._s(num.label))])])})],2)])};
-  var __vue_staticRenderFns__$a = [];
+  var __vue_render__$b = function () {var _vm=this;var _h=_vm.$createElement;var _c=_vm._self._c||_h;return _c('div',{staticClass:"b-clockpicker-face",on:{"mousedown":_vm.onMouseDown,"mouseup":_vm.onMouseUp,"mousemove":_vm.onDragMove,"touchstart":_vm.onMouseDown,"touchend":_vm.onMouseUp,"touchmove":_vm.onDragMove}},[_c('div',{ref:"clock",staticClass:"b-clockpicker-face-outer-ring"},[_c('div',{staticClass:"b-clockpicker-face-hand",style:(_vm.handStyle)}),_vm._l((_vm.faceNumbers),function(num,index){return _c('span',{key:index,staticClass:"b-clockpicker-face-number",class:_vm.getFaceNumberClasses(num),style:({ transform: _vm.getNumberTranslate(num.value) })},[_c('span',[_vm._v(_vm._s(num.label))])])})],2)])};
+  var __vue_staticRenderFns__$b = [];
 
     /* style */
-    const __vue_inject_styles__$b = undefined;
+    const __vue_inject_styles__$c = undefined;
     /* scoped */
-    const __vue_scope_id__$b = undefined;
+    const __vue_scope_id__$c = undefined;
     /* module identifier */
-    const __vue_module_identifier__$b = undefined;
+    const __vue_module_identifier__$c = undefined;
     /* functional template */
-    const __vue_is_functional_template__$b = false;
+    const __vue_is_functional_template__$c = false;
     /* style inject */
     
     /* style inject SSR */
@@ -38517,21 +38831,21 @@
 
     
     var ClockpickerFace = normalizeComponent_1(
-      { render: __vue_render__$a, staticRenderFns: __vue_staticRenderFns__$a },
-      __vue_inject_styles__$b,
-      __vue_script__$b,
-      __vue_scope_id__$b,
-      __vue_is_functional_template__$b,
-      __vue_module_identifier__$b,
+      { render: __vue_render__$b, staticRenderFns: __vue_staticRenderFns__$b },
+      __vue_inject_styles__$c,
+      __vue_script__$c,
+      __vue_scope_id__$c,
+      __vue_is_functional_template__$c,
+      __vue_module_identifier__$c,
       undefined,
       undefined
     );
 
-  var _components;
+  var _components$1;
   var outerPadding = 12;
   var script$1$5 = {
     name: 'BClockpicker',
-    components: (_components = {}, _defineProperty(_components, ClockpickerFace.name, ClockpickerFace), _defineProperty(_components, Input.name, Input), _defineProperty(_components, Field.name, Field), _defineProperty(_components, Icon.name, Icon), _defineProperty(_components, Dropdown.name, Dropdown), _defineProperty(_components, DropdownItem.name, DropdownItem), _components),
+    components: (_components$1 = {}, _defineProperty(_components$1, ClockpickerFace.name, ClockpickerFace), _defineProperty(_components$1, Input.name, Input), _defineProperty(_components$1, Field.name, Field), _defineProperty(_components$1, Icon.name, Icon), _defineProperty(_components$1, Dropdown.name, Dropdown), _defineProperty(_components$1, DropdownItem.name, DropdownItem), _components$1),
     mixins: [TimepickerMixin],
     props: {
       pickerSize: {
@@ -38670,7 +38984,7 @@
   };
   use(Plugin$6);
 
-  var script$c = {
+  var script$d = {
     name: 'BSelect',
     components: _defineProperty({}, Icon.name, Icon),
     mixins: [FormElementMixin],
@@ -38725,20 +39039,20 @@
   };
 
   /* script */
-  const __vue_script__$c = script$c;
+  const __vue_script__$d = script$d;
 
   /* template */
-  var __vue_render__$b = function () {var _vm=this;var _h=_vm.$createElement;var _c=_vm._self._c||_h;return _c('div',{staticClass:"control",class:{ 'is-expanded': _vm.expanded, 'has-icons-left': _vm.icon }},[_c('span',{staticClass:"select",class:_vm.spanClasses},[_c('select',_vm._b({directives:[{name:"model",rawName:"v-model",value:(_vm.computedValue),expression:"computedValue"}],ref:"select",attrs:{"multiple":_vm.multiple,"size":_vm.nativeSize},on:{"blur":function($event){_vm.$emit('blur', $event) && _vm.checkHtml5Validity();},"focus":function($event){return _vm.$emit('focus', $event)},"change":function($event){var $$selectedVal = Array.prototype.filter.call($event.target.options,function(o){return o.selected}).map(function(o){var val = "_value" in o ? o._value : o.value;return val}); _vm.computedValue=$event.target.multiple ? $$selectedVal : $$selectedVal[0];}}},'select',_vm.$attrs,false),[(_vm.placeholder)?[(_vm.computedValue == null)?_c('option',{attrs:{"disabled":"","hidden":""},domProps:{"value":null}},[_vm._v(" "+_vm._s(_vm.placeholder)+" ")]):_vm._e()]:_vm._e(),_vm._t("default")],2)]),(_vm.icon)?_c('b-icon',{staticClass:"is-left",attrs:{"icon":_vm.icon,"pack":_vm.iconPack,"size":_vm.iconSize}}):_vm._e()],1)};
-  var __vue_staticRenderFns__$b = [];
+  var __vue_render__$c = function () {var _vm=this;var _h=_vm.$createElement;var _c=_vm._self._c||_h;return _c('div',{staticClass:"control",class:{ 'is-expanded': _vm.expanded, 'has-icons-left': _vm.icon }},[_c('span',{staticClass:"select",class:_vm.spanClasses},[_c('select',_vm._b({directives:[{name:"model",rawName:"v-model",value:(_vm.computedValue),expression:"computedValue"}],ref:"select",attrs:{"multiple":_vm.multiple,"size":_vm.nativeSize},on:{"blur":function($event){_vm.$emit('blur', $event) && _vm.checkHtml5Validity();},"focus":function($event){return _vm.$emit('focus', $event)},"change":function($event){var $$selectedVal = Array.prototype.filter.call($event.target.options,function(o){return o.selected}).map(function(o){var val = "_value" in o ? o._value : o.value;return val}); _vm.computedValue=$event.target.multiple ? $$selectedVal : $$selectedVal[0];}}},'select',_vm.$attrs,false),[(_vm.placeholder)?[(_vm.computedValue == null)?_c('option',{attrs:{"disabled":"","hidden":""},domProps:{"value":null}},[_vm._v(" "+_vm._s(_vm.placeholder)+" ")]):_vm._e()]:_vm._e(),_vm._t("default")],2)]),(_vm.icon)?_c('b-icon',{staticClass:"is-left",attrs:{"icon":_vm.icon,"pack":_vm.iconPack,"size":_vm.iconSize}}):_vm._e()],1)};
+  var __vue_staticRenderFns__$c = [];
 
     /* style */
-    const __vue_inject_styles__$c = undefined;
+    const __vue_inject_styles__$d = undefined;
     /* scoped */
-    const __vue_scope_id__$c = undefined;
+    const __vue_scope_id__$d = undefined;
     /* module identifier */
-    const __vue_module_identifier__$c = undefined;
+    const __vue_module_identifier__$d = undefined;
     /* functional template */
-    const __vue_is_functional_template__$c = false;
+    const __vue_is_functional_template__$d = false;
     /* style inject */
     
     /* style inject SSR */
@@ -38746,12 +39060,12 @@
 
     
     var Select = normalizeComponent_1(
-      { render: __vue_render__$b, staticRenderFns: __vue_staticRenderFns__$b },
-      __vue_inject_styles__$c,
-      __vue_script__$c,
-      __vue_scope_id__$c,
-      __vue_is_functional_template__$c,
-      __vue_module_identifier__$c,
+      { render: __vue_render__$c, staticRenderFns: __vue_staticRenderFns__$c },
+      __vue_inject_styles__$d,
+      __vue_script__$d,
+      __vue_scope_id__$d,
+      __vue_is_functional_template__$d,
+      __vue_module_identifier__$d,
       undefined,
       undefined
     );
@@ -38806,7 +39120,7 @@
   //
   //
   //
-  var script$d = {
+  var script$e = {
     name: 'BDatepickerTableRow',
     inject: {
       $datepicker: {
@@ -39120,20 +39434,20 @@
   };
 
   /* script */
-  const __vue_script__$d = script$d;
+  const __vue_script__$e = script$e;
 
   /* template */
-  var __vue_render__$c = function () {var _vm=this;var _h=_vm.$createElement;var _c=_vm._self._c||_h;return _c('div',{staticClass:"datepicker-row"},[(_vm.showWeekNumber)?_c('a',{staticClass:"datepicker-cell is-week-number",class:{'is-clickable': _vm.weekNumberClickable },on:{"click":function($event){$event.preventDefault();_vm.clickWeekNumber(_vm.getWeekNumber(_vm.week[6]));}}},[_c('span',[_vm._v(_vm._s(_vm.getWeekNumber(_vm.week[6])))])]):_vm._e(),_vm._l((_vm.week),function(weekDay,index){return [(_vm.selectableDate(weekDay) && !_vm.disabled)?_c('a',{key:index,ref:("day-" + (weekDay.getMonth()) + "-" + (weekDay.getDate())),refInFor:true,staticClass:"datepicker-cell",class:_vm.classObject(weekDay),attrs:{"role":"button","href":"#","disabled":_vm.disabled,"tabindex":_vm.day === weekDay.getDate() && _vm.month === weekDay.getMonth() ? null : -1},on:{"click":function($event){$event.preventDefault();return _vm.emitChosenDate(weekDay)},"mouseenter":function($event){return _vm.setRangeHoverEndDate(weekDay)},"keydown":function($event){return _vm.manageKeydown($event, weekDay)}}},[_c('span',[_vm._v(_vm._s(weekDay.getDate()))]),(_vm.eventsDateMatch(weekDay))?_c('div',{staticClass:"events"},_vm._l((_vm.eventsDateMatch(weekDay)),function(event,index){return _c('div',{key:index,staticClass:"event",class:event.type})}),0):_vm._e()]):_c('div',{key:index,staticClass:"datepicker-cell",class:_vm.classObject(weekDay)},[_c('span',[_vm._v(_vm._s(weekDay.getDate()))]),(_vm.eventsDateMatch(weekDay))?_c('div',{staticClass:"events"},_vm._l((_vm.eventsDateMatch(weekDay)),function(event,index){return _c('div',{key:index,staticClass:"event",class:event.type})}),0):_vm._e()])]})],2)};
-  var __vue_staticRenderFns__$c = [];
+  var __vue_render__$d = function () {var _vm=this;var _h=_vm.$createElement;var _c=_vm._self._c||_h;return _c('div',{staticClass:"datepicker-row"},[(_vm.showWeekNumber)?_c('a',{staticClass:"datepicker-cell is-week-number",class:{'is-clickable': _vm.weekNumberClickable },on:{"click":function($event){$event.preventDefault();_vm.clickWeekNumber(_vm.getWeekNumber(_vm.week[6]));}}},[_c('span',[_vm._v(_vm._s(_vm.getWeekNumber(_vm.week[6])))])]):_vm._e(),_vm._l((_vm.week),function(weekDay,index){return [(_vm.selectableDate(weekDay) && !_vm.disabled)?_c('a',{key:index,ref:("day-" + (weekDay.getMonth()) + "-" + (weekDay.getDate())),refInFor:true,staticClass:"datepicker-cell",class:_vm.classObject(weekDay),attrs:{"role":"button","href":"#","disabled":_vm.disabled,"tabindex":_vm.day === weekDay.getDate() && _vm.month === weekDay.getMonth() ? null : -1},on:{"click":function($event){$event.preventDefault();return _vm.emitChosenDate(weekDay)},"mouseenter":function($event){return _vm.setRangeHoverEndDate(weekDay)},"keydown":function($event){return _vm.manageKeydown($event, weekDay)}}},[_c('span',[_vm._v(_vm._s(weekDay.getDate()))]),(_vm.eventsDateMatch(weekDay))?_c('div',{staticClass:"events"},_vm._l((_vm.eventsDateMatch(weekDay)),function(event,index){return _c('div',{key:index,staticClass:"event",class:event.type})}),0):_vm._e()]):_c('div',{key:index,staticClass:"datepicker-cell",class:_vm.classObject(weekDay)},[_c('span',[_vm._v(_vm._s(weekDay.getDate()))]),(_vm.eventsDateMatch(weekDay))?_c('div',{staticClass:"events"},_vm._l((_vm.eventsDateMatch(weekDay)),function(event,index){return _c('div',{key:index,staticClass:"event",class:event.type})}),0):_vm._e()])]})],2)};
+  var __vue_staticRenderFns__$d = [];
 
     /* style */
-    const __vue_inject_styles__$d = undefined;
+    const __vue_inject_styles__$e = undefined;
     /* scoped */
-    const __vue_scope_id__$d = undefined;
+    const __vue_scope_id__$e = undefined;
     /* module identifier */
-    const __vue_module_identifier__$d = undefined;
+    const __vue_module_identifier__$e = undefined;
     /* functional template */
-    const __vue_is_functional_template__$d = false;
+    const __vue_is_functional_template__$e = false;
     /* style inject */
     
     /* style inject SSR */
@@ -39141,12 +39455,12 @@
 
     
     var DatepickerTableRow = normalizeComponent_1(
-      { render: __vue_render__$c, staticRenderFns: __vue_staticRenderFns__$c },
-      __vue_inject_styles__$d,
-      __vue_script__$d,
-      __vue_scope_id__$d,
-      __vue_is_functional_template__$d,
-      __vue_module_identifier__$d,
+      { render: __vue_render__$d, staticRenderFns: __vue_staticRenderFns__$d },
+      __vue_inject_styles__$e,
+      __vue_script__$e,
+      __vue_scope_id__$e,
+      __vue_is_functional_template__$e,
+      __vue_module_identifier__$e,
       undefined,
       undefined
     );
@@ -39887,7 +40201,7 @@
       undefined
     );
 
-  var _components$1;
+  var _components$2;
 
   var defaultDateFormatter = function defaultDateFormatter(date, vm) {
     var targetDates = Array.isArray(date) ? date : [date];
@@ -39935,7 +40249,7 @@
 
   var script$3$1 = {
     name: 'BDatepicker',
-    components: (_components$1 = {}, _defineProperty(_components$1, DatepickerTable.name, DatepickerTable), _defineProperty(_components$1, DatepickerMonth.name, DatepickerMonth), _defineProperty(_components$1, Input.name, Input), _defineProperty(_components$1, Field.name, Field), _defineProperty(_components$1, Select.name, Select), _defineProperty(_components$1, Icon.name, Icon), _defineProperty(_components$1, Dropdown.name, Dropdown), _defineProperty(_components$1, DropdownItem.name, DropdownItem), _components$1),
+    components: (_components$2 = {}, _defineProperty(_components$2, DatepickerTable.name, DatepickerTable), _defineProperty(_components$2, DatepickerMonth.name, DatepickerMonth), _defineProperty(_components$2, Input.name, Input), _defineProperty(_components$2, Field.name, Field), _defineProperty(_components$2, Select.name, Select), _defineProperty(_components$2, Icon.name, Icon), _defineProperty(_components$2, Dropdown.name, Dropdown), _defineProperty(_components$2, DropdownItem.name, DropdownItem), _components$2),
     mixins: [FormElementMixin],
     inheritAttrs: false,
     provide: function provide() {
@@ -40171,15 +40485,12 @@
         }).resolvedOptions();
       },
       dtf: function dtf() {
-        return new Intl.DateTimeFormat(this.locale, {
-          timeZone: 'UTC'
-        });
+        return new Intl.DateTimeFormat(this.locale);
       },
       dtfMonth: function dtfMonth() {
         return new Intl.DateTimeFormat(this.locale, {
           year: this.localeOptions.year || 'numeric',
-          month: this.localeOptions.month || '2-digit',
-          timeZone: 'UTC'
+          month: this.localeOptions.month || '2-digit'
         });
       },
       newMonthNames: function newMonthNames() {
@@ -40576,10 +40887,10 @@
   };
   use(Plugin$7);
 
-  var _components$2;
-  var script$e = {
+  var _components$3;
+  var script$f = {
     name: 'BTimepicker',
-    components: (_components$2 = {}, _defineProperty(_components$2, Input.name, Input), _defineProperty(_components$2, Field.name, Field), _defineProperty(_components$2, Select.name, Select), _defineProperty(_components$2, Icon.name, Icon), _defineProperty(_components$2, Dropdown.name, Dropdown), _defineProperty(_components$2, DropdownItem.name, DropdownItem), _components$2),
+    components: (_components$3 = {}, _defineProperty(_components$3, Input.name, Input), _defineProperty(_components$3, Field.name, Field), _defineProperty(_components$3, Select.name, Select), _defineProperty(_components$3, Icon.name, Icon), _defineProperty(_components$3, Dropdown.name, Dropdown), _defineProperty(_components$3, DropdownItem.name, DropdownItem), _components$3),
     mixins: [TimepickerMixin],
     inheritAttrs: false,
     data: function data() {
@@ -40595,20 +40906,20 @@
   };
 
   /* script */
-  const __vue_script__$e = script$e;
+  const __vue_script__$f = script$f;
 
   /* template */
-  var __vue_render__$d = function () {var _vm=this;var _h=_vm.$createElement;var _c=_vm._self._c||_h;return _c('div',{staticClass:"timepicker control",class:[_vm.size, {'is-expanded': _vm.expanded}]},[(!_vm.isMobile || _vm.inline)?_c('b-dropdown',{ref:"dropdown",attrs:{"position":_vm.position,"disabled":_vm.disabled,"inline":_vm.inline,"append-to-body":_vm.appendToBody,"append-to-body-copy-parent":""},on:{"active-change":_vm.onActiveChange},scopedSlots:_vm._u([(!_vm.inline)?{key:"trigger",fn:function(){return [_vm._t("trigger",[_c('b-input',_vm._b({ref:"input",attrs:{"autocomplete":"off","value":_vm.formatValue(_vm.computedValue),"placeholder":_vm.placeholder,"size":_vm.size,"icon":_vm.icon,"icon-pack":_vm.iconPack,"loading":_vm.loading,"disabled":_vm.disabled,"readonly":!_vm.editable,"rounded":_vm.rounded,"use-html5-validation":_vm.useHtml5Validation},on:{"focus":_vm.handleOnFocus},nativeOn:{"keyup":function($event){if(!$event.type.indexOf('key')&&_vm._k($event.keyCode,"enter",13,$event.key,"Enter")){ return null; }return _vm.toggle(true)},"change":function($event){return _vm.onChange($event.target.value)}}},'b-input',_vm.$attrs,false))])]},proxy:true}:null],null,true)},[_c('b-dropdown-item',{attrs:{"disabled":_vm.disabled,"focusable":_vm.focusable,"custom":""}},[_c('b-field',{attrs:{"grouped":"","position":"is-centered"}},[_c('b-select',{attrs:{"disabled":_vm.disabled,"placeholder":"00"},nativeOn:{"change":function($event){return _vm.onHoursChange($event.target.value)}},model:{value:(_vm.hoursSelected),callback:function ($$v) {_vm.hoursSelected=$$v;},expression:"hoursSelected"}},_vm._l((_vm.hours),function(hour){return _c('option',{key:hour.value,attrs:{"disabled":_vm.isHourDisabled(hour.value)},domProps:{"value":hour.value}},[_vm._v(" "+_vm._s(hour.label)+" ")])}),0),_c('span',{staticClass:"control is-colon"},[_vm._v(_vm._s(_vm.hourLiteral))]),_c('b-select',{attrs:{"disabled":_vm.disabled,"placeholder":"00"},nativeOn:{"change":function($event){return _vm.onMinutesChange($event.target.value)}},model:{value:(_vm.minutesSelected),callback:function ($$v) {_vm.minutesSelected=$$v;},expression:"minutesSelected"}},_vm._l((_vm.minutes),function(minute){return _c('option',{key:minute.value,attrs:{"disabled":_vm.isMinuteDisabled(minute.value)},domProps:{"value":minute.value}},[_vm._v(" "+_vm._s(minute.label)+" ")])}),0),(_vm.enableSeconds)?[_c('span',{staticClass:"control is-colon"},[_vm._v(_vm._s(_vm.minuteLiteral))]),_c('b-select',{attrs:{"disabled":_vm.disabled,"placeholder":"00"},nativeOn:{"change":function($event){return _vm.onSecondsChange($event.target.value)}},model:{value:(_vm.secondsSelected),callback:function ($$v) {_vm.secondsSelected=$$v;},expression:"secondsSelected"}},_vm._l((_vm.seconds),function(second){return _c('option',{key:second.value,attrs:{"disabled":_vm.isSecondDisabled(second.value)},domProps:{"value":second.value}},[_vm._v(" "+_vm._s(second.label)+" ")])}),0),_c('span',{staticClass:"control is-colon"},[_vm._v(_vm._s(_vm.secondLiteral))])]:_vm._e(),(!_vm.isHourFormat24)?_c('b-select',{attrs:{"disabled":_vm.disabled},nativeOn:{"change":function($event){return _vm.onMeridienChange($event.target.value)}},model:{value:(_vm.meridienSelected),callback:function ($$v) {_vm.meridienSelected=$$v;},expression:"meridienSelected"}},_vm._l((_vm.meridiens),function(meridien){return _c('option',{key:meridien,domProps:{"value":meridien}},[_vm._v(" "+_vm._s(meridien)+" ")])}),0):_vm._e()],2),(_vm.$slots.default !== undefined && _vm.$slots.default.length)?_c('footer',{staticClass:"timepicker-footer"},[_vm._t("default")],2):_vm._e()],1)],1):_c('b-input',_vm._b({ref:"input",attrs:{"type":"time","step":_vm.nativeStep,"autocomplete":"off","value":_vm.formatHHMMSS(_vm.computedValue),"placeholder":_vm.placeholder,"size":_vm.size,"icon":_vm.icon,"icon-pack":_vm.iconPack,"rounded":_vm.rounded,"loading":_vm.loading,"max":_vm.formatHHMMSS(_vm.maxTime),"min":_vm.formatHHMMSS(_vm.minTime),"disabled":_vm.disabled,"readonly":false,"use-html5-validation":_vm.useHtml5Validation},on:{"focus":_vm.handleOnFocus,"blur":function($event){_vm.onBlur() && _vm.checkHtml5Validity();}},nativeOn:{"change":function($event){return _vm.onChange($event.target.value)}}},'b-input',_vm.$attrs,false))],1)};
-  var __vue_staticRenderFns__$d = [];
+  var __vue_render__$e = function () {var _vm=this;var _h=_vm.$createElement;var _c=_vm._self._c||_h;return _c('div',{staticClass:"timepicker control",class:[_vm.size, {'is-expanded': _vm.expanded}]},[(!_vm.isMobile || _vm.inline)?_c('b-dropdown',{ref:"dropdown",attrs:{"position":_vm.position,"disabled":_vm.disabled,"inline":_vm.inline,"append-to-body":_vm.appendToBody,"append-to-body-copy-parent":""},on:{"active-change":_vm.onActiveChange},scopedSlots:_vm._u([(!_vm.inline)?{key:"trigger",fn:function(){return [_vm._t("trigger",[_c('b-input',_vm._b({ref:"input",attrs:{"autocomplete":"off","value":_vm.formatValue(_vm.computedValue),"placeholder":_vm.placeholder,"size":_vm.size,"icon":_vm.icon,"icon-pack":_vm.iconPack,"loading":_vm.loading,"disabled":_vm.disabled,"readonly":!_vm.editable,"rounded":_vm.rounded,"use-html5-validation":_vm.useHtml5Validation},on:{"focus":_vm.handleOnFocus},nativeOn:{"keyup":function($event){if(!$event.type.indexOf('key')&&_vm._k($event.keyCode,"enter",13,$event.key,"Enter")){ return null; }return _vm.toggle(true)},"change":function($event){return _vm.onChange($event.target.value)}}},'b-input',_vm.$attrs,false))])]},proxy:true}:null],null,true)},[_c('b-dropdown-item',{attrs:{"disabled":_vm.disabled,"focusable":_vm.focusable,"custom":""}},[_c('b-field',{attrs:{"grouped":"","position":"is-centered"}},[_c('b-select',{attrs:{"disabled":_vm.disabled,"placeholder":"00"},nativeOn:{"change":function($event){return _vm.onHoursChange($event.target.value)}},model:{value:(_vm.hoursSelected),callback:function ($$v) {_vm.hoursSelected=$$v;},expression:"hoursSelected"}},_vm._l((_vm.hours),function(hour){return _c('option',{key:hour.value,attrs:{"disabled":_vm.isHourDisabled(hour.value)},domProps:{"value":hour.value}},[_vm._v(" "+_vm._s(hour.label)+" ")])}),0),_c('span',{staticClass:"control is-colon"},[_vm._v(_vm._s(_vm.hourLiteral))]),_c('b-select',{attrs:{"disabled":_vm.disabled,"placeholder":"00"},nativeOn:{"change":function($event){return _vm.onMinutesChange($event.target.value)}},model:{value:(_vm.minutesSelected),callback:function ($$v) {_vm.minutesSelected=$$v;},expression:"minutesSelected"}},_vm._l((_vm.minutes),function(minute){return _c('option',{key:minute.value,attrs:{"disabled":_vm.isMinuteDisabled(minute.value)},domProps:{"value":minute.value}},[_vm._v(" "+_vm._s(minute.label)+" ")])}),0),(_vm.enableSeconds)?[_c('span',{staticClass:"control is-colon"},[_vm._v(_vm._s(_vm.minuteLiteral))]),_c('b-select',{attrs:{"disabled":_vm.disabled,"placeholder":"00"},nativeOn:{"change":function($event){return _vm.onSecondsChange($event.target.value)}},model:{value:(_vm.secondsSelected),callback:function ($$v) {_vm.secondsSelected=$$v;},expression:"secondsSelected"}},_vm._l((_vm.seconds),function(second){return _c('option',{key:second.value,attrs:{"disabled":_vm.isSecondDisabled(second.value)},domProps:{"value":second.value}},[_vm._v(" "+_vm._s(second.label)+" ")])}),0),_c('span',{staticClass:"control is-colon"},[_vm._v(_vm._s(_vm.secondLiteral))])]:_vm._e(),(!_vm.isHourFormat24)?_c('b-select',{attrs:{"disabled":_vm.disabled},nativeOn:{"change":function($event){return _vm.onMeridienChange($event.target.value)}},model:{value:(_vm.meridienSelected),callback:function ($$v) {_vm.meridienSelected=$$v;},expression:"meridienSelected"}},_vm._l((_vm.meridiens),function(meridien){return _c('option',{key:meridien,domProps:{"value":meridien}},[_vm._v(" "+_vm._s(meridien)+" ")])}),0):_vm._e()],2),(_vm.$slots.default !== undefined && _vm.$slots.default.length)?_c('footer',{staticClass:"timepicker-footer"},[_vm._t("default")],2):_vm._e()],1)],1):_c('b-input',_vm._b({ref:"input",attrs:{"type":"time","step":_vm.nativeStep,"autocomplete":"off","value":_vm.formatHHMMSS(_vm.computedValue),"placeholder":_vm.placeholder,"size":_vm.size,"icon":_vm.icon,"icon-pack":_vm.iconPack,"rounded":_vm.rounded,"loading":_vm.loading,"max":_vm.formatHHMMSS(_vm.maxTime),"min":_vm.formatHHMMSS(_vm.minTime),"disabled":_vm.disabled,"readonly":false,"use-html5-validation":_vm.useHtml5Validation},on:{"focus":_vm.handleOnFocus,"blur":function($event){_vm.onBlur() && _vm.checkHtml5Validity();}},nativeOn:{"change":function($event){return _vm.onChange($event.target.value)}}},'b-input',_vm.$attrs,false))],1)};
+  var __vue_staticRenderFns__$e = [];
 
     /* style */
-    const __vue_inject_styles__$e = undefined;
+    const __vue_inject_styles__$f = undefined;
     /* scoped */
-    const __vue_scope_id__$e = undefined;
+    const __vue_scope_id__$f = undefined;
     /* module identifier */
-    const __vue_module_identifier__$e = undefined;
+    const __vue_module_identifier__$f = undefined;
     /* functional template */
-    const __vue_is_functional_template__$e = false;
+    const __vue_is_functional_template__$f = false;
     /* style inject */
     
     /* style inject SSR */
@@ -40616,22 +40927,22 @@
 
     
     var Timepicker = normalizeComponent_1(
-      { render: __vue_render__$d, staticRenderFns: __vue_staticRenderFns__$d },
-      __vue_inject_styles__$e,
-      __vue_script__$e,
-      __vue_scope_id__$e,
-      __vue_is_functional_template__$e,
-      __vue_module_identifier__$e,
+      { render: __vue_render__$e, staticRenderFns: __vue_staticRenderFns__$e },
+      __vue_inject_styles__$f,
+      __vue_script__$f,
+      __vue_scope_id__$f,
+      __vue_is_functional_template__$f,
+      __vue_module_identifier__$f,
       undefined,
       undefined
     );
 
-  var _components$3;
+  var _components$4;
   var AM$1 = 'AM';
   var PM$1 = 'PM';
-  var script$f = {
+  var script$g = {
     name: 'BDatetimepicker',
-    components: (_components$3 = {}, _defineProperty(_components$3, Datepicker.name, Datepicker), _defineProperty(_components$3, Timepicker.name, Timepicker), _components$3),
+    components: (_components$4 = {}, _defineProperty(_components$4, Datepicker.name, Datepicker), _defineProperty(_components$4, Timepicker.name, Timepicker), _components$4),
     mixins: [FormElementMixin],
     inheritAttrs: false,
     props: {
@@ -40744,8 +41055,7 @@
           hour: this.localeOptions.hour || 'numeric',
           minute: this.localeOptions.minute || 'numeric',
           second: this.enableSeconds() ? this.localeOptions.second || 'numeric' : undefined,
-          // Fixes 12 hour display github.com/buefy/buefy/issues/3418
-          hourCycle: !this.isHourFormat24 ? 'h12' : 'h23'
+          hourCycle: !this.isHourFormat24() ? 'h12' : 'h23'
         });
       },
       isMobileNative: function isMobileNative() {
@@ -40942,20 +41252,20 @@
   };
 
   /* script */
-  const __vue_script__$f = script$f;
+  const __vue_script__$g = script$g;
 
   /* template */
-  var __vue_render__$e = function () {var _vm=this;var _h=_vm.$createElement;var _c=_vm._self._c||_h;return (!_vm.isMobile || _vm.inline)?_c('b-datepicker',_vm._b({ref:"datepicker",attrs:{"rounded":_vm.rounded,"open-on-focus":_vm.openOnFocus,"position":_vm.position,"loading":_vm.loading,"inline":_vm.inline,"editable":_vm.editable,"expanded":_vm.expanded,"close-on-click":false,"date-formatter":_vm.defaultDatetimeFormatter,"date-parser":_vm.defaultDatetimeParser,"min-date":_vm.minDate,"max-date":_vm.maxDate,"icon":_vm.icon,"icon-right":_vm.iconRight,"icon-right-clickable":_vm.iconRightClickable,"icon-pack":_vm.iconPack,"size":_vm.datepickerSize,"placeholder":_vm.placeholder,"horizontal-time-picker":_vm.horizontalTimePicker,"range":false,"disabled":_vm.disabled,"mobile-native":_vm.isMobileNative,"locale":_vm.locale,"focusable":_vm.focusable,"append-to-body":_vm.appendToBody},on:{"focus":_vm.onFocus,"blur":_vm.onBlur,"active-change":_vm.onActiveChange,"icon-right-click":function($event){return _vm.$emit('icon-right-click')},"change-month":function($event){return _vm.$emit('change-month', $event)},"change-year":function($event){return _vm.$emit('change-year', $event)}},model:{value:(_vm.computedValue),callback:function ($$v) {_vm.computedValue=$$v;},expression:"computedValue"}},'b-datepicker',_vm.datepicker,false),[_c('nav',{staticClass:"level is-mobile"},[(_vm.$slots.left !== undefined)?_c('div',{staticClass:"level-item has-text-centered"},[_vm._t("left")],2):_vm._e(),_c('div',{staticClass:"level-item has-text-centered"},[_c('b-timepicker',_vm._b({ref:"timepicker",attrs:{"inline":"","editable":_vm.editable,"min-time":_vm.minTime,"max-time":_vm.maxTime,"size":_vm.timepickerSize,"disabled":_vm.timepickerDisabled,"focusable":_vm.focusable,"mobile-native":_vm.isMobileNative,"locale":_vm.locale},model:{value:(_vm.computedValue),callback:function ($$v) {_vm.computedValue=$$v;},expression:"computedValue"}},'b-timepicker',_vm.timepicker,false))],1),(_vm.$slots.right !== undefined)?_c('div',{staticClass:"level-item has-text-centered"},[_vm._t("right")],2):_vm._e()])]):_c('b-input',_vm._b({ref:"input",attrs:{"type":"datetime-local","autocomplete":"off","value":_vm.formatNative(_vm.computedValue),"placeholder":_vm.placeholder,"size":_vm.size,"icon":_vm.icon,"icon-pack":_vm.iconPack,"rounded":_vm.rounded,"loading":_vm.loading,"max":_vm.formatNative(_vm.maxDate),"min":_vm.formatNative(_vm.minDate),"disabled":_vm.disabled,"readonly":false,"use-html5-validation":_vm.useHtml5Validation},on:{"focus":_vm.onFocus,"blur":_vm.onBlur},nativeOn:{"change":function($event){return _vm.onChangeNativePicker($event)}}},'b-input',_vm.$attrs,false))};
-  var __vue_staticRenderFns__$e = [];
+  var __vue_render__$f = function () {var _vm=this;var _h=_vm.$createElement;var _c=_vm._self._c||_h;return (!_vm.isMobile || _vm.inline)?_c('b-datepicker',_vm._b({ref:"datepicker",attrs:{"rounded":_vm.rounded,"open-on-focus":_vm.openOnFocus,"position":_vm.position,"loading":_vm.loading,"inline":_vm.inline,"editable":_vm.editable,"expanded":_vm.expanded,"close-on-click":false,"date-formatter":_vm.defaultDatetimeFormatter,"date-parser":_vm.defaultDatetimeParser,"min-date":_vm.minDate,"max-date":_vm.maxDate,"icon":_vm.icon,"icon-right":_vm.iconRight,"icon-right-clickable":_vm.iconRightClickable,"icon-pack":_vm.iconPack,"size":_vm.datepickerSize,"placeholder":_vm.placeholder,"horizontal-time-picker":_vm.horizontalTimePicker,"range":false,"disabled":_vm.disabled,"mobile-native":_vm.isMobileNative,"locale":_vm.locale,"focusable":_vm.focusable,"append-to-body":_vm.appendToBody},on:{"focus":_vm.onFocus,"blur":_vm.onBlur,"active-change":_vm.onActiveChange,"icon-right-click":function($event){return _vm.$emit('icon-right-click')},"change-month":function($event){return _vm.$emit('change-month', $event)},"change-year":function($event){return _vm.$emit('change-year', $event)}},model:{value:(_vm.computedValue),callback:function ($$v) {_vm.computedValue=$$v;},expression:"computedValue"}},'b-datepicker',_vm.datepicker,false),[_c('nav',{staticClass:"level is-mobile"},[(_vm.$slots.left !== undefined)?_c('div',{staticClass:"level-item has-text-centered"},[_vm._t("left")],2):_vm._e(),_c('div',{staticClass:"level-item has-text-centered"},[_c('b-timepicker',_vm._b({ref:"timepicker",attrs:{"inline":"","editable":_vm.editable,"min-time":_vm.minTime,"max-time":_vm.maxTime,"size":_vm.timepickerSize,"disabled":_vm.timepickerDisabled,"focusable":_vm.focusable,"mobile-native":_vm.isMobileNative,"locale":_vm.locale},model:{value:(_vm.computedValue),callback:function ($$v) {_vm.computedValue=$$v;},expression:"computedValue"}},'b-timepicker',_vm.timepicker,false))],1),(_vm.$slots.right !== undefined)?_c('div',{staticClass:"level-item has-text-centered"},[_vm._t("right")],2):_vm._e()])]):_c('b-input',_vm._b({ref:"input",attrs:{"type":"datetime-local","autocomplete":"off","value":_vm.formatNative(_vm.computedValue),"placeholder":_vm.placeholder,"size":_vm.size,"icon":_vm.icon,"icon-pack":_vm.iconPack,"rounded":_vm.rounded,"loading":_vm.loading,"max":_vm.formatNative(_vm.maxDate),"min":_vm.formatNative(_vm.minDate),"disabled":_vm.disabled,"readonly":false,"use-html5-validation":_vm.useHtml5Validation},on:{"focus":_vm.onFocus,"blur":_vm.onBlur},nativeOn:{"change":function($event){return _vm.onChangeNativePicker($event)}}},'b-input',_vm.$attrs,false))};
+  var __vue_staticRenderFns__$f = [];
 
     /* style */
-    const __vue_inject_styles__$f = undefined;
+    const __vue_inject_styles__$g = undefined;
     /* scoped */
-    const __vue_scope_id__$f = undefined;
+    const __vue_scope_id__$g = undefined;
     /* module identifier */
-    const __vue_module_identifier__$f = undefined;
+    const __vue_module_identifier__$g = undefined;
     /* functional template */
-    const __vue_is_functional_template__$f = false;
+    const __vue_is_functional_template__$g = false;
     /* style inject */
     
     /* style inject SSR */
@@ -40963,12 +41273,12 @@
 
     
     var Datetimepicker = normalizeComponent_1(
-      { render: __vue_render__$e, staticRenderFns: __vue_staticRenderFns__$e },
-      __vue_inject_styles__$f,
-      __vue_script__$f,
-      __vue_scope_id__$f,
-      __vue_is_functional_template__$f,
-      __vue_module_identifier__$f,
+      { render: __vue_render__$f, staticRenderFns: __vue_staticRenderFns__$f },
+      __vue_inject_styles__$g,
+      __vue_script__$g,
+      __vue_scope_id__$g,
+      __vue_is_functional_template__$g,
+      __vue_module_identifier__$g,
       undefined,
       undefined
     );
@@ -40981,7 +41291,7 @@
   use(Plugin$8);
 
   //
-  var script$g = {
+  var script$h = {
     name: 'BModal',
     directives: {
       trapFocus: directive$1
@@ -41224,20 +41534,20 @@
   };
 
   /* script */
-  const __vue_script__$g = script$g;
+  const __vue_script__$h = script$h;
 
   /* template */
-  var __vue_render__$f = function () {var _vm=this;var _h=_vm.$createElement;var _c=_vm._self._c||_h;return _c('transition',{attrs:{"name":_vm.animation},on:{"after-enter":_vm.afterEnter,"before-leave":_vm.beforeLeave,"after-leave":_vm.afterLeave}},[(!_vm.destroyed)?_c('div',{directives:[{name:"show",rawName:"v-show",value:(_vm.isActive),expression:"isActive"},{name:"trap-focus",rawName:"v-trap-focus",value:(_vm.trapFocus),expression:"trapFocus"}],staticClass:"modal is-active",class:[{'is-full-screen': _vm.fullScreen}, _vm.customClass],attrs:{"tabindex":"-1","role":_vm.ariaRole,"aria-label":_vm.ariaLabel,"aria-modal":_vm.ariaModal}},[_c('div',{staticClass:"modal-background",on:{"click":function($event){return _vm.cancel('outside')}}}),_c('div',{staticClass:"animation-content",class:{ 'modal-content': !_vm.hasModalCard },style:(_vm.customStyle)},[(_vm.component)?_c(_vm.component,_vm._g(_vm._b({tag:"component",attrs:{"can-cancel":_vm.canCancel},on:{"close":_vm.close}},'component',_vm.props,false),_vm.events)):(_vm.content)?[_c('div',{domProps:{"innerHTML":_vm._s(_vm.content)}})]:_vm._t("default",null,{"canCancel":_vm.canCancel,"close":_vm.close}),(_vm.showX)?_c('button',{directives:[{name:"show",rawName:"v-show",value:(!_vm.animating),expression:"!animating"}],staticClass:"modal-close is-large",attrs:{"type":"button","aria-label":_vm.closeButtonAriaLabel},on:{"click":function($event){return _vm.cancel('x')}}}):_vm._e()],2)]):_vm._e()])};
-  var __vue_staticRenderFns__$f = [];
+  var __vue_render__$g = function () {var _vm=this;var _h=_vm.$createElement;var _c=_vm._self._c||_h;return _c('transition',{attrs:{"name":_vm.animation},on:{"after-enter":_vm.afterEnter,"before-leave":_vm.beforeLeave,"after-leave":_vm.afterLeave}},[(!_vm.destroyed)?_c('div',{directives:[{name:"show",rawName:"v-show",value:(_vm.isActive),expression:"isActive"},{name:"trap-focus",rawName:"v-trap-focus",value:(_vm.trapFocus),expression:"trapFocus"}],staticClass:"modal is-active",class:[{'is-full-screen': _vm.fullScreen}, _vm.customClass],attrs:{"tabindex":"-1","role":_vm.ariaRole,"aria-label":_vm.ariaLabel,"aria-modal":_vm.ariaModal}},[_c('div',{staticClass:"modal-background",on:{"click":function($event){return _vm.cancel('outside')}}}),_c('div',{staticClass:"animation-content",class:{ 'modal-content': !_vm.hasModalCard },style:(_vm.customStyle)},[(_vm.component)?_c(_vm.component,_vm._g(_vm._b({tag:"component",attrs:{"can-cancel":_vm.canCancel},on:{"close":_vm.close}},'component',_vm.props,false),_vm.events)):(_vm.content)?[_c('div',{domProps:{"innerHTML":_vm._s(_vm.content)}})]:_vm._t("default",null,{"canCancel":_vm.canCancel,"close":_vm.close}),(_vm.showX)?_c('button',{directives:[{name:"show",rawName:"v-show",value:(!_vm.animating),expression:"!animating"}],staticClass:"modal-close is-large",attrs:{"type":"button","aria-label":_vm.closeButtonAriaLabel},on:{"click":function($event){return _vm.cancel('x')}}}):_vm._e()],2)]):_vm._e()])};
+  var __vue_staticRenderFns__$g = [];
 
     /* style */
-    const __vue_inject_styles__$g = undefined;
+    const __vue_inject_styles__$h = undefined;
     /* scoped */
-    const __vue_scope_id__$g = undefined;
+    const __vue_scope_id__$h = undefined;
     /* module identifier */
-    const __vue_module_identifier__$g = undefined;
+    const __vue_module_identifier__$h = undefined;
     /* functional template */
-    const __vue_is_functional_template__$g = false;
+    const __vue_is_functional_template__$h = false;
     /* style inject */
     
     /* style inject SSR */
@@ -41245,19 +41555,20 @@
 
     
     var Modal = normalizeComponent_1(
-      { render: __vue_render__$f, staticRenderFns: __vue_staticRenderFns__$f },
-      __vue_inject_styles__$g,
-      __vue_script__$g,
-      __vue_scope_id__$g,
-      __vue_is_functional_template__$g,
-      __vue_module_identifier__$g,
+      { render: __vue_render__$g, staticRenderFns: __vue_staticRenderFns__$g },
+      __vue_inject_styles__$h,
+      __vue_script__$h,
+      __vue_scope_id__$h,
+      __vue_is_functional_template__$h,
+      __vue_module_identifier__$h,
       undefined,
       undefined
     );
 
-  var script$h = {
+  var _components$5;
+  var script$i = {
     name: 'BDialog',
-    components: _defineProperty({}, Icon.name, Icon),
+    components: (_components$5 = {}, _defineProperty(_components$5, Icon.name, Icon), _defineProperty(_components$5, Button.name, Button), _components$5),
     directives: {
       trapFocus: directive$1
     },
@@ -41431,29 +41742,29 @@
         if (_this4.hasInput) {
           _this4.$refs.input.focus();
         } else if (_this4.focusOn === 'cancel' && _this4.showCancel) {
-          _this4.$refs.cancelButton.focus();
+          _this4.$refs.cancelButton.$el.focus();
         } else {
-          _this4.$refs.confirmButton.focus();
+          _this4.$refs.confirmButton.$el.focus();
         }
       });
     }
   };
 
   /* script */
-  const __vue_script__$h = script$h;
+  const __vue_script__$i = script$i;
 
   /* template */
-  var __vue_render__$g = function () {var _vm=this;var _h=_vm.$createElement;var _c=_vm._self._c||_h;return _c('transition',{attrs:{"name":_vm.animation}},[(_vm.isActive)?_c('div',{directives:[{name:"trap-focus",rawName:"v-trap-focus",value:(_vm.trapFocus),expression:"trapFocus"}],staticClass:"dialog modal is-active",class:_vm.dialogClass,attrs:{"role":_vm.ariaRole,"aria-modal":_vm.ariaModal}},[_c('div',{staticClass:"modal-background",on:{"click":function($event){return _vm.cancel('outside')}}}),_c('div',{staticClass:"modal-card animation-content"},[(_vm.title)?_c('header',{staticClass:"modal-card-head"},[_c('p',{staticClass:"modal-card-title"},[_vm._v(_vm._s(_vm.title))])]):_vm._e(),_c('section',{staticClass:"modal-card-body",class:{ 'is-titleless': !_vm.title, 'is-flex': _vm.hasIcon }},[_c('div',{staticClass:"media"},[(_vm.hasIcon && (_vm.icon || _vm.iconByType))?_c('div',{staticClass:"media-left"},[_c('b-icon',{attrs:{"icon":_vm.icon ? _vm.icon : _vm.iconByType,"pack":_vm.iconPack,"type":_vm.type,"both":!_vm.icon,"size":"is-large"}})],1):_vm._e(),_c('div',{staticClass:"media-content"},[_c('p',[(_vm.$slots.default)?[_vm._t("default")]:[_c('div',{domProps:{"innerHTML":_vm._s(_vm.message)}})]],2),(_vm.hasInput)?_c('div',{staticClass:"field"},[_c('div',{staticClass:"control"},[(((_vm.inputAttrs).type)==='checkbox')?_c('input',_vm._b({directives:[{name:"model",rawName:"v-model",value:(_vm.prompt),expression:"prompt"}],ref:"input",staticClass:"input",class:{ 'is-danger': _vm.validationMessage },attrs:{"type":"checkbox"},domProps:{"checked":Array.isArray(_vm.prompt)?_vm._i(_vm.prompt,null)>-1:(_vm.prompt)},on:{"compositionstart":function($event){_vm.isCompositing = true;},"compositionend":function($event){_vm.isCompositing = false;},"keydown":function($event){if(!$event.type.indexOf('key')&&_vm._k($event.keyCode,"enter",13,$event.key,"Enter")){ return null; }return _vm.confirm($event)},"change":function($event){var $$a=_vm.prompt,$$el=$event.target,$$c=$$el.checked?(true):(false);if(Array.isArray($$a)){var $$v=null,$$i=_vm._i($$a,$$v);if($$el.checked){$$i<0&&(_vm.prompt=$$a.concat([$$v]));}else {$$i>-1&&(_vm.prompt=$$a.slice(0,$$i).concat($$a.slice($$i+1)));}}else {_vm.prompt=$$c;}}}},'input',_vm.inputAttrs,false)):(((_vm.inputAttrs).type)==='radio')?_c('input',_vm._b({directives:[{name:"model",rawName:"v-model",value:(_vm.prompt),expression:"prompt"}],ref:"input",staticClass:"input",class:{ 'is-danger': _vm.validationMessage },attrs:{"type":"radio"},domProps:{"checked":_vm._q(_vm.prompt,null)},on:{"compositionstart":function($event){_vm.isCompositing = true;},"compositionend":function($event){_vm.isCompositing = false;},"keydown":function($event){if(!$event.type.indexOf('key')&&_vm._k($event.keyCode,"enter",13,$event.key,"Enter")){ return null; }return _vm.confirm($event)},"change":function($event){_vm.prompt=null;}}},'input',_vm.inputAttrs,false)):_c('input',_vm._b({directives:[{name:"model",rawName:"v-model",value:(_vm.prompt),expression:"prompt"}],ref:"input",staticClass:"input",class:{ 'is-danger': _vm.validationMessage },attrs:{"type":(_vm.inputAttrs).type},domProps:{"value":(_vm.prompt)},on:{"compositionstart":function($event){_vm.isCompositing = true;},"compositionend":function($event){_vm.isCompositing = false;},"keydown":function($event){if(!$event.type.indexOf('key')&&_vm._k($event.keyCode,"enter",13,$event.key,"Enter")){ return null; }return _vm.confirm($event)},"input":function($event){if($event.target.composing){ return; }_vm.prompt=$event.target.value;}}},'input',_vm.inputAttrs,false))]),_c('p',{staticClass:"help is-danger"},[_vm._v(_vm._s(_vm.validationMessage))])]):_vm._e()])])]),_c('footer',{staticClass:"modal-card-foot"},[(_vm.showCancel)?_c('button',{ref:"cancelButton",staticClass:"button",on:{"click":function($event){return _vm.cancel('button')}}},[_vm._v(_vm._s(_vm.cancelText))]):_vm._e(),_c('button',{ref:"confirmButton",staticClass:"button",class:_vm.type,on:{"click":_vm.confirm}},[_vm._v(_vm._s(_vm.confirmText))])])])]):_vm._e()])};
-  var __vue_staticRenderFns__$g = [];
+  var __vue_render__$h = function () {var _vm=this;var _h=_vm.$createElement;var _c=_vm._self._c||_h;return _c('transition',{attrs:{"name":_vm.animation}},[(_vm.isActive)?_c('div',{directives:[{name:"trap-focus",rawName:"v-trap-focus",value:(_vm.trapFocus),expression:"trapFocus"}],staticClass:"dialog modal is-active",class:_vm.dialogClass,attrs:{"role":_vm.ariaRole,"aria-modal":_vm.ariaModal}},[_c('div',{staticClass:"modal-background",on:{"click":function($event){return _vm.cancel('outside')}}}),_c('div',{staticClass:"modal-card animation-content"},[(_vm.title)?_c('header',{staticClass:"modal-card-head"},[_c('p',{staticClass:"modal-card-title"},[_vm._v(_vm._s(_vm.title))])]):_vm._e(),_c('section',{staticClass:"modal-card-body",class:{ 'is-titleless': !_vm.title, 'is-flex': _vm.hasIcon }},[_c('div',{staticClass:"media"},[(_vm.hasIcon && (_vm.icon || _vm.iconByType))?_c('div',{staticClass:"media-left"},[_c('b-icon',{attrs:{"icon":_vm.icon ? _vm.icon : _vm.iconByType,"pack":_vm.iconPack,"type":_vm.type,"both":!_vm.icon,"size":"is-large"}})],1):_vm._e(),_c('div',{staticClass:"media-content"},[_c('p',[(_vm.$slots.default)?[_vm._t("default")]:[_c('div',{domProps:{"innerHTML":_vm._s(_vm.message)}})]],2),(_vm.hasInput)?_c('div',{staticClass:"field"},[_c('div',{staticClass:"control"},[(((_vm.inputAttrs).type)==='checkbox')?_c('input',_vm._b({directives:[{name:"model",rawName:"v-model",value:(_vm.prompt),expression:"prompt"}],ref:"input",staticClass:"input",class:{ 'is-danger': _vm.validationMessage },attrs:{"type":"checkbox"},domProps:{"checked":Array.isArray(_vm.prompt)?_vm._i(_vm.prompt,null)>-1:(_vm.prompt)},on:{"compositionstart":function($event){_vm.isCompositing = true;},"compositionend":function($event){_vm.isCompositing = false;},"keydown":function($event){if(!$event.type.indexOf('key')&&_vm._k($event.keyCode,"enter",13,$event.key,"Enter")){ return null; }return _vm.confirm($event)},"change":function($event){var $$a=_vm.prompt,$$el=$event.target,$$c=$$el.checked?(true):(false);if(Array.isArray($$a)){var $$v=null,$$i=_vm._i($$a,$$v);if($$el.checked){$$i<0&&(_vm.prompt=$$a.concat([$$v]));}else {$$i>-1&&(_vm.prompt=$$a.slice(0,$$i).concat($$a.slice($$i+1)));}}else {_vm.prompt=$$c;}}}},'input',_vm.inputAttrs,false)):(((_vm.inputAttrs).type)==='radio')?_c('input',_vm._b({directives:[{name:"model",rawName:"v-model",value:(_vm.prompt),expression:"prompt"}],ref:"input",staticClass:"input",class:{ 'is-danger': _vm.validationMessage },attrs:{"type":"radio"},domProps:{"checked":_vm._q(_vm.prompt,null)},on:{"compositionstart":function($event){_vm.isCompositing = true;},"compositionend":function($event){_vm.isCompositing = false;},"keydown":function($event){if(!$event.type.indexOf('key')&&_vm._k($event.keyCode,"enter",13,$event.key,"Enter")){ return null; }return _vm.confirm($event)},"change":function($event){_vm.prompt=null;}}},'input',_vm.inputAttrs,false)):_c('input',_vm._b({directives:[{name:"model",rawName:"v-model",value:(_vm.prompt),expression:"prompt"}],ref:"input",staticClass:"input",class:{ 'is-danger': _vm.validationMessage },attrs:{"type":(_vm.inputAttrs).type},domProps:{"value":(_vm.prompt)},on:{"compositionstart":function($event){_vm.isCompositing = true;},"compositionend":function($event){_vm.isCompositing = false;},"keydown":function($event){if(!$event.type.indexOf('key')&&_vm._k($event.keyCode,"enter",13,$event.key,"Enter")){ return null; }return _vm.confirm($event)},"input":function($event){if($event.target.composing){ return; }_vm.prompt=$event.target.value;}}},'input',_vm.inputAttrs,false))]),_c('p',{staticClass:"help is-danger"},[_vm._v(_vm._s(_vm.validationMessage))])]):_vm._e()])])]),_c('footer',{staticClass:"modal-card-foot"},[(_vm.showCancel)?_c('b-button',{ref:"cancelButton",on:{"click":function($event){return _vm.cancel('button')}}},[_vm._v(_vm._s(_vm.cancelText))]):_vm._e(),_c('b-button',{ref:"confirmButton",attrs:{"type":_vm.type},on:{"click":_vm.confirm}},[_vm._v(_vm._s(_vm.confirmText))])],1)])]):_vm._e()])};
+  var __vue_staticRenderFns__$h = [];
 
     /* style */
-    const __vue_inject_styles__$h = undefined;
+    const __vue_inject_styles__$i = undefined;
     /* scoped */
-    const __vue_scope_id__$h = undefined;
+    const __vue_scope_id__$i = undefined;
     /* module identifier */
-    const __vue_module_identifier__$h = undefined;
+    const __vue_module_identifier__$i = undefined;
     /* functional template */
-    const __vue_is_functional_template__$h = false;
+    const __vue_is_functional_template__$i = false;
     /* style inject */
     
     /* style inject SSR */
@@ -41461,12 +41772,12 @@
 
     
     var Dialog = normalizeComponent_1(
-      { render: __vue_render__$g, staticRenderFns: __vue_staticRenderFns__$g },
-      __vue_inject_styles__$h,
-      __vue_script__$h,
-      __vue_scope_id__$h,
-      __vue_is_functional_template__$h,
-      __vue_module_identifier__$h,
+      { render: __vue_render__$h, staticRenderFns: __vue_staticRenderFns__$h },
+      __vue_inject_styles__$i,
+      __vue_script__$i,
+      __vue_scope_id__$i,
+      __vue_is_functional_template__$i,
+      __vue_module_identifier__$i,
       undefined,
       undefined
     );
@@ -41570,312 +41881,6 @@
     }
   };
   use(Plugin$c);
-
-  var script$i = {
-    name: 'BImage',
-    props: {
-      src: String,
-      alt: String,
-      srcFallback: String,
-      webpFallback: {
-        type: String,
-        default: function _default() {
-          return config$2.defaultImageWebpFallback;
-        }
-      },
-      lazy: {
-        type: Boolean,
-        default: function _default() {
-          return config$2.defaultImageLazy;
-        }
-      },
-      responsive: {
-        type: Boolean,
-        default: function _default() {
-          return config$2.defaultImageResponsive;
-        }
-      },
-      ratio: {
-        type: String,
-        default: function _default() {
-          return config$2.defaultImageRatio;
-        }
-      },
-      placeholder: String,
-      srcset: String,
-      srcsetSizes: Array,
-      srcsetFormatter: {
-        type: Function,
-        default: function _default(src, size, vm) {
-          if (typeof config$2.defaultImageSrcsetFormatter === 'function') {
-            return config$2.defaultImageSrcsetFormatter(src, size);
-          } else {
-            return vm.formatSrcset(src, size);
-          }
-        }
-      },
-      rounded: {
-        type: Boolean,
-        default: false
-      },
-      captionFirst: {
-        type: Boolean,
-        default: false
-      },
-      customClass: String
-    },
-    data: function data() {
-      return {
-        clientWidth: 0,
-        webpSupportVerified: false,
-        webpSupported: false,
-        useNativeLazy: false,
-        observer: null,
-        inViewPort: false,
-        bulmaKnownRatio: ['square', '1by1', '5by4', '4by3', '3by2', '5by3', '16by9', 'b2y1', '3by1', '4by5', '3by4', '2by3', '3by5', '9by16', '1by2', '1by3'],
-        loaded: false,
-        failed: false
-      };
-    },
-    computed: {
-      ratioPattern: function ratioPattern() {
-        return new RegExp(/([0-9]+)by([0-9]+)/);
-      },
-      hasRatio: function hasRatio() {
-        return this.ratio && this.ratioPattern.test(this.ratio);
-      },
-      figureClasses: function figureClasses() {
-        var classes = {
-          image: this.responsive
-        };
-
-        if (this.hasRatio && this.bulmaKnownRatio.indexOf(this.ratio) >= 0) {
-          classes["is-".concat(this.ratio)] = true;
-        }
-
-        return classes;
-      },
-      figureStyles: function figureStyles() {
-        if (this.hasRatio && this.bulmaKnownRatio.indexOf(this.ratio) < 0) {
-          var ratioValues = this.ratioPattern.exec(this.ratio);
-          return {
-            paddingTop: "".concat(ratioValues[2] / ratioValues[1] * 100, "%")
-          };
-        }
-      },
-      imgClasses: function imgClasses() {
-        return _defineProperty({
-          'is-rounded': this.rounded,
-          'has-ratio': this.hasRatio
-        }, this.customClass, this.customClass);
-      },
-      srcExt: function srcExt() {
-        return this.getExt(this.src);
-      },
-      isWepb: function isWepb() {
-        return this.srcExt === 'webp';
-      },
-      computedSrc: function computedSrc() {
-        var src = this.src;
-
-        if (this.failed && this.srcFallback) {
-          src = this.srcFallback;
-        }
-
-        if (!this.webpSupported && this.isWepb && this.webpFallback) {
-          if (this.webpFallback.startsWith('.')) {
-            return src.replace(/\.webp/gi, "".concat(this.webpFallback));
-          }
-
-          return this.webpFallback;
-        }
-
-        return src;
-      },
-      computedWidth: function computedWidth() {
-        if (this.responsive && this.clientWidth > 0) {
-          return this.clientWidth;
-        }
-      },
-      computedNativeLazy: function computedNativeLazy() {
-        if (this.lazy && this.useNativeLazy) {
-          return 'lazy';
-        }
-      },
-      isDisplayed: function isDisplayed() {
-        return (this.webpSupportVerified || !this.isWepb) && (!this.lazy || this.useNativeLazy || this.inViewPort);
-      },
-      placeholderExt: function placeholderExt() {
-        if (this.placeholder) {
-          return this.getExt(this.placeholder);
-        }
-      },
-      isPlaceholderWepb: function isPlaceholderWepb() {
-        if (this.placeholder) {
-          return this.placeholderExt === 'webp';
-        }
-      },
-      computedPlaceholder: function computedPlaceholder() {
-        if (!this.webpSupported && this.isPlaceholderWepb && this.webpFallback && this.webpFallback.startsWith('.')) {
-          return this.placeholder.replace(/\.webp/gi, "".concat(this.webpFallback));
-        }
-
-        return this.placeholder;
-      },
-      isPlaceholderDisplayed: function isPlaceholderDisplayed() {
-        return !this.loaded && (this.$slots.placeholder || this.placeholder && (this.webpSupportVerified || !this.isPlaceholderWepb));
-      },
-      computedSrcset: function computedSrcset() {
-        var _this = this;
-
-        if (this.srcset) {
-          if (!this.webpSupported && this.isWepb && this.webpFallback && this.webpFallback.startsWith('.')) {
-            return this.srcset.replace(/\.webp/gi, "".concat(this.webpFallback));
-          }
-
-          return this.srcset;
-        }
-
-        if (this.srcsetSizes && Array.isArray(this.srcsetSizes) && this.srcsetSizes.length > 0) {
-          return this.srcsetSizes.map(function (size) {
-            return "".concat(_this.srcsetFormatter(_this.computedSrc, size, _this), " ").concat(size, "w");
-          }).join(',');
-        }
-      },
-      computedSizes: function computedSizes() {
-        if (this.computedSrcset && this.computedWidth) {
-          return "".concat(this.computedWidth, "px");
-        }
-      },
-      isCaptionFirst: function isCaptionFirst() {
-        return this.$slots.caption && this.captionFirst;
-      },
-      isCaptionLast: function isCaptionLast() {
-        return this.$slots.caption && !this.captionFirst;
-      }
-    },
-    methods: {
-      getExt: function getExt(filename) {
-        var clean = arguments.length > 1 && arguments[1] !== undefined ? arguments[1] : true;
-
-        if (filename) {
-          var noParam = clean ? filename.split('?')[0] : filename;
-          return noParam.split('.').pop();
-        }
-
-        return '';
-      },
-      setWidth: function setWidth() {
-        this.clientWidth = this.$el.clientWidth;
-      },
-      formatSrcset: function formatSrcset(src, size) {
-        var ext = this.getExt(src, false);
-        var name = src.split('.').slice(0, -1).join('.');
-        return "".concat(name, "-").concat(size, ".").concat(ext);
-      },
-      onLoad: function onLoad(event) {
-        this.loaded = true;
-        this.emit('load', event);
-      },
-      onError: function onError(event) {
-        this.emit('error', event);
-
-        if (!this.failed) {
-          this.failed = true;
-        }
-      },
-      emit: function emit(eventName, event) {
-        var target = event.target;
-        this.$emit(eventName, event, target.currentSrc || target.src || this.computedSrc);
-      }
-    },
-    created: function created() {
-      var _this2 = this;
-
-      if (this.isWepb) {
-        isWebpSupported().then(function (supported) {
-          _this2.webpSupportVerified = true;
-          _this2.webpSupported = supported;
-        });
-      }
-
-      if (this.lazy) {
-        // We use native lazy loading if supported
-        // We try to use Intersection Observer if native lazy loading is not supported
-        // We use the lazy attribute anyway if we cannot detect support (SSR for example).
-        var nativeLazySupported = typeof window !== 'undefined' && 'HTMLImageElement' in window && 'loading' in HTMLImageElement.prototype;
-        var intersectionObserverSupported = typeof window !== 'undefined' && 'IntersectionObserver' in window;
-
-        if (!nativeLazySupported && intersectionObserverSupported) {
-          this.observer = new IntersectionObserver(function (events) {
-            var _events$ = events[0],
-                target = _events$.target,
-                isIntersecting = _events$.isIntersecting;
-
-            if (isIntersecting && !_this2.inViewPort) {
-              _this2.inViewPort = true;
-
-              _this2.observer.unobserve(target);
-            }
-          });
-        } else {
-          this.useNativeLazy = true;
-        }
-      }
-    },
-    mounted: function mounted() {
-      if (this.lazy && this.observer) {
-        this.observer.observe(this.$el);
-      }
-
-      this.setWidth();
-
-      if (typeof window !== 'undefined') {
-        window.addEventListener('resize', this.setWidth);
-      }
-    },
-    beforeDestroy: function beforeDestroy() {
-      if (this.observer) {
-        this.observer.disconnect();
-      }
-
-      if (typeof window !== 'undefined') {
-        window.removeEventListener('resize', this.setWidth);
-      }
-    }
-  };
-
-  /* script */
-  const __vue_script__$i = script$i;
-
-  /* template */
-  var __vue_render__$h = function () {var _vm=this;var _h=_vm.$createElement;var _c=_vm._self._c||_h;return _c('figure',{staticClass:"b-image-wrapper",class:_vm.figureClasses,style:(_vm.figureStyles)},[(_vm.isCaptionFirst)?_c('figcaption',[_vm._t("caption")],2):_vm._e(),_c('transition',{attrs:{"name":"fade"}},[(_vm.isDisplayed)?_c('img',{class:_vm.imgClasses,attrs:{"srcset":_vm.computedSrcset,"src":_vm.computedSrc,"alt":_vm.alt,"width":_vm.computedWidth,"sizes":_vm.computedSizes,"loading":_vm.computedNativeLazy},on:{"load":_vm.onLoad,"error":_vm.onError}}):_vm._e()]),_c('transition',{attrs:{"name":"fade"}},[(_vm.isPlaceholderDisplayed)?_vm._t("placeholder",[_c('img',{staticClass:"placeholder",class:_vm.imgClasses,attrs:{"src":_vm.computedPlaceholder,"alt":_vm.alt}})]):_vm._e()],2),(_vm.isCaptionLast)?_c('figcaption',[_vm._t("caption")],2):_vm._e()],1)};
-  var __vue_staticRenderFns__$h = [];
-
-    /* style */
-    const __vue_inject_styles__$i = undefined;
-    /* scoped */
-    const __vue_scope_id__$i = undefined;
-    /* module identifier */
-    const __vue_module_identifier__$i = undefined;
-    /* functional template */
-    const __vue_is_functional_template__$i = false;
-    /* style inject */
-    
-    /* style inject SSR */
-    
-
-    
-    var Image$1 = normalizeComponent_1(
-      { render: __vue_render__$h, staticRenderFns: __vue_staticRenderFns__$h },
-      __vue_inject_styles__$i,
-      __vue_script__$i,
-      __vue_scope_id__$i,
-      __vue_is_functional_template__$i,
-      __vue_module_identifier__$i,
-      undefined,
-      undefined
-    );
 
   var Plugin$d = {
     install: function install(Vue) {
@@ -43594,10 +43599,10 @@
   };
   use(Plugin$k);
 
-  var _components$4;
+  var _components$6;
   var script$o = {
     name: 'BNumberinput',
-    components: (_components$4 = {}, _defineProperty(_components$4, Icon.name, Icon), _defineProperty(_components$4, Input.name, Input), _components$4),
+    components: (_components$6 = {}, _defineProperty(_components$6, Icon.name, Icon), _defineProperty(_components$6, Input.name, Input), _components$6),
     mixins: [FormElementMixin],
     inheritAttrs: false,
     props: {
@@ -43674,7 +43679,9 @@
           }
 
           this.$nextTick(function () {
-            _this.$refs.input.checkHtml5Validity();
+            if (_this.$refs.input) {
+              _this.$refs.input.checkHtml5Validity();
+            }
           });
         }
       },
@@ -43920,10 +43927,10 @@
       undefined
     );
 
-  var _components$5;
+  var _components$7;
   var script$1$a = {
     name: 'BPagination',
-    components: (_components$5 = {}, _defineProperty(_components$5, Icon.name, Icon), _defineProperty(_components$5, PaginationButton.name, PaginationButton), _components$5),
+    components: (_components$7 = {}, _defineProperty(_components$7, Icon.name, Icon), _defineProperty(_components$7, PaginationButton.name, PaginationButton), _components$7),
     // deprecated, to replace with default 'value' in the next breaking change
     model: {
       prop: 'current',
@@ -45705,10 +45712,10 @@
       undefined
     );
 
-  var _components$6;
+  var _components$8;
   var script$2$5 = {
     name: 'BSlider',
-    components: (_components$6 = {}, _defineProperty(_components$6, SliderThumb.name, SliderThumb), _defineProperty(_components$6, SliderTick.name, SliderTick), _components$6),
+    components: (_components$8 = {}, _defineProperty(_components$8, SliderThumb.name, SliderThumb), _defineProperty(_components$8, SliderTick.name, SliderTick), _components$8),
     props: {
       value: {
         type: [Number, Array],
@@ -46791,10 +46798,10 @@
     };
   }
 
-  var _components$7;
+  var _components$9;
   var script$A = {
     name: 'BTableMobileSort',
-    components: (_components$7 = {}, _defineProperty(_components$7, Select.name, Select), _defineProperty(_components$7, Icon.name, Icon), _components$7),
+    components: (_components$9 = {}, _defineProperty(_components$9, Select.name, Select), _defineProperty(_components$9, Icon.name, Icon), _components$9),
     props: {
       currentSortColumn: Object,
       sortMultipleData: Array,
@@ -48708,10 +48715,10 @@
   };
   use(Plugin$z);
 
-  var _components$8;
+  var _components$a;
   var script$E = {
     name: 'BTaginput',
-    components: (_components$8 = {}, _defineProperty(_components$8, Autocomplete.name, Autocomplete), _defineProperty(_components$8, Tag.name, Tag), _components$8),
+    components: (_components$a = {}, _defineProperty(_components$a, Autocomplete.name, Autocomplete), _defineProperty(_components$a, Tag.name, Tag), _components$a),
     mixins: [FormElementMixin],
     inheritAttrs: false,
     props: {
@@ -51978,6 +51985,10 @@
           const dataURL = canvas.toDataURL();
           downloadDataURL("capture.png", dataURL);
       });
+
+      // Only redraw glTF view upon user inputs, or when an animation is playing.
+      let redraw = false;
+      const listenForRedraw = stream => stream.subscribe(() => redraw = true);
       
       uiModel.scene.pipe(filter(scene => scene === -1)).subscribe( () => {
           state.sceneIndex = undefined;
@@ -51985,6 +51996,7 @@
       uiModel.scene.pipe(filter(scene => scene !== -1)).subscribe( scene => {
           state.sceneIndex = scene;
       });
+      listenForRedraw(uiModel.scene);
 
       uiModel.camera.pipe(filter(camera => camera === -1)).subscribe( () => {
           state.cameraIndex = undefined;
@@ -51992,30 +52004,37 @@
       uiModel.camera.pipe(filter(camera => camera !== -1)).subscribe( camera => {
           state.cameraIndex = camera;
       });
+      listenForRedraw(uiModel.camera);
 
       uiModel.variant.subscribe( variant => {
           state.variant = variant;
       });
+      listenForRedraw(uiModel.variant);
 
       uiModel.tonemap.subscribe( tonemap => {
           state.renderingParameters.toneMap = tonemap;
       });
+      listenForRedraw(uiModel.tonemap);
 
       uiModel.debugchannel.subscribe( debugchannel => {
           state.renderingParameters.debugOutput = debugchannel;
       });
+      listenForRedraw(uiModel.debugchannel);
 
       uiModel.skinningEnabled.subscribe( skinningEnabled => {
           state.renderingParameters.skinning = skinningEnabled;
       });
+      listenForRedraw(uiModel.skinningEnabled);
 
       uiModel.exposurecompensation.subscribe( exposurecompensation => {
           state.renderingParameters.exposure = Math.pow(2, exposurecompensation);
       });
+      listenForRedraw(uiModel.exposurecompensation);
 
       uiModel.morphingEnabled.subscribe( morphingEnabled => {
           state.renderingParameters.morphing = morphingEnabled;
       });
+      listenForRedraw(uiModel.morphingEnabled);
 
       uiModel.clearcoatEnabled.subscribe( clearcoatEnabled => {
           state.renderingParameters.enabledExtensions.KHR_materials_clearcoat = clearcoatEnabled;
@@ -52035,10 +52054,17 @@
       uiModel.specularEnabled.subscribe( specularEnabled => {
           state.renderingParameters.enabledExtensions.KHR_materials_specular = specularEnabled;
       });
+      listenForRedraw(uiModel.clearcoatEnabled);
+      listenForRedraw(uiModel.sheenEnabled);
+      listenForRedraw(uiModel.transmissionEnabled);
+      listenForRedraw(uiModel.volumeEnabled);
+      listenForRedraw(uiModel.iorEnabled);
+      listenForRedraw(uiModel.specularEnabled);
 
       uiModel.iblEnabled.subscribe( iblEnabled => {
           state.renderingParameters.useIBL = iblEnabled;
       });
+      listenForRedraw(uiModel.iblEnabled);
 
       uiModel.renderEnvEnabled.subscribe( renderEnvEnabled => {
           state.renderingParameters.renderEnvironmentMap = renderEnvEnabled;
@@ -52046,10 +52072,13 @@
       uiModel.blurEnvEnabled.subscribe( blurEnvEnabled => {
           state.renderingParameters.blurEnvironmentMap = blurEnvEnabled;
       });
+      listenForRedraw(uiModel.renderEnvEnabled);
+      listenForRedraw(uiModel.blurEnvEnabled);
 
       uiModel.punctualLightsEnabled.subscribe( punctualLightsEnabled => {
           state.renderingParameters.usePunctual = punctualLightsEnabled;
       });
+      listenForRedraw(uiModel.punctualLightsEnabled);
 
       uiModel.environmentRotation.subscribe( environmentRotation => {
           switch (environmentRotation)
@@ -52068,11 +52097,13 @@
               break;
           }
       });
+      listenForRedraw(uiModel.environmentRotation);
 
 
       uiModel.clearColor.subscribe( clearColor => {
           state.renderingParameters.clearColor = clearColor;
       });
+      listenForRedraw(uiModel.clearColor);
 
       uiModel.animationPlay.subscribe( animationPlay => {
           if(animationPlay)
@@ -52088,10 +52119,13 @@
       uiModel.activeAnimations.subscribe( animations => {
           state.animationIndices = animations;
       });
+      listenForRedraw(uiModel.activeAnimations);
 
       uiModel.hdr.subscribe( hdrFile => {
           resourceLoader.loadEnvironment(hdrFile).then( (environment) => {
               state.environment = environment;
+              //We neeed to wait until the environment is loaded to redraw
+              redraw = true;
           });
       });
 
@@ -52107,6 +52141,7 @@
               state.userCamera.orbit(orbit.deltaPhi, orbit.deltaTheta);
           }
       });
+      listenForRedraw(uiModel.orbit);
 
       uiModel.pan.subscribe( pan => {
           if (state.cameraIndex === undefined)
@@ -52114,6 +52149,7 @@
               state.userCamera.pan(pan.deltaX, -pan.deltaY);
           }
       });
+      listenForRedraw(uiModel.pan);
 
       uiModel.zoom.subscribe( zoom => {
           if (state.cameraIndex === undefined)
@@ -52121,8 +52157,10 @@
               state.userCamera.zoomBy(zoom.deltaZoom);
           }
       });
+      listenForRedraw(uiModel.zoom);
 
       // configure the animation loop
+      const past = {};
       const update = () =>
       {
           const devicePixelRatio = window.devicePixelRatio || 1;
@@ -52130,8 +52168,16 @@
           // set the size of the drawingBuffer based on the size it's displayed.
           canvas.width = Math.floor(canvas.clientWidth * devicePixelRatio);
           canvas.height = Math.floor(canvas.clientHeight * devicePixelRatio);
+          redraw |= !state.animationTimer.paused && state.animationIndices.length > 0;
+          redraw |= past.width != canvas.width || past.height != canvas.height;
+          past.width = canvas.width;
+          past.height = canvas.height;
+          
+          if (redraw) {
+              view.renderFrame(state, canvas.width, canvas.height);
+              redraw = false;
+          }
 
-          view.renderFrame(state, canvas.width, canvas.height);
           window.requestAnimationFrame(update);
       };
 
