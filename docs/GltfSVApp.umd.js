@@ -3130,7 +3130,7 @@
 
   var punctualShader = "#define GLSLIFY 1\n// KHR_lights_punctual extension.\n// see https://github.com/KhronosGroup/glTF/tree/master/extensions/2.0/Khronos/KHR_lights_punctual\nstruct Light\n{\n    vec3 direction;\n    float range;\n\n    vec3 color;\n    float intensity;\n\n    vec3 position;\n    float innerConeCos;\n\n    float outerConeCos;\n    int type;\n};\n\nconst int LightType_Directional = 0;\nconst int LightType_Point = 1;\nconst int LightType_Spot = 2;\n\n#ifdef USE_PUNCTUAL\nuniform Light u_Lights[LIGHT_COUNT + 1]; //Array [0] is not allowed\n#endif\n\n// https://github.com/KhronosGroup/glTF/blob/master/extensions/2.0/Khronos/KHR_lights_punctual/README.md#range-property\nfloat getRangeAttenuation(float range, float distance)\n{\n    if (range <= 0.0)\n    {\n        // negative range means unlimited\n        return 1.0 / pow(distance, 2.0);\n    }\n    return max(min(1.0 - pow(distance / range, 4.0), 1.0), 0.0) / pow(distance, 2.0);\n}\n\n// https://github.com/KhronosGroup/glTF/blob/master/extensions/2.0/Khronos/KHR_lights_punctual/README.md#inner-and-outer-cone-angles\nfloat getSpotAttenuation(vec3 pointToLight, vec3 spotDirection, float outerConeCos, float innerConeCos)\n{\n    float actualCos = dot(normalize(spotDirection), normalize(-pointToLight));\n    if (actualCos > outerConeCos)\n    {\n        if (actualCos < innerConeCos)\n        {\n            return smoothstep(outerConeCos, innerConeCos, actualCos);\n        }\n        return 1.0;\n    }\n    return 0.0;\n}\n\nvec3 getLighIntensity(Light light, vec3 pointToLight)\n{\n    float rangeAttenuation = 1.0;\n    float spotAttenuation = 1.0;\n\n    if (light.type != LightType_Directional)\n    {\n        rangeAttenuation = getRangeAttenuation(light.range, length(pointToLight));\n    }\n    if (light.type == LightType_Spot)\n    {\n        spotAttenuation = getSpotAttenuation(pointToLight, light.direction, light.outerConeCos, light.innerConeCos);\n    }\n\n    return rangeAttenuation * spotAttenuation * light.intensity * light.color;\n}\n\nvec3 getPunctualRadianceTransmission(vec3 normal, vec3 view, vec3 pointToLight, float alphaRoughness,\n    vec3 f0, vec3 f90, vec3 baseColor, float ior)\n{\n    float transmissionRougness = applyIorToRoughness(alphaRoughness, ior);\n\n    vec3 n = normalize(normal);           // Outward direction of surface point\n    vec3 v = normalize(view);             // Direction from surface point to view\n    vec3 l = normalize(pointToLight);\n    vec3 l_mirror = normalize(l + 2.0*n*dot(-l, n));     // Mirror light reflection vector on surface\n    vec3 h = normalize(l_mirror + v);            // Halfway vector between transmission light vector and v\n\n    float D = D_GGX(clamp(dot(n, h), 0.0, 1.0), transmissionRougness);\n    vec3 F = F_Schlick(f0, f90, clamp(dot(v, h), 0.0, 1.0));\n    float Vis = V_GGX(clamp(dot(n, l_mirror), 0.0, 1.0), clamp(dot(n, v), 0.0, 1.0), transmissionRougness);\n\n    // Transmission BTDF\n    return (1.0 - F) * baseColor * D * Vis;\n}\n\nvec3 getPunctualRadianceClearCoat(vec3 clearcoatNormal, vec3 v, vec3 l, vec3 h, float VdotH, vec3 f0, vec3 f90, float clearcoatRoughness)\n{\n    float NdotL = clampedDot(clearcoatNormal, l);\n    float NdotV = clampedDot(clearcoatNormal, v);\n    float NdotH = clampedDot(clearcoatNormal, h);\n    return NdotL * BRDF_specularGGX(f0, f90, clearcoatRoughness * clearcoatRoughness, 1.0, VdotH, NdotL, NdotV, NdotH);\n}\n\nvec3 getPunctualRadianceSheen(vec3 sheenColor, float sheenRoughness, float NdotL, float NdotV, float NdotH)\n{\n    return NdotL * BRDF_specularSheen(sheenColor, sheenRoughness, NdotL, NdotV, NdotH);\n}\n\n// Compute attenuated light as it travels through a volume.\nvec3 applyVolumeAttenuation(vec3 radiance, float transmissionDistance, vec3 attenuationColor, float attenuationDistance)\n{\n    if (attenuationDistance == 0.0)\n    {\n        // Attenuation distance is +∞ (which we indicate by zero), i.e. the transmitted color is not attenuated at all.\n        return radiance;\n    }\n    else\n    {\n        // Compute light attenuation using Beer's law.\n        vec3 attenuationCoefficient = -log(attenuationColor) / attenuationDistance;\n        vec3 transmittance = exp(-attenuationCoefficient * transmissionDistance); // Beer's law\n        return transmittance * radiance;\n    }\n}\n\nvec3 getVolumeTransmissionRay(vec3 n, vec3 v, float thickness, float ior, mat4 modelMatrix)\n{\n    // Direction of refracted light.\n    vec3 refractionVector = refract(-v, normalize(n), 1.0 / ior);\n\n    // Compute rotation-independant scaling of the model matrix.\n    vec3 modelScale;\n    modelScale.x = length(vec3(modelMatrix[0].xyz));\n    modelScale.y = length(vec3(modelMatrix[1].xyz));\n    modelScale.z = length(vec3(modelMatrix[2].xyz));\n\n    // The thickness is specified in local space.\n    return normalize(refractionVector) * thickness * modelScale;\n}\n"; // eslint-disable-line
 
-  var primitiveShader = "#define GLSLIFY 1\n#include <animation.glsl>\n\nuniform mat4 u_ViewProjectionMatrix;\nuniform mat4 u_ModelMatrix;\nuniform mat4 u_NormalMatrix;\n\nin vec3 a_position;\nout vec3 v_Position;\n\n#ifdef HAS_NORMAL_VEC3\nin vec3 a_normal;\n#endif\n\n#ifdef HAS_NORMAL_VEC3\n#ifdef HAS_TANGENT_VEC4\nin vec4 a_tangent;\nout mat3 v_TBN;\n#else\nout vec3 v_Normal;\n#endif\n#endif\n\n#ifdef HAS_TEXCOORD_0_VEC2\nin vec2 a_texcoord_0;\n#endif\n\n#ifdef HAS_TEXCOORD_1_VEC2\nin vec2 a_texcoord_1;\n#endif\n\nout vec2 v_texcoord_0;\nout vec2 v_texcoord_1;\n\n#ifdef HAS_COLOR_0_VEC3\nin vec3 a_color_0;\nout vec3 v_Color;\n#endif\n\n#ifdef HAS_COLOR_0_VEC4\nin vec4 a_color_0;\nout vec4 v_Color;\n#endif\n\nvec4 getPosition()\n{\n    vec4 pos = vec4(a_position, 1.0);\n\n#ifdef USE_MORPHING\n    pos += getTargetPosition();\n#endif\n\n#ifdef USE_SKINNING\n    pos = getSkinningMatrix() * pos;\n#endif\n\n    return pos;\n}\n\n#ifdef HAS_NORMAL_VEC3\nvec3 getNormal()\n{\n    vec3 normal = a_normal;\n\n#ifdef USE_MORPHING\n    normal += getTargetNormal();\n#endif\n\n#ifdef USE_SKINNING\n    normal = mat3(getSkinningNormalMatrix()) * normal;\n#endif\n\n    return normalize(normal);\n}\n#endif\n\n#ifdef HAS_NORMAL_VEC3\n#ifdef HAS_TANGENT_VEC4\nvec3 getTangent()\n{\n    vec3 tangent = a_tangent.xyz;\n\n#ifdef USE_MORPHING\n    tangent += getTargetTangent();\n#endif\n\n#ifdef USE_SKINNING\n    tangent = mat3(getSkinningMatrix()) * tangent;\n#endif\n\n    return normalize(tangent);\n}\n#endif\n#endif\n\nvoid main()\n{\n    gl_PointSize = 1.0f;\n    vec4 pos = u_ModelMatrix * getPosition();\n    v_Position = vec3(pos.xyz) / pos.w;\n\n#ifdef HAS_NORMAL_VEC3\n#ifdef HAS_TANGENT_VEC4\n    vec3 tangent = getTangent();\n    vec3 normalW = normalize(vec3(u_NormalMatrix * vec4(getNormal(), 0.0)));\n    vec3 tangentW = normalize(vec3(u_ModelMatrix * vec4(tangent, 0.0)));\n    vec3 bitangentW = cross(normalW, tangentW) * a_tangent.w;\n    v_TBN = mat3(tangentW, bitangentW, normalW);\n#else\n    v_Normal = normalize(vec3(u_NormalMatrix * vec4(getNormal(), 0.0)));\n#endif\n#endif\n\n    v_texcoord_0 = vec2(0.0, 0.0);\n    v_texcoord_1 = vec2(0.0, 0.0);\n\n#ifdef HAS_TEXCOORD_0_VEC2\n    v_texcoord_0 = a_texcoord_0;\n#endif\n\n#ifdef HAS_TEXCOORD_1_VEC2\n    v_texcoord_1 = a_texcoord_1;\n#endif\n\n#if defined(HAS_COLOR_0_VEC3) || defined(HAS_COLOR_0_VEC4)\n    v_Color = a_color_0;\n#endif\n\n    gl_Position = u_ViewProjectionMatrix * pos;\n}\n"; // eslint-disable-line
+  var primitiveShader = "#define GLSLIFY 1\n#include <animation.glsl>\n\nuniform mat4 u_ViewProjectionMatrix;\nuniform mat4 u_ModelMatrix;\nuniform mat4 u_NormalMatrix;\n\nin vec3 a_position;\nout vec3 v_Position;\n\n#ifdef HAS_NORMAL_VEC3\nin vec3 a_normal;\n#endif\n\n#ifdef HAS_NORMAL_VEC3\n#ifdef HAS_TANGENT_VEC4\nin vec4 a_tangent;\nout mat3 v_TBN;\n#else\nout vec3 v_Normal;\n#endif\n#endif\n\n#ifdef HAS_TEXCOORD_0_VEC2\nin vec2 a_texcoord_0;\n#endif\n\n#ifdef HAS_TEXCOORD_1_VEC2\nin vec2 a_texcoord_1;\n#endif\n\nout vec2 v_texcoord_0;\nout vec2 v_texcoord_1;\n\n#ifdef HAS_COLOR_0_VEC3\nin vec3 a_color_0;\nout vec3 v_Color;\n#endif\n\n#ifdef HAS_COLOR_0_VEC4\nin vec4 a_color_0;\nout vec4 v_Color;\n#endif\n\nvec4 getPosition()\n{\n    vec4 pos = vec4(a_position, 1.0);\n\n#ifdef USE_MORPHING\n    pos += getTargetPosition(gl_VertexID);\n#endif\n\n#ifdef USE_SKINNING\n    pos = getSkinningMatrix() * pos;\n#endif\n\n    return pos;\n}\n\n#ifdef HAS_NORMAL_VEC3\nvec3 getNormal()\n{\n    vec3 normal = a_normal;\n\n#ifdef USE_MORPHING\n    normal += getTargetNormal(gl_VertexID);\n#endif\n\n#ifdef USE_SKINNING\n    normal = mat3(getSkinningNormalMatrix()) * normal;\n#endif\n\n    return normalize(normal);\n}\n#endif\n\n#ifdef HAS_NORMAL_VEC3\n#ifdef HAS_TANGENT_VEC4\nvec3 getTangent()\n{\n    vec3 tangent = a_tangent.xyz;\n\n#ifdef USE_MORPHING\n    tangent += getTargetTangent(gl_VertexID);\n#endif\n\n#ifdef USE_SKINNING\n    tangent = mat3(getSkinningMatrix()) * tangent;\n#endif\n\n    return normalize(tangent);\n}\n#endif\n#endif\n\nvoid main()\n{\n    gl_PointSize = 1.0f;\n    vec4 pos = u_ModelMatrix * getPosition();\n    v_Position = vec3(pos.xyz) / pos.w;\n\n#ifdef HAS_NORMAL_VEC3\n#ifdef HAS_TANGENT_VEC4\n    vec3 tangent = getTangent();\n    vec3 normalW = normalize(vec3(u_NormalMatrix * vec4(getNormal(), 0.0)));\n    vec3 tangentW = normalize(vec3(u_ModelMatrix * vec4(tangent, 0.0)));\n    vec3 bitangentW = cross(normalW, tangentW) * a_tangent.w;\n    v_TBN = mat3(tangentW, bitangentW, normalW);\n#else\n    v_Normal = normalize(vec3(u_NormalMatrix * vec4(getNormal(), 0.0)));\n#endif\n#endif\n\n    v_texcoord_0 = vec2(0.0, 0.0);\n    v_texcoord_1 = vec2(0.0, 0.0);\n\n#ifdef HAS_TEXCOORD_0_VEC2\n    v_texcoord_0 = a_texcoord_0;\n#endif\n\n#ifdef HAS_TEXCOORD_1_VEC2\n    v_texcoord_1 = a_texcoord_1;\n#endif\n\n#ifdef USE_MORPHING\n    v_texcoord_0 += getTargetTexCoord0(gl_VertexID);\n    v_texcoord_1 += getTargetTexCoord1(gl_VertexID);\n#endif\n\n#if defined(HAS_COLOR_0_VEC3) || defined(HAS_COLOR_0_VEC4)\n    v_Color = a_color_0;\n#ifdef USE_MORPHING\n    v_Color = clamp(v_Color + getTargetColor0(gl_VertexID), 0.0f, 1.0f);\n#endif\n#endif\n\n    gl_Position = u_ViewProjectionMatrix * pos;\n}\n"; // eslint-disable-line
 
   var texturesShader = "#define GLSLIFY 1\n// IBL\n\nuniform int u_MipCount;\nuniform samplerCube u_LambertianEnvSampler;\nuniform samplerCube u_GGXEnvSampler;\nuniform sampler2D u_GGXLUT;\nuniform samplerCube u_CharlieEnvSampler;\nuniform sampler2D u_CharlieLUT;\nuniform sampler2D u_SheenELUT;\nuniform mat3 u_EnvRotation;\n\n// General Material\n\nuniform sampler2D u_NormalSampler;\nuniform float u_NormalScale;\nuniform int u_NormalUVSet;\nuniform mat3 u_NormalUVTransform;\n\nuniform vec3 u_EmissiveFactor;\nuniform sampler2D u_EmissiveSampler;\nuniform int u_EmissiveUVSet;\nuniform mat3 u_EmissiveUVTransform;\n\nuniform sampler2D u_OcclusionSampler;\nuniform int u_OcclusionUVSet;\nuniform float u_OcclusionStrength;\nuniform mat3 u_OcclusionUVTransform;\n\nin vec2 v_texcoord_0;\nin vec2 v_texcoord_1;\n\nvec2 getNormalUV()\n{\n    vec3 uv = vec3(u_NormalUVSet < 1 ? v_texcoord_0 : v_texcoord_1, 1.0);\n\n#ifdef HAS_NORMAL_UV_TRANSFORM\n    uv = u_NormalUVTransform * uv;\n#endif\n\n    return uv.xy;\n}\n\nvec2 getEmissiveUV()\n{\n    vec3 uv = vec3(u_EmissiveUVSet < 1 ? v_texcoord_0 : v_texcoord_1, 1.0);\n\n#ifdef HAS_EMISSIVE_UV_TRANSFORM\n    uv = u_EmissiveUVTransform * uv;\n#endif\n\n    return uv.xy;\n}\n\nvec2 getOcclusionUV()\n{\n    vec3 uv = vec3(u_OcclusionUVSet < 1 ? v_texcoord_0 : v_texcoord_1, 1.0);\n\n#ifdef HAS_OCCLUSION_UV_TRANSFORM\n    uv = u_OcclusionUVTransform * uv;\n#endif\n\n    return uv.xy;\n}\n\n// Metallic Roughness Material\n\n#ifdef MATERIAL_METALLICROUGHNESS\n\nuniform sampler2D u_BaseColorSampler;\nuniform int u_BaseColorUVSet;\nuniform mat3 u_BaseColorUVTransform;\n\nuniform sampler2D u_MetallicRoughnessSampler;\nuniform int u_MetallicRoughnessUVSet;\nuniform mat3 u_MetallicRoughnessUVTransform;\n\nvec2 getBaseColorUV()\n{\n    vec3 uv = vec3(u_BaseColorUVSet < 1 ? v_texcoord_0 : v_texcoord_1, 1.0);\n\n#ifdef HAS_BASECOLOR_UV_TRANSFORM\n    uv = u_BaseColorUVTransform * uv;\n#endif\n\n    return uv.xy;\n}\n\nvec2 getMetallicRoughnessUV()\n{\n    vec3 uv = vec3(u_MetallicRoughnessUVSet < 1 ? v_texcoord_0 : v_texcoord_1, 1.0);\n\n#ifdef HAS_METALLICROUGHNESS_UV_TRANSFORM\n    uv = u_MetallicRoughnessUVTransform * uv;\n#endif\n\n    return uv.xy;\n}\n\n#endif\n\n// Specular Glossiness Material\n\n#ifdef MATERIAL_SPECULARGLOSSINESS\n\nuniform sampler2D u_DiffuseSampler;\nuniform int u_DiffuseUVSet;\nuniform mat3 u_DiffuseUVTransform;\n\nuniform sampler2D u_SpecularGlossinessSampler;\nuniform int u_SpecularGlossinessUVSet;\nuniform mat3 u_SpecularGlossinessUVTransform;\n\nvec2 getSpecularGlossinessUV()\n{\n    vec3 uv = vec3(u_SpecularGlossinessUVSet < 1 ? v_texcoord_0 : v_texcoord_1, 1.0);\n\n#ifdef HAS_SPECULARGLOSSINESS_UV_TRANSFORM\n    uv = u_SpecularGlossinessUVTransform * uv;\n#endif\n\n    return uv.xy;\n}\n\nvec2 getDiffuseUV()\n{\n    vec3 uv = vec3(u_DiffuseUVSet < 1 ? v_texcoord_0 : v_texcoord_1, 1.0);\n\n#ifdef HAS_DIFFUSE_UV_TRANSFORM\n    uv = u_DiffuseUVTransform * uv;\n#endif\n\n    return uv.xy;\n}\n\n#endif\n\n// Clearcoat Material\n\n#ifdef MATERIAL_CLEARCOAT\n\nuniform sampler2D u_ClearcoatSampler;\nuniform int u_ClearcoatUVSet;\nuniform mat3 u_ClearcoatUVTransform;\n\nuniform sampler2D u_ClearcoatRoughnessSampler;\nuniform int u_ClearcoatRoughnessUVSet;\nuniform mat3 u_ClearcoatRoughnessUVTransform;\n\nuniform sampler2D u_ClearcoatNormalSampler;\nuniform int u_ClearcoatNormalUVSet;\nuniform mat3 u_ClearcoatNormalUVTransform;\nuniform float u_ClearcoatNormalScale;\n\nvec2 getClearcoatUV()\n{\n    vec3 uv = vec3(u_ClearcoatUVSet < 1 ? v_texcoord_0 : v_texcoord_1, 1.0);\n#ifdef HAS_CLEARCOAT_UV_TRANSFORM\n    uv = u_ClearcoatUVTransform * uv;\n#endif\n    return uv.xy;\n}\n\nvec2 getClearcoatRoughnessUV()\n{\n    vec3 uv = vec3(u_ClearcoatRoughnessUVSet < 1 ? v_texcoord_0 : v_texcoord_1, 1.0);\n#ifdef HAS_CLEARCOATROUGHNESS_UV_TRANSFORM\n    uv = u_ClearcoatRoughnessUVTransform * uv;\n#endif\n    return uv.xy;\n}\n\nvec2 getClearcoatNormalUV()\n{\n    vec3 uv = vec3(u_ClearcoatNormalUVSet < 1 ? v_texcoord_0 : v_texcoord_1, 1.0);\n#ifdef HAS_CLEARCOATNORMAL_UV_TRANSFORM\n    uv = u_ClearcoatNormalUVTransform * uv;\n#endif\n    return uv.xy;\n}\n\n#endif\n\n// Sheen Material\n\n#ifdef MATERIAL_SHEEN\n\nuniform sampler2D u_SheenColorSampler;\nuniform int u_SheenColorUVSet;\nuniform mat3 u_SheenColorUVTransform;\nuniform sampler2D u_SheenRoughnessSampler;\nuniform int u_SheenRoughnessUVSet;\nuniform mat3 u_SheenRoughnessUVTransform;\n\nvec2 getSheenColorUV()\n{\n    vec3 uv = vec3(u_SheenColorUVSet < 1 ? v_texcoord_0 : v_texcoord_1, 1.0);\n#ifdef HAS_SHEENCOLOR_UV_TRANSFORM\n    uv = u_SheenColorUVTransform * uv;\n#endif\n    return uv.xy;\n}\n\nvec2 getSheenRoughnessUV()\n{\n    vec3 uv = vec3(u_SheenRoughnessUVSet < 1 ? v_texcoord_0 : v_texcoord_1, 1.0);\n#ifdef HAS_SHEENROUGHNESS_UV_TRANSFORM\n    uv = u_SheenRoughnessUVTransform * uv;\n#endif\n    return uv.xy;\n}\n\n#endif\n\n// Specular Material\n\n#ifdef MATERIAL_SPECULAR\n\nuniform sampler2D u_SpecularSampler;\nuniform int u_SpecularUVSet;\nuniform mat3 u_SpecularUVTransform;\nuniform sampler2D u_SpecularColorSampler;\nuniform int u_SpecularColorUVSet;\nuniform mat3 u_SpecularColorUVTransform;\n\nvec2 getSpecularUV()\n{\n    vec3 uv = vec3(u_SpecularUVSet < 1 ? v_texcoord_0 : v_texcoord_1, 1.0);\n#ifdef HAS_SPECULAR_UV_TRANSFORM\n    uv = u_SpecularUVTransform * uv;\n#endif\n    return uv.xy;\n}\n\nvec2 getSpecularColorUV()\n{\n    vec3 uv = vec3(u_SpecularColorUVSet < 1 ? v_texcoord_0 : v_texcoord_1, 1.0);\n#ifdef HAS_SPECULARCOLOR_UV_TRANSFORM\n    uv = u_SpecularColorUVTransform * uv;\n#endif\n    return uv.xy;\n}\n\n#endif\n\n// Transmission Material\n\n#ifdef MATERIAL_TRANSMISSION\n\nuniform sampler2D u_TransmissionSampler;\nuniform int u_TransmissionUVSet;\nuniform mat3 u_TransmissionUVTransform;\nuniform sampler2D u_TransmissionFramebufferSampler;\nuniform ivec2 u_TransmissionFramebufferSize;\n\nvec2 getTransmissionUV()\n{\n    vec3 uv = vec3(u_TransmissionUVSet < 1 ? v_texcoord_0 : v_texcoord_1, 1.0);\n#ifdef HAS_TRANSMISSION_UV_TRANSFORM\n    uv = u_TransmissionUVTransform * uv;\n#endif\n    return uv.xy;\n}\n\n#endif\n\n// Volume Material\n\n#ifdef MATERIAL_VOLUME\n\nuniform sampler2D u_ThicknessSampler;\nuniform int u_ThicknessUVSet;\nuniform mat3 u_ThicknessUVTransform;\n\nvec2 getThicknessUV()\n{\n    vec3 uv = vec3(u_ThicknessUVSet < 1 ? v_texcoord_0 : v_texcoord_1, 1.0);\n#ifdef HAS_THICKNESS_UV_TRANSFORM\n    uv = u_ThicknessUVTransform * uv;\n#endif\n    return uv.xy;\n}\n\n#endif\n"; // eslint-disable-line
 
@@ -3138,7 +3138,7 @@
 
   var shaderFunctions = "#define GLSLIFY 1\nconst float M_PI = 3.141592653589793;\n\nin vec3 v_Position;\n\n#ifdef HAS_NORMAL_VEC3\n#ifdef HAS_TANGENT_VEC4\nin mat3 v_TBN;\n#else\nin vec3 v_Normal;\n#endif\n#endif\n\n#ifdef HAS_COLOR_0_VEC3\nin vec3 v_Color;\n#endif\n#ifdef HAS_COLOR_0_VEC4\nin vec4 v_Color;\n#endif\n\nvec4 getVertexColor()\n{\n   vec4 color = vec4(1.0);\n\n#ifdef HAS_COLOR_0_VEC3\n    color.rgb = v_Color.rgb;\n#endif\n#ifdef HAS_COLOR_0_VEC4\n    color = v_Color;\n#endif\n\n   return color;\n}\n\nstruct NormalInfo {\n    vec3 ng;   // Geometric normal\n    vec3 n;    // Pertubed normal\n    vec3 t;    // Pertubed tangent\n    vec3 b;    // Pertubed bitangent\n};\n\nfloat clampedDot(vec3 x, vec3 y)\n{\n    return clamp(dot(x, y), 0.0, 1.0);\n}\n\nfloat max3(vec3 v)\n{\n    return max(max(v.x, v.y), v.z);\n}\n\nfloat applyIorToRoughness(float roughness, float ior)\n{\n    // Scale roughness with IOR so that an IOR of 1.0 results in no microfacet refraction and\n    // an IOR of 1.5 results in the default amount of microfacet refraction.\n    return roughness * clamp(ior * 2.0 - 2.0, 0.0, 1.0);\n}\n"; // eslint-disable-line
 
-  var animationShader = "#define GLSLIFY 1\n#ifdef HAS_TARGET_POSITION0_VEC3\nin vec3 a_target_position0;\n#endif\n\n#ifdef HAS_TARGET_POSITION1_VEC3\nin vec3 a_target_position1;\n#endif\n\n#ifdef HAS_TARGET_POSITION2_VEC3\nin vec3 a_target_position2;\n#endif\n\n#ifdef HAS_TARGET_POSITION3_VEC3\nin vec3 a_target_position3;\n#endif\n\n#ifdef HAS_TARGET_POSITION4_VEC3\nin vec3 a_target_position4;\n#endif\n\n#ifdef HAS_TARGET_POSITION5_VEC3\nin vec3 a_target_position5;\n#endif\n\n#ifdef HAS_TARGET_POSITION6_VEC3\nin vec3 a_target_position6;\n#endif\n\n#ifdef HAS_TARGET_POSITION7_VEC3\nin vec3 a_target_position7;\n#endif\n\n#ifdef HAS_TARGET_NORMAL0_VEC3\nin vec3 a_target_normal0;\n#endif\n\n#ifdef HAS_TARGET_NORMAL1_VEC3\nin vec3 a_target_normal1;\n#endif\n\n#ifdef HAS_TARGET_NORMAL2_VEC3\nin vec3 a_target_normal2;\n#endif\n\n#ifdef HAS_TARGET_NORMAL3_VEC3\nin vec3 a_target_normal3;\n#endif\n\n#ifdef HAS_TARGET_NORMAL4_VEC3\nin vec3 a_target_normal4;\n#endif\n\n#ifdef HAS_TARGET_NORMAL5_VEC3\nin vec3 a_target_normal5;\n#endif\n\n#ifdef HAS_TARGET_NORMAL6_VEC3\nin vec3 a_target_normal6;\n#endif\n\n#ifdef HAS_TARGET_NORMAL7_VEC3\nin vec3 a_target_normal7;\n#endif\n\n#ifdef HAS_TARGET_TANGENT0_VEC3\nin vec3 a_target_tangent0;\n#endif\n\n#ifdef HAS_TARGET_TANGENT1_VEC3\nin vec3 a_target_tangent1;\n#endif\n\n#ifdef HAS_TARGET_TANGENT2_VEC3\nin vec3 a_target_tangent2;\n#endif\n\n#ifdef HAS_TARGET_TANGENT3_VEC3\nin vec3 a_target_tangent3;\n#endif\n\n#ifdef HAS_TARGET_TANGENT4_VEC3\nin vec3 a_target_tangent4;\n#endif\n\n#ifdef HAS_TARGET_TANGENT5_VEC3\nin vec3 a_target_tangent5;\n#endif\n\n#ifdef HAS_TARGET_TANGENT6_VEC3\nin vec3 a_target_tangent6;\n#endif\n\n#ifdef HAS_TARGET_TANGENT7_VEC3\nin vec3 a_target_tangent7;\n#endif\n\n#ifdef USE_MORPHING\nuniform float u_morphWeights[WEIGHT_COUNT];\n#endif\n\n#ifdef HAS_JOINTS_0_VEC4\nin vec4 a_joints_0;\n#endif\n\n#ifdef HAS_JOINTS_1_VEC4\nin vec4 a_joints_1;\n#endif\n\n#ifdef HAS_WEIGHTS_0_VEC4\nin vec4 a_weights_0;\n#endif\n\n#ifdef HAS_WEIGHTS_1_VEC4\nin vec4 a_weights_1;\n#endif\n\n#ifdef USE_SKINNING\nuniform mat4 u_jointMatrix[JOINT_COUNT];\nuniform mat4 u_jointNormalMatrix[JOINT_COUNT];\n#endif\n\n#ifdef USE_SKINNING\n\nmat4 getSkinningMatrix()\n{\n    mat4 skin = mat4(0);\n\n#if defined(HAS_WEIGHTS_0_VEC4) && defined(HAS_JOINTS_0_VEC4)\n    skin +=\n        a_weights_0.x * u_jointMatrix[int(a_joints_0.x)] +\n        a_weights_0.y * u_jointMatrix[int(a_joints_0.y)] +\n        a_weights_0.z * u_jointMatrix[int(a_joints_0.z)] +\n        a_weights_0.w * u_jointMatrix[int(a_joints_0.w)];\n#endif\n\n#if defined(HAS_WEIGHTS_1_VEC4) && defined(HAS_JOINTS_1_VEC4)\n    skin +=\n        a_weights_1.x * u_jointMatrix[int(a_joints_1.x)] +\n        a_weights_1.y * u_jointMatrix[int(a_joints_1.y)] +\n        a_weights_1.z * u_jointMatrix[int(a_joints_1.z)] +\n        a_weights_1.w * u_jointMatrix[int(a_joints_1.w)];\n#endif\n\n    return skin;\n}\n\nmat4 getSkinningNormalMatrix()\n{\n    mat4 skin = mat4(0);\n\n#if defined(HAS_WEIGHTS_0_VEC4) && defined(HAS_JOINTS_0_VEC4)\n    skin +=\n        a_weights_0.x * u_jointNormalMatrix[int(a_joints_0.x)] +\n        a_weights_0.y * u_jointNormalMatrix[int(a_joints_0.y)] +\n        a_weights_0.z * u_jointNormalMatrix[int(a_joints_0.z)] +\n        a_weights_0.w * u_jointNormalMatrix[int(a_joints_0.w)];\n#endif\n\n#if defined(HAS_WEIGHTS_1_VEC4) && defined(HAS_JOINTS_1_VEC4)\n    skin +=\n        a_weights_1.x * u_jointNormalMatrix[int(a_joints_1.x)] +\n        a_weights_1.y * u_jointNormalMatrix[int(a_joints_1.y)] +\n        a_weights_1.z * u_jointNormalMatrix[int(a_joints_1.z)] +\n        a_weights_1.w * u_jointNormalMatrix[int(a_joints_1.w)];\n#endif\n\n    return skin;\n}\n\n#endif // !USE_SKINNING\n\n#ifdef USE_MORPHING\n\nvec4 getTargetPosition()\n{\n    vec4 pos = vec4(0);\n\n#ifdef HAS_TARGET_POSITION0_VEC3\n    pos.xyz += u_morphWeights[0] * a_target_position0;\n#endif\n\n#ifdef HAS_TARGET_POSITION1_VEC3\n    pos.xyz += u_morphWeights[1] * a_target_position1;\n#endif\n\n#ifdef HAS_TARGET_POSITION2_VEC3\n    pos.xyz += u_morphWeights[2] * a_target_position2;\n#endif\n\n#ifdef HAS_TARGET_POSITION3_VEC3\n    pos.xyz += u_morphWeights[3] * a_target_position3;\n#endif\n\n#ifdef HAS_TARGET_POSITION4_VEC3\n    pos.xyz += u_morphWeights[4] * a_target_position4;\n#endif\n\n#ifdef HAS_TARGET_POSITION5_VEC3\n    pos.xyz += u_morphWeights[5] * a_target_position5;\n#endif\n\n#ifdef HAS_TARGET_POSITION6_VEC3\n    pos.xyz += u_morphWeights[6] * a_target_position6;\n#endif\n\n#ifdef HAS_TARGET_POSITION7_VEC3\n    pos.xyz += u_morphWeights[7] * a_target_position7;\n#endif\n\n    return pos;\n}\n\nvec3 getTargetNormal()\n{\n    vec3 normal = vec3(0);\n\n#ifdef HAS_TARGET_NORMAL0_VEC3\n    normal += u_morphWeights[0] * a_target_normal0;\n#endif\n\n#ifdef HAS_TARGET_NORMAL1_VEC3\n    normal += u_morphWeights[1] * a_target_normal1;\n#endif\n\n#ifdef HAS_TARGET_NORMAL2_VEC3\n    normal += u_morphWeights[2] * a_target_normal2;\n#endif\n\n#ifdef HAS_TARGET_NORMAL3_VEC3\n    normal += u_morphWeights[3] * a_target_normal3;\n#endif\n\n#ifdef HAS_TARGET_NORMAL4_VEC3\n    normal += u_morphWeights[4] * a_target_normal4;\n#endif\n\n#ifdef HAS_TARGET_NORMAL5_VEC3\n    normal += u_morphWeights[5] * a_target_normal5;\n#endif\n\n#ifdef HAS_TARGET_NORMAL6_VEC3\n    normal += u_morphWeights[6] * a_target_normal6;\n#endif\n\n#ifdef HAS_TARGET_NORMAL7_VEC3\n    normal += u_morphWeights[7] * a_target_normal7;\n#endif\n\n    return normal;\n}\n\nvec3 getTargetTangent()\n{\n    vec3 tangent = vec3(0);\n\n#ifdef HAS_TARGET_TANGENT0_VEC3\n    tangent += u_morphWeights[0] * a_target_tangent0;\n#endif\n\n#ifdef HAS_TARGET_TANGENT1_VEC3\n    tangent += u_morphWeights[1] * a_target_tangent1;\n#endif\n\n#ifdef HAS_TARGET_TANGENT2_VEC3\n    tangent += u_morphWeights[2] * a_target_tangent2;\n#endif\n\n#ifdef HAS_TARGET_TANGENT3_VEC3\n    tangent += u_morphWeights[3] * a_target_tangent3;\n#endif\n\n#ifdef HAS_TARGET_TANGENT4_VEC3\n    tangent += u_morphWeights[4] * a_target_tangent4;\n#endif\n\n#ifdef HAS_TARGET_TANGENT5_VEC3\n    tangent += u_morphWeights[5] * a_target_tangent5;\n#endif\n\n#ifdef HAS_TARGET_TANGENT6_VEC3\n    tangent += u_morphWeights[6] * a_target_tangent6;\n#endif\n\n#ifdef HAS_TARGET_TANGENT7_VEC3\n    tangent += u_morphWeights[7] * a_target_tangent7;\n#endif\n\n    return tangent;\n}\n\n#endif // !USE_MORPHING\n"; // eslint-disable-line
+  var animationShader = "#define GLSLIFY 1\n#ifdef HAS_MORPH_TARGETS\nuniform highp sampler2DArray u_MorphTargetsSampler;\n#endif\n\n#ifdef USE_MORPHING\nuniform float u_morphWeights[WEIGHT_COUNT];\n#endif\n\n#ifdef HAS_JOINTS_0_VEC4\nin vec4 a_joints_0;\n#endif\n\n#ifdef HAS_JOINTS_1_VEC4\nin vec4 a_joints_1;\n#endif\n\n#ifdef HAS_WEIGHTS_0_VEC4\nin vec4 a_weights_0;\n#endif\n\n#ifdef HAS_WEIGHTS_1_VEC4\nin vec4 a_weights_1;\n#endif\n\n#ifdef USE_SKINNING\nuniform sampler2D u_jointsSampler;\n#endif\n\n#ifdef USE_SKINNING\n\nmat4 getMatrixFromTexture(sampler2D s, int index)\n{\n    mat4 result = mat4(1);\n    int texSize = textureSize(s, 0)[0];\n    int pixelIndex = index * 4;\n    for (int i = 0; i < 4; ++i)\n    {\n        int x = (pixelIndex + i) % texSize;\n        //Rounding mode of integers is undefined:\n        //https://www.khronos.org/registry/OpenGL/specs/es/3.0/GLSL_ES_Specification_3.00.pdf (section 12.33)\n        int y = (pixelIndex + i - x) / texSize; \n        result[i] = texelFetch(s, ivec2(x,y), 0);\n    }\n    return result;\n}\n\nmat4 getSkinningMatrix()\n{\n    mat4 skin = mat4(0);\n\n#if defined(HAS_WEIGHTS_0_VEC4) && defined(HAS_JOINTS_0_VEC4)\n    skin +=\n        a_weights_0.x * getMatrixFromTexture(u_jointsSampler, int(a_joints_0.x) * 2) +\n        a_weights_0.y * getMatrixFromTexture(u_jointsSampler, int(a_joints_0.y) * 2) +\n        a_weights_0.z * getMatrixFromTexture(u_jointsSampler, int(a_joints_0.z) * 2) +\n        a_weights_0.w * getMatrixFromTexture(u_jointsSampler, int(a_joints_0.w) * 2);\n#endif\n\n#if defined(HAS_WEIGHTS_1_VEC4) && defined(HAS_JOINTS_1_VEC4)\n    skin +=\n        a_weights_1.x * getMatrixFromTexture(u_jointsSampler, int(a_joints_1.x) * 2) +\n        a_weights_1.y * getMatrixFromTexture(u_jointsSampler, int(a_joints_1.y) * 2) +\n        a_weights_1.z * getMatrixFromTexture(u_jointsSampler, int(a_joints_1.z) * 2) +\n        a_weights_1.w * getMatrixFromTexture(u_jointsSampler, int(a_joints_1.w) * 2);\n#endif\n\n    return skin;\n}\n\nmat4 getSkinningNormalMatrix()\n{\n    mat4 skin = mat4(0);\n\n#if defined(HAS_WEIGHTS_0_VEC4) && defined(HAS_JOINTS_0_VEC4)\n    skin +=\n        a_weights_0.x * getMatrixFromTexture(u_jointsSampler, int(a_joints_0.x) * 2 + 1) +\n        a_weights_0.y * getMatrixFromTexture(u_jointsSampler, int(a_joints_0.y) * 2 + 1) +\n        a_weights_0.z * getMatrixFromTexture(u_jointsSampler, int(a_joints_0.z) * 2 + 1) +\n        a_weights_0.w * getMatrixFromTexture(u_jointsSampler, int(a_joints_0.w) * 2 + 1);\n#endif\n\n#if defined(HAS_WEIGHTS_1_VEC4) && defined(HAS_JOINTS_1_VEC4)\n    skin +=\n        a_weights_1.x * getMatrixFromTexture(u_jointsSampler, int(a_joints_1.x) * 2 + 1) +\n        a_weights_1.y * getMatrixFromTexture(u_jointsSampler, int(a_joints_1.y) * 2 + 1) +\n        a_weights_1.z * getMatrixFromTexture(u_jointsSampler, int(a_joints_1.z) * 2 + 1) +\n        a_weights_1.w * getMatrixFromTexture(u_jointsSampler, int(a_joints_1.w) * 2 + 1);\n#endif\n\n    return skin;\n}\n\n#endif // !USE_SKINNING\n\n#ifdef USE_MORPHING\n\n#ifdef HAS_MORPH_TARGETS\nvec4 getDisplacement(int vertexID, int targetIndex, int texSize)\n{\n    int x = vertexID % texSize;\n    //Rounding mode of integers is undefined:\n    //https://www.khronos.org/registry/OpenGL/specs/es/3.0/GLSL_ES_Specification_3.00.pdf (section 12.33)\n    int y = (vertexID - x) / texSize; \n    return texelFetch(u_MorphTargetsSampler, ivec3(x, y, targetIndex), 0);\n}\n#endif\n\nvec4 getTargetPosition(int vertexID)\n{\n    vec4 pos = vec4(0);\n#ifdef HAS_MORPH_TARGET_POSITION\n    int texSize = textureSize(u_MorphTargetsSampler, 0)[0];\n    for(int i = 0; i < WEIGHT_COUNT; i++)\n    {\n        vec4 displacement = getDisplacement(vertexID, MORPH_TARGET_POSITION_OFFSET + i, texSize);\n        pos += u_morphWeights[i] * displacement;\n    }\n#endif\n\n    return pos;\n}\n\nvec3 getTargetNormal(int vertexID)\n{\n    vec3 normal = vec3(0);\n\n#ifdef HAS_MORPH_TARGET_NORMAL\n    int texSize = textureSize(u_MorphTargetsSampler, 0)[0];\n    for(int i = 0; i < WEIGHT_COUNT; i++)\n    {\n        vec3 displacement = getDisplacement(vertexID, MORPH_TARGET_NORMAL_OFFSET + i, texSize).xyz;\n        normal += u_morphWeights[i] * displacement;\n    }\n#endif\n\n    return normal;\n}\n\nvec3 getTargetTangent(int vertexID)\n{\n    vec3 tangent = vec3(0);\n\n#ifdef HAS_MORPH_TARGET_TANGENT\n    int texSize = textureSize(u_MorphTargetsSampler, 0)[0];\n    for(int i = 0; i < WEIGHT_COUNT; i++)\n    {\n        vec3 displacement = getDisplacement(vertexID, MORPH_TARGET_TANGENT_OFFSET + i, texSize).xyz;\n        tangent += u_morphWeights[i] * displacement;\n    }\n#endif\n\n    return tangent;\n}\n\nvec2 getTargetTexCoord0(int vertexID)\n{\n    vec2 uv = vec2(0);\n\n#ifdef HAS_MORPH_TARGET_TEXCOORD_0\n    int texSize = textureSize(u_MorphTargetsSampler, 0)[0];\n    for(int i = 0; i < WEIGHT_COUNT; i++)\n    {\n        vec2 displacement = getDisplacement(vertexID, MORPH_TARGET_TEXCOORD_0_OFFSET + i, texSize).xy;\n        uv += u_morphWeights[i] * displacement;\n    }\n#endif\n\n    return uv;\n}\n\nvec2 getTargetTexCoord1(int vertexID)\n{\n    vec2 uv = vec2(0);\n\n#ifdef HAS_MORPH_TARGET_TEXCOORD_1\n    int texSize = textureSize(u_MorphTargetsSampler, 0)[0];\n    for(int i = 0; i < WEIGHT_COUNT; i++)\n    {\n        vec2 displacement = getDisplacement(vertexID, MORPH_TARGET_TEXCOORD_1_OFFSET + i, texSize).xy;\n        uv += u_morphWeights[i] * displacement;\n    }\n#endif\n\n    return uv;\n}\n\nvec4 getTargetColor0(int vertexID)\n{\n    vec4 color = vec4(0);\n\n#ifdef HAS_MORPH_TARGET_COLOR_0\n    int texSize = textureSize(u_MorphTargetsSampler, 0)[0];\n    for(int i = 0; i < WEIGHT_COUNT; i++)\n    {\n        vec4 displacement = getDisplacement(vertexID, MORPH_TARGET_COLOR_0_OFFSET + i, texSize);\n        color += u_morphWeights[i] * displacement;\n    }\n#endif\n\n    return color;\n}\n\n#endif // !USE_MORPHING\n"; // eslint-disable-line
 
   var cubemapVertShader = "#define GLSLIFY 1\nuniform mat4 u_ViewProjectionMatrix;\nuniform mat3 u_EnvRotation;\n\nin vec3 a_position;\nout vec3 v_TexCoords;\n\nvoid main()\n{\n    v_TexCoords = u_EnvRotation * a_position;\n    mat4 mat = u_ViewProjectionMatrix;\n    mat[3] = vec4(0.0, 0.0, 0.0, 0.1);\n    vec4 pos = mat * vec4(a_position, 1.0);\n    gl_Position = pos.xyww;\n}\n"; // eslint-disable-line
 
@@ -3767,9 +3767,10 @@
               this.shader.updateUniform(uniform, val, false);
           }
 
-          for (let i = 0; i < material.textures.length; ++i)
+          let textureIndex = 0;
+          for (; textureIndex < material.textures.length; ++textureIndex)
           {
-              let info = material.textures[i];
+              let info = material.textures[textureIndex];
               const location = this.shader.getUniformLocation(info.samplerName);
 
               if (location < 0)
@@ -3777,13 +3778,40 @@
                   console.log("Unable to find uniform location of "+info.samplerName);
                   continue; // only skip this texture
               }
-              if (!this.webGl.setTexture(location, state.gltf, info, i)) // binds texture and sampler
+              if (!this.webGl.setTexture(location, state.gltf, info, textureIndex)) // binds texture and sampler
               {
                   return; // skip this material
               }
           }
 
-          let textureCount = material.textures.length;
+          // set the morph target texture
+          if (primitive.morphTargetTextureInfo !== undefined) 
+          {
+              const location = this.shader.getUniformLocation(primitive.morphTargetTextureInfo.samplerName);
+              if (location < 0)
+              {
+                  console.log("Unable to find uniform location of " + primitive.morphTargetTextureInfo.samplerName);
+              }
+
+              this.webGl.setTexture(location, state.gltf, primitive.morphTargetTextureInfo, textureIndex); // binds texture and sampler
+              textureIndex++;
+          }
+
+          // set the joints texture
+          if (state.renderingParameters.skinning && node.skin !== undefined && primitive.hasWeights && primitive.hasJoints) 
+          {
+              const skin = state.gltf.skins[node.skin];
+              const location = this.shader.getUniformLocation(skin.jointTextureInfo.samplerName);
+              if (location < 0)
+              {
+                  console.log("Unable to find uniform location of " + skin.jointTextureInfo.samplerName);
+              }
+
+              this.webGl.setTexture(location, state.gltf, skin.jointTextureInfo, textureIndex); // binds texture and sampler
+              textureIndex++;
+          }
+
+          let textureCount = textureIndex;
           if (state.renderingParameters.useIBL && state.environment !== undefined)
           {
               textureCount = this.applyEnvironmentMap(state, textureCount);
@@ -3852,7 +3880,7 @@
           if (state.renderingParameters.skinning && state.gltf.skins !== undefined)
           {
               const skin = state.gltf.skins[node.skin];
-              skin.computeJoints(state.gltf, node);
+              skin.computeJoints(state.gltf, node, this.webGl.context);
           }
       }
 
@@ -3861,10 +3889,7 @@
           // skinning
           if (parameters.skinning && node.skin !== undefined && primitive.hasWeights && primitive.hasJoints)
           {
-              const skin = gltf.skins[node.skin];
-
               vertDefines.push("USE_SKINNING 1");
-              vertDefines.push("JOINT_COUNT " + skin.jointMatrices.length);
           }
 
           // morphing
@@ -3874,30 +3899,20 @@
               if (mesh.getWeightsAnimated() !== undefined && mesh.getWeightsAnimated().length > 0)
               {
                   vertDefines.push("USE_MORPHING 1");
-                  vertDefines.push("WEIGHT_COUNT " + Math.min(mesh.getWeightsAnimated().length, 8));
+                  vertDefines.push("WEIGHT_COUNT " + mesh.getWeightsAnimated().length);
               }
           }
       }
 
       updateAnimationUniforms(state, node, primitive)
       {
-          if (state.renderingParameters.skinning && node.skin !== undefined && primitive.hasWeights && primitive.hasJoints)
-          {
-              const skin = state.gltf.skins[node.skin];
-
-              this.shader.updateUniform("u_jointMatrix", skin.jointMatrices);
-              if(primitive.hasNormals)
-              {
-                  this.shader.updateUniform("u_jointNormalMatrix", skin.jointNormalMatrices);
-              }
-          }
-
           if (state.renderingParameters.morphing && node.mesh !== undefined && primitive.targets.length > 0)
           {
               const mesh = state.gltf.meshes[node.mesh];
-              if (mesh.getWeightsAnimated() !== undefined && mesh.getWeightsAnimated().length > 0)
+              const weightsAnimated = mesh.getWeightsAnimated();
+              if (weightsAnimated !== undefined && weightsAnimated.length > 0)
               {
-                  this.shader.updateUniformArray("u_morphWeights", mesh.getWeightsAnimated());
+                  this.shader.updateUniformArray("u_morphWeights", weightsAnimated);
               }
           }
       }
@@ -16897,6 +16912,28 @@
       }
   }
 
+  class gltfSampler extends GltfObject
+  {
+      constructor(
+          magFilter = GL.LINEAR,
+          minFilter = GL.LINEAR_MIPMAP_LINEAR,
+          wrapS = GL.REPEAT,
+          wrapT = GL.REPEAT)
+      {
+          super();
+          this.magFilter = magFilter;
+          this.minFilter = minFilter;
+          this.wrapS = wrapS;
+          this.wrapT = wrapT;
+          this.name = undefined;
+      }
+
+      static createDefault()
+      {
+          return new gltfSampler();
+      }
+  }
+
   class DracoDecoder {
 
       constructor(dracoLib) {
@@ -16949,6 +16986,7 @@
 
           // non gltf
           this.glAttributes = [];
+          this.morphTargetTextureInfo = undefined;
           this.defines = [];
           this.skip = true;
           this.hasWeights = false;
@@ -17044,42 +17082,152 @@
           }
 
           // MORPH TARGETS
-          if (this.targets !== undefined)
+          if (this.targets !== undefined && this.targets.length > 0)
           {
-              let i = 0;
-              for (const target of this.targets)
+              const max2DTextureSize = Math.pow(webGlContext.getParameter(GL.MAX_TEXTURE_SIZE), 2);
+              const maxTextureArraySize = webGlContext.getParameter(GL.MAX_ARRAY_TEXTURE_LAYERS);
+              // Check which attributes are affected by morph targets and 
+              // define offsets for the attributes in the morph target texture.
+              const attributeOffsets = {};
+              let attributeOffset = 0;
+
+              // Gather used attributes from all targets (some targets might
+              // use more attributes than others)
+              const attributes = Array.from(this.targets.reduce((acc, target) => {
+                  Object.keys(target).map(val => acc.add(val));
+                  return acc;
+              }, new Set()));
+
+              const vertexCount = gltf.accessors[this.attributes[attributes[0]]].count;
+              this.defines.push(`NUM_VERTICIES ${vertexCount}`);
+              let targetCount = this.targets.length;
+              if (targetCount * attributes.length > maxTextureArraySize)
               {
-                  if(this.glAttributes.length + 3 > maxAttributes)
-                  {
-                      console.error("To many vertex attributes for this primitive, skipping target " + i);
-                      break;
-                  }
+                  targetCount = Math.floor(maxTextureArraySize / attributes.length);
+                  console.warn(`Morph targets exceed texture size limit. Only ${targetCount} of ${this.targets.length} are used.`);
+              }
 
-                  for (const attribute of Object.keys(target))
-                  {
-                      const idx = target[attribute];
-                      const type = gltf.accessors[idx].type;
+              for (const attribute of attributes)
+              {
+                  // Add morph target defines
+                  this.defines.push(`HAS_MORPH_TARGET_${attribute} 1`);
+                  this.defines.push(`MORPH_TARGET_${attribute}_OFFSET ${attributeOffset}`);
+                  // Store the attribute offset so that later the 
+                  // morph target texture can be assembled.
+                  attributeOffsets[attribute] = attributeOffset;
+                  attributeOffset += targetCount;
+              }
+              this.defines.push("HAS_MORPH_TARGETS 1");
 
-                      switch (attribute)
-                      {
-                      case "POSITION":
-                          this.defines.push(`HAS_TARGET_POSITION${i}_${type}`);
-                          console.log(`HAS_TARGET_POSITION_${i}_${type}`);
-                          this.glAttributes.push({ attribute: attribute, name: "a_target_position" + i, accessor: idx });
-                          break;
-                      case "NORMAL":
-                          this.defines.push(`HAS_TARGET_NORMAL${i}_${type}`);
-                          this.glAttributes.push({ attribute: attribute, name: "a_target_normal" + i, accessor: idx });
-                          break;
-                      case "TANGENT":
-                          this.defines.push(`HAS_TARGET_TANGENT${i}_${type}`);
-                          this.glAttributes.push({ attribute: attribute, name: "a_target_tangent" + i, accessor: idx });
-                          break;
+              if (vertexCount <= max2DTextureSize) {
+                  // Allocate the texture buffer. Note that all target attributes must be vec3 types and
+                  // all must have the same vertex count as the primitives other attributes.
+                  const width = Math.ceil(Math.sqrt(vertexCount));
+                  const singleTextureSize = Math.pow(width, 2) * 4;
+                  const morphTargetTextureArray = new Float32Array(singleTextureSize * targetCount * attributes.length);
+
+                  // Now assemble the texture from the accessors.
+                  for (let i = 0; i < targetCount; ++i)
+                  {
+                      let target = this.targets[i];
+                      for (let [attributeName, offsetRef] of Object.entries(attributeOffsets)){
+                          if (target[attributeName] != undefined) {
+                              const accessor = gltf.accessors[target[attributeName]];
+                              const offset = offsetRef * singleTextureSize;
+                              if (accessor.componentType != GL.FLOAT && accessor.normalized == false){
+                                  console.warn("Unsupported component type for morph targets");
+                                  attributeOffsets[attributeName] = offsetRef + 1;
+                                  continue;
+                              }
+                              const data = accessor.getNormalizedDeinterlacedView(gltf);
+                              switch(accessor.type)
+                              {
+                              case "VEC2":
+                              case "VEC3":
+                              {
+                                  // Add padding to fit vec2/vec3 into rgba
+                                  let paddingOffset = 0;
+                                  let accessorOffset = 0;
+                                  const componentCount = accessor.getComponentCount(accessor.type);
+                                  for (let j = 0; j < accessor.count; ++j) {
+                                      morphTargetTextureArray.set(data.subarray(accessorOffset, accessorOffset + componentCount), offset + paddingOffset);
+                                      paddingOffset += 4;
+                                      accessorOffset += componentCount;
+                                  }
+                                  break;
+                              }
+                              case "VEC4":
+                                  morphTargetTextureArray.set(data, offset);
+                                  break;
+                              default:
+                                  console.warn("Unsupported attribute type for morph targets");
+                                  break;
+                              }
+                          }
+                          attributeOffsets[attributeName] = offsetRef + 1;
                       }
                   }
 
-                  ++i;
-              }
+
+                  // Add the morph target texture.
+                  // We have to create a WebGL2 texture as the format of the
+                  // morph target texture has to be explicitly specified 
+                  // (gltf image would assume uint8).
+                  let texture = webGlContext.createTexture();
+                  webGlContext.bindTexture( webGlContext.TEXTURE_2D_ARRAY, texture);
+                  // Set texture format and upload data.
+                  let internalFormat = webGlContext.RGBA32F;
+                  let format = webGlContext.RGBA;
+                  let type = webGlContext.FLOAT;
+                  let data = morphTargetTextureArray;
+                  webGlContext.texImage3D(
+                      webGlContext.TEXTURE_2D_ARRAY,
+                      0, //level
+                      internalFormat,
+                      width,
+                      width,
+                      targetCount * attributes.length, //Layer count
+                      0, //border
+                      format,
+                      type,
+                      data);
+                  // Ensure mipmapping is disabled and the sampler is configured correctly.
+                  webGlContext.texParameteri( GL.TEXTURE_2D_ARRAY,  GL.TEXTURE_WRAP_S,  GL.CLAMP_TO_EDGE);
+                  webGlContext.texParameteri( GL.TEXTURE_2D_ARRAY,  GL.TEXTURE_WRAP_T,  GL.CLAMP_TO_EDGE);
+                  webGlContext.texParameteri( GL.TEXTURE_2D_ARRAY,  GL.TEXTURE_MIN_FILTER,  GL.NEAREST);
+                  webGlContext.texParameteri( GL.TEXTURE_2D_ARRAY,  GL.TEXTURE_MAG_FILTER,  GL.NEAREST);
+                  
+                  // Now we add the morph target texture as a gltf texture info resource, so that 
+                  // we can just call webGl.setTexture(..., gltfTextureInfo, ...) in the renderer.
+                  const morphTargetImage = new gltfImage(
+                      undefined, // uri
+                      GL.TEXTURE_2D_ARRAY, // type
+                      0, // mip level
+                      undefined, // buffer view
+                      undefined, // name
+                      ImageMimeType.GLTEXTURE, // mimeType
+                      texture // image
+                  );
+                  gltf.images.push(morphTargetImage);
+
+                  gltf.samplers.push(new gltfSampler(GL.NEAREST, GL.NEAREST, GL.CLAMP_TO_EDGE, GL.CLAMP_TO_EDGE, undefined));
+
+                  const morphTargetTexture = new gltfTexture(
+                      gltf.samplers.length - 1,
+                      gltf.images.length - 1,
+                      GL.TEXTURE_2D_ARRAY);
+                  // The webgl texture is already initialized -> this flag informs
+                  // webgl.setTexture about this.
+                  morphTargetTexture.initialized = true;
+
+                  gltf.textures.push(morphTargetTexture);
+
+                  this.morphTargetTextureInfo = new gltfTextureInfo(gltf.textures.length - 1, 0, true);
+                  this.morphTargetTextureInfo.samplerName = "u_MorphTargetsSampler";
+                  this.morphTargetTextureInfo.generateMips = false;
+              } else {
+                  console.warn("Mesh of Morph targets too big. Cannot apply morphing.");
+              }         
           }
 
           this.computeCentroid(gltf);
@@ -17704,28 +17852,6 @@
       }
   }
 
-  class gltfSampler extends GltfObject
-  {
-      constructor(
-          magFilter = GL.LINEAR,
-          minFilter = GL.LINEAR_MIPMAP_LINEAR,
-          wrapS = GL.REPEAT,
-          wrapT = GL.REPEAT)
-      {
-          super();
-          this.magFilter = magFilter;
-          this.minFilter = minFilter;
-          this.wrapS = wrapS;
-          this.wrapT = wrapT;
-          this.name = undefined;
-      }
-
-      static createDefault()
-      {
-          return new gltfSampler();
-      }
-  }
-
   class gltfScene extends GltfObject
   {
       constructor(nodes = [], name = undefined)
@@ -18132,15 +18258,60 @@
           this.skeleton = undefined;
 
           // not gltf
-          this.jointMatrices = [];
-          this.jointNormalMatrices = [];
+          this.jointTextureInfo = undefined;
+          this.jointWebGlTexture = undefined;
       }
 
-      computeJoints(gltf, parentNode)
+      initGl(gltf, webGlContext)
+      {
+          this.jointWebGlTexture = webGlContext.createTexture();
+          webGlContext.bindTexture( webGlContext.TEXTURE_2D, this.jointWebGlTexture);
+
+          // Ensure mipmapping is disabled and the sampler is configured correctly.
+          webGlContext.texParameteri( GL.TEXTURE_2D,  GL.TEXTURE_WRAP_S,  GL.CLAMP_TO_EDGE);
+          webGlContext.texParameteri( GL.TEXTURE_2D,  GL.TEXTURE_WRAP_T,  GL.CLAMP_TO_EDGE);
+          webGlContext.texParameteri( GL.TEXTURE_2D,  GL.TEXTURE_WRAP_R,  GL.CLAMP_TO_EDGE);
+          webGlContext.texParameteri( GL.TEXTURE_2D,  GL.TEXTURE_MIN_FILTER,  GL.NEAREST);
+          webGlContext.texParameteri( GL.TEXTURE_2D,  GL.TEXTURE_MAG_FILTER,  GL.NEAREST);
+          
+          // Now we add the joints texture as a gltf texture info resource, so that 
+          // we can just call webGl.setTexture(..., gltfTextureInfo, ...) in the renderer.
+          const jointsImage = new gltfImage(
+              undefined, // uri
+              GL.TEXTURE_2D, // type
+              0, // mip level
+              undefined, // buffer view
+              undefined, // name
+              ImageMimeType.GLTEXTURE, // mimeType
+              this.jointWebGlTexture // image
+          );
+          gltf.images.push(jointsImage);
+
+          gltf.samplers.push(new gltfSampler(GL.NEAREST, GL.NEAREST, GL.CLAMP_TO_EDGE, GL.CLAMP_TO_EDGE, undefined));
+
+          const jointsTexture = new gltfTexture(
+              gltf.samplers.length - 1,
+              gltf.images.length - 1,
+              GL.TEXTURE_2D);
+          // The webgl texture is already initialized -> this flag informs
+          // webgl.setTexture about this.
+          jointsTexture.initialized = true;
+
+          gltf.textures.push(jointsTexture);
+
+          this.jointTextureInfo = new gltfTextureInfo(gltf.textures.length - 1, 0, true);
+          this.jointTextureInfo.samplerName = "u_jointsSampler";
+          this.jointTextureInfo.generateMips = false;
+      }
+
+      computeJoints(gltf, parentNode, webGlContext)
       {
           const ibmAccessor = gltf.accessors[this.inverseBindMatrices].getDeinterlacedView(gltf);
           this.jointMatrices = [];
           this.jointNormalMatrices = [];
+
+          const width = Math.ceil(Math.sqrt(this.joints.length * 8));
+          let textureData = new Float32Array(Math.pow(width, 2) * 4);
 
           let i = 0;
           for(const joint of this.joints)
@@ -18148,16 +18319,35 @@
               const node = gltf.nodes[joint];
 
               let jointMatrix = create$1();
-              let ibm = jsToGlSlice(ibmAccessor, i++ * 16, 16);
+              let ibm = jsToGlSlice(ibmAccessor, i * 16, 16);
               mul(jointMatrix, node.worldTransform, ibm);
               mul(jointMatrix, parentNode.inverseWorldTransform, jointMatrix);
-              this.jointMatrices.push(jointMatrix);
 
               let normalMatrix = create$1();
               invert(normalMatrix, jointMatrix);
               transpose(normalMatrix, normalMatrix);
-              this.jointNormalMatrices.push(normalMatrix);
+              
+              textureData.set(jointMatrix, i * 32);
+              textureData.set(normalMatrix, i * 32 + 16);
+              ++i;
           }
+
+          webGlContext.bindTexture( webGlContext.TEXTURE_2D, this.jointWebGlTexture);
+          // Set texture format and upload data.
+          let internalFormat = webGlContext.RGBA32F;
+          let format = webGlContext.RGBA;
+          let type = webGlContext.FLOAT;
+          let data = textureData;
+          webGlContext.texImage2D(
+              webGlContext.TEXTURE_2D,
+              0, //level
+              internalFormat,
+              width,
+              width,
+              0, //border
+              format,
+              type,
+              data);
       }
   }
 
