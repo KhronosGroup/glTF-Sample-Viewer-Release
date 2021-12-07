@@ -37580,8 +37580,7 @@
           stack: this.stack,
           // Axios
           config: this.config,
-          code: this.code,
-          status: this.response && this.response.status ? this.response.status : null
+          code: this.code
         };
       };
       return error;
@@ -37831,39 +37830,11 @@
         })()
     );
 
-    /**
-     * A `Cancel` is an object that is thrown when an operation is canceled.
-     *
-     * @class
-     * @param {string=} message The message.
-     */
-    function Cancel(message) {
-      this.message = message;
-    }
-
-    Cancel.prototype.toString = function toString() {
-      return 'Cancel' + (this.message ? ': ' + this.message : '');
-    };
-
-    Cancel.prototype.__CANCEL__ = true;
-
-    var Cancel_1 = Cancel;
-
     var xhr = function xhrAdapter(config) {
       return new Promise(function dispatchXhrRequest(resolve, reject) {
         var requestData = config.data;
         var requestHeaders = config.headers;
         var responseType = config.responseType;
-        var onCanceled;
-        function done() {
-          if (config.cancelToken) {
-            config.cancelToken.unsubscribe(onCanceled);
-          }
-
-          if (config.signal) {
-            config.signal.removeEventListener('abort', onCanceled);
-          }
-        }
 
         if (utils.isFormData(requestData)) {
           delete requestHeaders['Content-Type']; // Let the browser set it
@@ -37901,13 +37872,7 @@
             request: request
           };
 
-          settle(function _resolve(value) {
-            resolve(value);
-            done();
-          }, function _reject(err) {
-            reject(err);
-            done();
-          }, response);
+          settle(resolve, reject, response);
 
           // Clean up request
           request = null;
@@ -37960,15 +37925,14 @@
 
         // Handle timeout
         request.ontimeout = function handleTimeout() {
-          var timeoutErrorMessage = config.timeout ? 'timeout of ' + config.timeout + 'ms exceeded' : 'timeout exceeded';
-          var transitional = config.transitional || defaults_1.transitional;
+          var timeoutErrorMessage = 'timeout of ' + config.timeout + 'ms exceeded';
           if (config.timeoutErrorMessage) {
             timeoutErrorMessage = config.timeoutErrorMessage;
           }
           reject(createError(
             timeoutErrorMessage,
             config,
-            transitional.clarifyTimeoutError ? 'ETIMEDOUT' : 'ECONNABORTED',
+            config.transitional && config.transitional.clarifyTimeoutError ? 'ETIMEDOUT' : 'ECONNABORTED',
             request));
 
           // Clean up request
@@ -38022,22 +37986,18 @@
           request.upload.addEventListener('progress', config.onUploadProgress);
         }
 
-        if (config.cancelToken || config.signal) {
+        if (config.cancelToken) {
           // Handle cancellation
-          // eslint-disable-next-line func-names
-          onCanceled = function(cancel) {
+          config.cancelToken.promise.then(function onCanceled(cancel) {
             if (!request) {
               return;
             }
-            reject(!cancel || (cancel && cancel.type) ? new Cancel_1('canceled') : cancel);
-            request.abort();
-            request = null;
-          };
 
-          config.cancelToken && config.cancelToken.subscribe(onCanceled);
-          if (config.signal) {
-            config.signal.aborted ? onCanceled() : config.signal.addEventListener('abort', onCanceled);
-          }
+            request.abort();
+            reject(cancel);
+            // Clean up request
+            request = null;
+          });
         }
 
         if (!requestData) {
@@ -38124,7 +38084,7 @@
       }],
 
       transformResponse: [function transformResponse(data) {
-        var transitional = this.transitional || defaults.transitional;
+        var transitional = this.transitional;
         var silentJSONParsing = transitional && transitional.silentJSONParsing;
         var forcedJSONParsing = transitional && transitional.forcedJSONParsing;
         var strictJSONParsing = !silentJSONParsing && this.responseType === 'json';
@@ -38159,12 +38119,12 @@
 
       validateStatus: function validateStatus(status) {
         return status >= 200 && status < 300;
-      },
+      }
+    };
 
-      headers: {
-        common: {
-          'Accept': 'application/json, text/plain, */*'
-        }
+    defaults.headers = {
+      common: {
+        'Accept': 'application/json, text/plain, */*'
       }
     };
 
@@ -38206,10 +38166,6 @@
     function throwIfCancellationRequested(config) {
       if (config.cancelToken) {
         config.cancelToken.throwIfRequested();
-      }
-
-      if (config.signal && config.signal.aborted) {
-        throw new Cancel_1('canceled');
       }
     }
 
@@ -38293,6 +38249,17 @@
       config2 = config2 || {};
       var config = {};
 
+      var valueFromConfig2Keys = ['url', 'method', 'data'];
+      var mergeDeepPropertiesKeys = ['headers', 'auth', 'proxy', 'params'];
+      var defaultToConfig2Keys = [
+        'baseURL', 'transformRequest', 'transformResponse', 'paramsSerializer',
+        'timeout', 'timeoutMessage', 'withCredentials', 'adapter', 'responseType', 'xsrfCookieName',
+        'xsrfHeaderName', 'onUploadProgress', 'onDownloadProgress', 'decompress',
+        'maxContentLength', 'maxBodyLength', 'maxRedirects', 'transport', 'httpAgent',
+        'httpsAgent', 'cancelToken', 'socketPath', 'responseEncoding'
+      ];
+      var directMergeKeys = ['validateStatus'];
+
       function getMergedValue(target, source) {
         if (utils.isPlainObject(target) && utils.isPlainObject(source)) {
           return utils.merge(target, source);
@@ -38304,83 +38271,186 @@
         return source;
       }
 
-      // eslint-disable-next-line consistent-return
       function mergeDeepProperties(prop) {
         if (!utils.isUndefined(config2[prop])) {
-          return getMergedValue(config1[prop], config2[prop]);
+          config[prop] = getMergedValue(config1[prop], config2[prop]);
         } else if (!utils.isUndefined(config1[prop])) {
-          return getMergedValue(undefined, config1[prop]);
+          config[prop] = getMergedValue(undefined, config1[prop]);
         }
       }
 
-      // eslint-disable-next-line consistent-return
-      function valueFromConfig2(prop) {
+      utils.forEach(valueFromConfig2Keys, function valueFromConfig2(prop) {
         if (!utils.isUndefined(config2[prop])) {
-          return getMergedValue(undefined, config2[prop]);
+          config[prop] = getMergedValue(undefined, config2[prop]);
         }
-      }
-
-      // eslint-disable-next-line consistent-return
-      function defaultToConfig2(prop) {
-        if (!utils.isUndefined(config2[prop])) {
-          return getMergedValue(undefined, config2[prop]);
-        } else if (!utils.isUndefined(config1[prop])) {
-          return getMergedValue(undefined, config1[prop]);
-        }
-      }
-
-      // eslint-disable-next-line consistent-return
-      function mergeDirectKeys(prop) {
-        if (prop in config2) {
-          return getMergedValue(config1[prop], config2[prop]);
-        } else if (prop in config1) {
-          return getMergedValue(undefined, config1[prop]);
-        }
-      }
-
-      var mergeMap = {
-        'url': valueFromConfig2,
-        'method': valueFromConfig2,
-        'data': valueFromConfig2,
-        'baseURL': defaultToConfig2,
-        'transformRequest': defaultToConfig2,
-        'transformResponse': defaultToConfig2,
-        'paramsSerializer': defaultToConfig2,
-        'timeout': defaultToConfig2,
-        'timeoutMessage': defaultToConfig2,
-        'withCredentials': defaultToConfig2,
-        'adapter': defaultToConfig2,
-        'responseType': defaultToConfig2,
-        'xsrfCookieName': defaultToConfig2,
-        'xsrfHeaderName': defaultToConfig2,
-        'onUploadProgress': defaultToConfig2,
-        'onDownloadProgress': defaultToConfig2,
-        'decompress': defaultToConfig2,
-        'maxContentLength': defaultToConfig2,
-        'maxBodyLength': defaultToConfig2,
-        'transport': defaultToConfig2,
-        'httpAgent': defaultToConfig2,
-        'httpsAgent': defaultToConfig2,
-        'cancelToken': defaultToConfig2,
-        'socketPath': defaultToConfig2,
-        'responseEncoding': defaultToConfig2,
-        'validateStatus': mergeDirectKeys
-      };
-
-      utils.forEach(Object.keys(config1).concat(Object.keys(config2)), function computeConfigValue(prop) {
-        var merge = mergeMap[prop] || mergeDeepProperties;
-        var configValue = merge(prop);
-        (utils.isUndefined(configValue) && merge !== mergeDirectKeys) || (config[prop] = configValue);
       });
+
+      utils.forEach(mergeDeepPropertiesKeys, mergeDeepProperties);
+
+      utils.forEach(defaultToConfig2Keys, function defaultToConfig2(prop) {
+        if (!utils.isUndefined(config2[prop])) {
+          config[prop] = getMergedValue(undefined, config2[prop]);
+        } else if (!utils.isUndefined(config1[prop])) {
+          config[prop] = getMergedValue(undefined, config1[prop]);
+        }
+      });
+
+      utils.forEach(directMergeKeys, function merge(prop) {
+        if (prop in config2) {
+          config[prop] = getMergedValue(config1[prop], config2[prop]);
+        } else if (prop in config1) {
+          config[prop] = getMergedValue(undefined, config1[prop]);
+        }
+      });
+
+      var axiosKeys = valueFromConfig2Keys
+        .concat(mergeDeepPropertiesKeys)
+        .concat(defaultToConfig2Keys)
+        .concat(directMergeKeys);
+
+      var otherKeys = Object
+        .keys(config1)
+        .concat(Object.keys(config2))
+        .filter(function filterAxiosKeys(key) {
+          return axiosKeys.indexOf(key) === -1;
+        });
+
+      utils.forEach(otherKeys, mergeDeepProperties);
 
       return config;
     };
 
-    var data = {
-      "version": "0.23.0"
+    var name$1 = "axios";
+    var version = "0.21.4";
+    var description = "Promise based HTTP client for the browser and node.js";
+    var main = "index.js";
+    var scripts = {
+    	test: "grunt test",
+    	start: "node ./sandbox/server.js",
+    	build: "NODE_ENV=production grunt build",
+    	preversion: "npm test",
+    	version: "npm run build && grunt version && git add -A dist && git add CHANGELOG.md bower.json package.json",
+    	postversion: "git push && git push --tags",
+    	examples: "node ./examples/server.js",
+    	coveralls: "cat coverage/lcov.info | ./node_modules/coveralls/bin/coveralls.js",
+    	fix: "eslint --fix lib/**/*.js"
+    };
+    var repository = {
+    	type: "git",
+    	url: "https://github.com/axios/axios.git"
+    };
+    var keywords = [
+    	"xhr",
+    	"http",
+    	"ajax",
+    	"promise",
+    	"node"
+    ];
+    var author = "Matt Zabriskie";
+    var license = "MIT";
+    var bugs = {
+    	url: "https://github.com/axios/axios/issues"
+    };
+    var homepage = "https://axios-http.com";
+    var devDependencies = {
+    	coveralls: "^3.0.0",
+    	"es6-promise": "^4.2.4",
+    	grunt: "^1.3.0",
+    	"grunt-banner": "^0.6.0",
+    	"grunt-cli": "^1.2.0",
+    	"grunt-contrib-clean": "^1.1.0",
+    	"grunt-contrib-watch": "^1.0.0",
+    	"grunt-eslint": "^23.0.0",
+    	"grunt-karma": "^4.0.0",
+    	"grunt-mocha-test": "^0.13.3",
+    	"grunt-ts": "^6.0.0-beta.19",
+    	"grunt-webpack": "^4.0.2",
+    	"istanbul-instrumenter-loader": "^1.0.0",
+    	"jasmine-core": "^2.4.1",
+    	karma: "^6.3.2",
+    	"karma-chrome-launcher": "^3.1.0",
+    	"karma-firefox-launcher": "^2.1.0",
+    	"karma-jasmine": "^1.1.1",
+    	"karma-jasmine-ajax": "^0.1.13",
+    	"karma-safari-launcher": "^1.0.0",
+    	"karma-sauce-launcher": "^4.3.6",
+    	"karma-sinon": "^1.0.5",
+    	"karma-sourcemap-loader": "^0.3.8",
+    	"karma-webpack": "^4.0.2",
+    	"load-grunt-tasks": "^3.5.2",
+    	minimist: "^1.2.0",
+    	mocha: "^8.2.1",
+    	sinon: "^4.5.0",
+    	"terser-webpack-plugin": "^4.2.3",
+    	typescript: "^4.0.5",
+    	"url-search-params": "^0.10.0",
+    	webpack: "^4.44.2",
+    	"webpack-dev-server": "^3.11.0"
+    };
+    var browser = {
+    	"./lib/adapters/http.js": "./lib/adapters/xhr.js"
+    };
+    var jsdelivr = "dist/axios.min.js";
+    var unpkg = "dist/axios.min.js";
+    var typings = "./index.d.ts";
+    var dependencies = {
+    	"follow-redirects": "^1.14.0"
+    };
+    var bundlesize = [
+    	{
+    		path: "./dist/axios.min.js",
+    		threshold: "5kB"
+    	}
+    ];
+    var _package = {
+    	name: name$1,
+    	version: version,
+    	description: description,
+    	main: main,
+    	scripts: scripts,
+    	repository: repository,
+    	keywords: keywords,
+    	author: author,
+    	license: license,
+    	bugs: bugs,
+    	homepage: homepage,
+    	devDependencies: devDependencies,
+    	browser: browser,
+    	jsdelivr: jsdelivr,
+    	unpkg: unpkg,
+    	typings: typings,
+    	dependencies: dependencies,
+    	bundlesize: bundlesize
     };
 
-    var VERSION = data.version;
+    var _package$1 = /*#__PURE__*/Object.freeze({
+        __proto__: null,
+        name: name$1,
+        version: version,
+        description: description,
+        main: main,
+        scripts: scripts,
+        repository: repository,
+        keywords: keywords,
+        author: author,
+        license: license,
+        bugs: bugs,
+        homepage: homepage,
+        devDependencies: devDependencies,
+        browser: browser,
+        jsdelivr: jsdelivr,
+        unpkg: unpkg,
+        typings: typings,
+        dependencies: dependencies,
+        bundlesize: bundlesize,
+        'default': _package
+    });
+
+    function getCjsExportFromNamespace (n) {
+    	return n && n['default'] || n;
+    }
+
+    var pkg = getCjsExportFromNamespace(_package$1);
 
     var validators = {};
 
@@ -38392,26 +38462,48 @@
     });
 
     var deprecatedWarnings = {};
+    var currentVerArr = pkg.version.split('.');
+
+    /**
+     * Compare package versions
+     * @param {string} version
+     * @param {string?} thanVersion
+     * @returns {boolean}
+     */
+    function isOlderVersion(version, thanVersion) {
+      var pkgVersionArr = thanVersion ? thanVersion.split('.') : currentVerArr;
+      var destVer = version.split('.');
+      for (var i = 0; i < 3; i++) {
+        if (pkgVersionArr[i] > destVer[i]) {
+          return true;
+        } else if (pkgVersionArr[i] < destVer[i]) {
+          return false;
+        }
+      }
+      return false;
+    }
 
     /**
      * Transitional option validator
-     * @param {function|boolean?} validator - set to false if the transitional option has been removed
-     * @param {string?} version - deprecated version / removed since version
-     * @param {string?} message - some message with additional info
+     * @param {function|boolean?} validator
+     * @param {string?} version
+     * @param {string} message
      * @returns {function}
      */
     validators.transitional = function transitional(validator, version, message) {
+      var isDeprecated = version && isOlderVersion(version);
+
       function formatMessage(opt, desc) {
-        return '[Axios v' + VERSION + '] Transitional option \'' + opt + '\'' + desc + (message ? '. ' + message : '');
+        return '[Axios v' + pkg.version + '] Transitional option \'' + opt + '\'' + desc + (message ? '. ' + message : '');
       }
 
       // eslint-disable-next-line func-names
       return function(value, opt, opts) {
         if (validator === false) {
-          throw new Error(formatMessage(opt, ' has been removed' + (version ? ' in ' + version : '')));
+          throw new Error(formatMessage(opt, ' has been removed in ' + version));
         }
 
-        if (version && !deprecatedWarnings[opt]) {
+        if (isDeprecated && !deprecatedWarnings[opt]) {
           deprecatedWarnings[opt] = true;
           // eslint-disable-next-line no-console
           console.warn(
@@ -38457,6 +38549,7 @@
     }
 
     var validator = {
+      isOlderVersion: isOlderVersion,
       assertOptions: assertOptions,
       validators: validators
     };
@@ -38505,9 +38598,9 @@
 
       if (transitional !== undefined) {
         validator.assertOptions(transitional, {
-          silentJSONParsing: validators$1.transitional(validators$1.boolean),
-          forcedJSONParsing: validators$1.transitional(validators$1.boolean),
-          clarifyTimeoutError: validators$1.transitional(validators$1.boolean)
+          silentJSONParsing: validators$1.transitional(validators$1.boolean, '1.0.0'),
+          forcedJSONParsing: validators$1.transitional(validators$1.boolean, '1.0.0'),
+          clarifyTimeoutError: validators$1.transitional(validators$1.boolean, '1.0.0')
         }, false);
       }
 
@@ -38602,6 +38695,24 @@
     var Axios_1 = Axios;
 
     /**
+     * A `Cancel` is an object that is thrown when an operation is canceled.
+     *
+     * @class
+     * @param {string=} message The message.
+     */
+    function Cancel(message) {
+      this.message = message;
+    }
+
+    Cancel.prototype.toString = function toString() {
+      return 'Cancel' + (this.message ? ': ' + this.message : '');
+    };
+
+    Cancel.prototype.__CANCEL__ = true;
+
+    var Cancel_1 = Cancel;
+
+    /**
      * A `CancelToken` is an object that can be used to request cancellation of an operation.
      *
      * @class
@@ -38613,42 +38724,11 @@
       }
 
       var resolvePromise;
-
       this.promise = new Promise(function promiseExecutor(resolve) {
         resolvePromise = resolve;
       });
 
       var token = this;
-
-      // eslint-disable-next-line func-names
-      this.promise.then(function(cancel) {
-        if (!token._listeners) return;
-
-        var i;
-        var l = token._listeners.length;
-
-        for (i = 0; i < l; i++) {
-          token._listeners[i](cancel);
-        }
-        token._listeners = null;
-      });
-
-      // eslint-disable-next-line func-names
-      this.promise.then = function(onfulfilled) {
-        var _resolve;
-        // eslint-disable-next-line func-names
-        var promise = new Promise(function(resolve) {
-          token.subscribe(resolve);
-          _resolve = resolve;
-        }).then(onfulfilled);
-
-        promise.cancel = function reject() {
-          token.unsubscribe(_resolve);
-        };
-
-        return promise;
-      };
-
       executor(function cancel(message) {
         if (token.reason) {
           // Cancellation has already been requested
@@ -38666,37 +38746,6 @@
     CancelToken.prototype.throwIfRequested = function throwIfRequested() {
       if (this.reason) {
         throw this.reason;
-      }
-    };
-
-    /**
-     * Subscribe to the cancel signal
-     */
-
-    CancelToken.prototype.subscribe = function subscribe(listener) {
-      if (this.reason) {
-        listener(this.reason);
-        return;
-      }
-
-      if (this._listeners) {
-        this._listeners.push(listener);
-      } else {
-        this._listeners = [listener];
-      }
-    };
-
-    /**
-     * Unsubscribe from the cancel signal
-     */
-
-    CancelToken.prototype.unsubscribe = function unsubscribe(listener) {
-      if (!this._listeners) {
-        return;
-      }
-      var index = this._listeners.indexOf(listener);
-      if (index !== -1) {
-        this._listeners.splice(index, 1);
       }
     };
 
@@ -38769,11 +38818,6 @@
       // Copy context to instance
       utils.extend(instance, context);
 
-      // Factory for creating new instances
-      instance.create = function create(instanceConfig) {
-        return createInstance(mergeConfig(defaultConfig, instanceConfig));
-      };
-
       return instance;
     }
 
@@ -38783,11 +38827,15 @@
     // Expose Axios class to allow class inheritance
     axios.Axios = Axios_1;
 
+    // Factory for creating new instances
+    axios.create = function create(instanceConfig) {
+      return createInstance(mergeConfig(axios.defaults, instanceConfig));
+    };
+
     // Expose Cancel & CancelToken
     axios.Cancel = Cancel_1;
     axios.CancelToken = CancelToken_1;
     axios.isCancel = isCancel;
-    axios.VERSION = data.version;
 
     // Expose all/spread
     axios.all = function all(promises) {
@@ -39121,7 +39169,7 @@
         return environmentNames;
     }
 
-    async function main()
+    async function main$1()
     {
         const canvas = document.getElementById("canvas");
         const context = canvas.getContext("webgl2", { alpha: false, antialias: true });
@@ -39460,7 +39508,7 @@
         window.requestAnimationFrame(update);
     }
 
-    exports.main = main;
+    exports.main = main$1;
 
     Object.defineProperty(exports, '__esModule', { value: true });
 
