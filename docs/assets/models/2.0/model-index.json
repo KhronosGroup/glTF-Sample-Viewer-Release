@@ -220,20 +220,6 @@
     }
   },
   {
-    "name": "ClearcoatRing",
-    "screenshot": "screenshot/screenshot.jpg",
-    "variants": {
-      "glTF": "PBR - Metallic Roughness Alpha-blend.gltf"
-    }
-  },
-  {
-    "name": "ClearcoatSphere",
-    "screenshot": null,
-    "variants": {
-      "glTF": "ClearcoatSphere.gltf"
-    }
-  },
-  {
     "name": "Corset",
     "screenshot": "screenshot/screenshot.jpg",
     "variants": {
@@ -325,6 +311,25 @@
     "variants": {
       "glTF": "InterpolationTest.gltf",
       "glTF-Binary": "InterpolationTest.glb"
+    }
+  },
+  {
+    "name": "IridescenceDielectricSpheres",
+    "variants": {
+      "glTF": "IridescenceDielectricSpheres.gltf"
+    }
+  },
+  {
+    "name": "IridescenceMetallicSpheres",
+    "variants": {
+      "glTF": "IridescenceMetallicSpheres.gltf"
+    }
+  },
+  {
+    "name": "IridescenceSuzanne",
+    "screenshot": "screenshot/screenshot.jpg",
+    "variants": {
+      "glTF": "IridescenceSuzanne.gltf"
     }
   },
   {
@@ -480,7 +485,7 @@
     "name": "SheenChair",
     "screenshot": "screenshot/screenshot.jpg",
     "variants": {
-      "glTF": "gltf_sheen_damask.gltf",
+      "glTF": "SheenChair.gltf",
       "glTF-Binary": "SheenChair.glb"
     }
   },
@@ -489,13 +494,6 @@
     "screenshot": "screenshot/screenshot.jpg",
     "variants": {
       "glTF": "SheenCloth.gltf"
-    }
-  },
-  {
-    "name": "SheenHighHeel",
-    "screenshot": "screenshot/screenshot.jpg",
-    "variants": {
-      "glTF": "SheenHighHeel.gltf"
     }
   },
   {
@@ -551,15 +549,6 @@
     "screenshot": "screenshot/screenshot.jpg",
     "variants": {
       "glTF": "Sponza.gltf"
-    }
-  },
-  {
-    "name": "StainedGlassLamp",
-    "screenshot": "screenshot/screenshot.jpg",
-    "variants": {
-      "glTF": "StainedGlassLamp.gltf",
-      "glTF-JPG-PNG": "StainedGlassLamp.gltf",
-      "glTF-KTX-BasisU": "StainedGlassLamp.gltf"
     }
   },
   {
@@ -632,13 +621,6 @@
     "variants": {
       "glTF": "TransmissionRoughnessTest.gltf",
       "glTF-Binary": "TransmissionRoughnessTest.glb"
-    }
-  },
-  {
-    "name": "TransmissionSuzanne",
-    "screenshot": null,
-    "variants": {
-      "glTF": "TransmissionSuzanne.gltf"
     }
   },
   {
