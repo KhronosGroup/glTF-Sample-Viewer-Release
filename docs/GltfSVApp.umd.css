@@ -8771,7 +8771,7 @@ div.b-colorpicker-square {
     bottom: 0;
     left: 0; }
     div.b-colorpicker-square .colorpicker-square-slider-hue .hue-range-thumb {
-      border-radius: calc(4px / 1.75);
+      border-radius: calc($colorpicker-radius / 1.75);
       position: absolute;
       aspect-ratio: 1 / 1;
       transform: translate(-50%, -50%);
@@ -9148,10 +9148,6 @@ div.b-colorpicker-square {
     z-index: 50 !important; }
     .dropdown.is-mobile-modal > .dropdown-menu > .dropdown-content > .dropdown-item, .dropdown .dropdown-menu .has-link .dropdown.is-mobile-modal > .dropdown-menu > .dropdown-content > a, .dropdown.is-mobile-modal > .dropdown-menu > .dropdown-content > .has-link a {
       padding: 1rem 1.5rem; } }
-
-@media screen and (max-width: 1023px) {
-  html.is-clipped-touch {
-    overflow: hidden !important; } }
 
 .field.is-grouped .field {
   flex-shrink: 0; }
