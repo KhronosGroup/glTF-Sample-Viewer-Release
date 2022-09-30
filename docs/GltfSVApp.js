@@ -5577,51 +5577,38 @@ var mergeConfig$2 = function mergeConfig(config1, config2) {
   return config;
 };
 
-var _from = "axios@^0.21.1";
-var _id = "axios@0.21.4";
-var _inBundle = false;
-var _integrity = "sha512-ut5vewkiu8jjGBdqpM44XxjuCjq9LAKeHVmoVfHVzy8eHgxxq8SbAVQNovDA8mVi05kP0Ea/n/UzcSHcTJQfNg==";
-var _location = "/axios";
-var _phantomChildren = {
+var name$1 = "axios";
+var version$1 = "0.21.4";
+var description = "Promise based HTTP client for the browser and node.js";
+var main$1 = "index.js";
+var scripts = {
+	test: "grunt test",
+	start: "node ./sandbox/server.js",
+	build: "NODE_ENV=production grunt build",
+	preversion: "npm test",
+	version: "npm run build && grunt version && git add -A dist && git add CHANGELOG.md bower.json package.json",
+	postversion: "git push && git push --tags",
+	examples: "node ./examples/server.js",
+	coveralls: "cat coverage/lcov.info | ./node_modules/coveralls/bin/coveralls.js",
+	fix: "eslint --fix lib/**/*.js"
 };
-var _requested = {
-	type: "range",
-	registry: true,
-	raw: "axios@^0.21.1",
-	name: "axios",
-	escapedName: "axios",
-	rawSpec: "^0.21.1",
-	saveSpec: null,
-	fetchSpec: "^0.21.1"
+var repository = {
+	type: "git",
+	url: "https://github.com/axios/axios.git"
 };
-var _requiredBy = [
-	"/"
+var keywords = [
+	"xhr",
+	"http",
+	"ajax",
+	"promise",
+	"node"
 ];
-var _resolved = "https://registry.npmjs.org/axios/-/axios-0.21.4.tgz";
-var _shasum = "c67b90dc0568e5c1cf2b0b858c43ba28e2eda575";
-var _spec = "axios@^0.21.1";
-var _where = "/Users/jim/ux3d/gltf-sample-viewer/app_web";
-var author = {
-	name: "Matt Zabriskie"
-};
-var browser = {
-	"./lib/adapters/http.js": "./lib/adapters/xhr.js"
-};
+var author = "Matt Zabriskie";
+var license = "MIT";
 var bugs = {
 	url: "https://github.com/axios/axios/issues"
 };
-var bundleDependencies = false;
-var bundlesize = [
-	{
-		path: "./dist/axios.min.js",
-		threshold: "5kB"
-	}
-];
-var dependencies = {
-	"follow-redirects": "^1.14.0"
-};
-var deprecated = false;
-var description = "Promise based HTTP client for the browser and node.js";
+var homepage = "https://axios-http.com";
 var devDependencies = {
 	coveralls: "^3.0.0",
 	"es6-promise": "^4.2.4",
@@ -5657,69 +5644,40 @@ var devDependencies = {
 	webpack: "^4.44.2",
 	"webpack-dev-server": "^3.11.0"
 };
-var homepage = "https://axios-http.com";
+var browser = {
+	"./lib/adapters/http.js": "./lib/adapters/xhr.js"
+};
 var jsdelivr = "dist/axios.min.js";
-var keywords = [
-	"xhr",
-	"http",
-	"ajax",
-	"promise",
-	"node"
-];
-var license = "MIT";
-var main$1 = "index.js";
-var name$1 = "axios";
-var repository = {
-	type: "git",
-	url: "git+https://github.com/axios/axios.git"
-};
-var scripts = {
-	build: "NODE_ENV=production grunt build",
-	coveralls: "cat coverage/lcov.info | ./node_modules/coveralls/bin/coveralls.js",
-	examples: "node ./examples/server.js",
-	fix: "eslint --fix lib/**/*.js",
-	postversion: "git push && git push --tags",
-	preversion: "npm test",
-	start: "node ./sandbox/server.js",
-	test: "grunt test",
-	version: "npm run build && grunt version && git add -A dist && git add CHANGELOG.md bower.json package.json"
-};
-var typings = "./index.d.ts";
 var unpkg = "dist/axios.min.js";
-var version$1 = "0.21.4";
+var typings = "./index.d.ts";
+var dependencies = {
+	"follow-redirects": "^1.14.0"
+};
+var bundlesize = [
+	{
+		path: "./dist/axios.min.js",
+		threshold: "5kB"
+	}
+];
 var require$$0 = {
-	_from: _from,
-	_id: _id,
-	_inBundle: _inBundle,
-	_integrity: _integrity,
-	_location: _location,
-	_phantomChildren: _phantomChildren,
-	_requested: _requested,
-	_requiredBy: _requiredBy,
-	_resolved: _resolved,
-	_shasum: _shasum,
-	_spec: _spec,
-	_where: _where,
-	author: author,
-	browser: browser,
-	bugs: bugs,
-	bundleDependencies: bundleDependencies,
-	bundlesize: bundlesize,
-	dependencies: dependencies,
-	deprecated: deprecated,
-	description: description,
-	devDependencies: devDependencies,
-	homepage: homepage,
-	jsdelivr: jsdelivr,
-	keywords: keywords,
-	license: license,
-	main: main$1,
 	name: name$1,
-	repository: repository,
+	version: version$1,
+	description: description,
+	main: main$1,
 	scripts: scripts,
-	typings: typings,
+	repository: repository,
+	keywords: keywords,
+	author: author,
+	license: license,
+	bugs: bugs,
+	homepage: homepage,
+	devDependencies: devDependencies,
+	browser: browser,
+	jsdelivr: jsdelivr,
 	unpkg: unpkg,
-	version: version$1
+	typings: typings,
+	dependencies: dependencies,
+	bundlesize: bundlesize
 };
 
 var pkg = require$$0;
