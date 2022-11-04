@@ -6225,6 +6225,10 @@ class gltfAccessor extends GltfObject
                 break;
             }
         }
+        else if (this.sparse !== undefined)
+        {
+            this.typedView = this.createView();
+        }
 
         if (this.typedView === undefined)
         {
@@ -6312,6 +6316,10 @@ class gltfAccessor extends GltfObject
                 this.filteredView[i] = dv[func](offset, true);
             }
         }
+        else if (this.sparse !== undefined)
+        {
+            this.filteredView = this.createView();
+        }
 
         if (this.filteredView === undefined)
         {
@@ -6323,6 +6331,18 @@ class gltfAccessor extends GltfObject
         }
 
         return this.filteredView;
+    }
+
+    createView()
+    {
+        const size = this.count * this.getComponentCount(this.type);
+        if (this.componentType == GL.BYTE) return new Int8Array(size);
+        if (this.componentType == GL.UNSIGNED_BYTE) return new Uint8Array(size);
+        if (this.componentType == GL.SHORT) return new Int16Array(size);
+        if (this.componentType == GL.UNSIGNED_SHORT) return new Uint16Array(size);
+        if (this.componentType == GL.UNSIGNED_INT) return new Uint32Array(size);
+        if (this.componentType == GL.FLOAT) return new Float32Array(size);
+        return undefined;
     }
 
     // getNormalizedDeinterlacedView provides an alternative view to the accessors data,
@@ -7392,7 +7412,7 @@ var encoder$1 = {exports: {}};
 	}
 } (encoder$1));
 
-var decoder$2 = {exports: {}};
+var decoder$1 = {exports: {}};
 
 /* -*- tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- /
 /* vim: set shiftwidth=2 tabstop=2 autoindent cindent expandtab: */
@@ -8541,10 +8561,10 @@ var decoder$2 = {exports: {}};
 
 	  return image;
 	}
-} (decoder$2));
+} (decoder$1));
 
 var encode$1 = encoder$1.exports,
-    decode$1 = decoder$2.exports;
+    decode$1 = decoder$1.exports;
 
 var jpegJs = {
   encode: encode$1,
@@ -8727,9 +8747,9 @@ var jpegJs = {
         : undefined);
 
 // eslint-disable-next-line import/no-unassigned-import
-const decoder$1 = new TextDecoder('utf-8');
-function decode(bytes) {
-    return decoder$1.decode(bytes);
+function decode(bytes, encoding = 'utf8') {
+    const decoder = new TextDecoder(encoding);
+    return decoder.decode(bytes);
 }
 const encoder = new TextEncoder();
 function encode(str) {
@@ -8824,6 +8844,14 @@ class IOBuffer {
      */
     skip(n = 1) {
         this.offset += n;
+        return this;
+    }
+    /**
+     * Move the pointer n bytes backward.
+     * @param n - Number of bytes to move back.
+     */
+    back(n = 1) {
+        this.offset -= n;
         return this;
     }
     /**
@@ -9018,6 +9046,14 @@ class IOBuffer {
      */
     readUtf8(n = 1) {
         return decode(this.readBytes(n));
+    }
+    /**
+     * Read the next `n` bytes, return a string decoded with `encoding` and move pointer
+     * forward by `n` bytes.
+     * If no encoding is passed, the function is equivalent to @see {@link IOBuffer#readUtf8}
+     */
+    decodeText(n = 1, encoding = 'utf-8') {
+        return decode(this.readBytes(n), encoding);
     }
     /**
      * Write 0xff if the passed value is truthy, 0x00 otherwise and move pointer
@@ -23183,7 +23219,7 @@ class UIModel
 }
 
 /*!
- * Vue.js v2.7.10
+ * Vue.js v2.7.13
  * (c) 2014-2022 Evan You
  * Released under the MIT License.
  */
@@ -23295,7 +23331,13 @@ var isReservedAttribute = makeMap('key,ref,slot,slot-scope,is');
  * Remove an item from an array.
  */
 function remove$2(arr, item) {
-    if (arr.length) {
+    var len = arr.length;
+    if (len) {
+        // fast path for the only / last item
+        if (item === arr[len - 1]) {
+            arr.length = len - 1;
+            return;
+        }
         var index = arr.indexOf(item);
         if (index > -1) {
             return arr.splice(index, 1);
@@ -23811,6 +23853,15 @@ function cloneVNode(vnode) {
 }
 
 var uid$2 = 0;
+var pendingCleanupDeps = [];
+var cleanupDeps = function () {
+    for (var i = 0; i < pendingCleanupDeps.length; i++) {
+        var dep = pendingCleanupDeps[i];
+        dep.subs = dep.subs.filter(function (s) { return s; });
+        dep._pending = false;
+    }
+    pendingCleanupDeps.length = 0;
+};
 /**
  * A dep is an observable that can have multiple
  * directives subscribing to it.
@@ -23818,6 +23869,8 @@ var uid$2 = 0;
  */
 var Dep = /** @class */ (function () {
     function Dep() {
+        // pending subs cleanup
+        this._pending = false;
         this.id = uid$2++;
         this.subs = [];
     }
@@ -23825,7 +23878,15 @@ var Dep = /** @class */ (function () {
         this.subs.push(sub);
     };
     Dep.prototype.removeSub = function (sub) {
-        remove$2(this.subs, sub);
+        // #12696 deps with massive amount of subscribers are extremely slow to
+        // clean up in Chromium
+        // to workaround this, we unset the sub for now, and clear them on
+        // next scheduler flush.
+        this.subs[this.subs.indexOf(sub)] = null;
+        if (!this._pending) {
+            this._pending = true;
+            pendingCleanupDeps.push(this);
+        }
     };
     Dep.prototype.depend = function (info) {
         if (Dep.target) {
@@ -23834,9 +23895,10 @@ var Dep = /** @class */ (function () {
     };
     Dep.prototype.notify = function (info) {
         // stabilize the subscriber list first
-        var subs = this.subs.slice();
+        var subs = this.subs.filter(function (s) { return s; });
         for (var i = 0, l = subs.length; i < l; i++) {
-            subs[i].update();
+            var sub = subs[i];
+            sub.update();
         }
     };
     return Dep;
@@ -23902,6 +23964,27 @@ methodsToPatch.forEach(function (method) {
         return result;
     });
 });
+
+var rawMap = new WeakMap();
+/**
+ * Return a shallowly-reactive copy of the original object, where only the root
+ * level properties are reactive. It also does not auto-unwrap refs (even at the
+ * root level).
+ */
+function shallowReactive(target) {
+    makeReactive(target, true);
+    def(target, "__v_isShallow" /* ReactiveFlags.IS_SHALLOW */, true);
+    return target;
+}
+function makeReactive(target, shallow) {
+    // if trying to observe a readonly proxy, return the readonly version.
+    if (!isReadonly(target)) {
+        observe(target, shallow, isServerRendering() /* ssr mock reactivity */);
+    }
+}
+function isReadonly(value) {
+    return !!(value && value.__v_isReadonly);
+}
 
 var arrayKeys = Object.getOwnPropertyNames(arrayMethods);
 var NO_INIITIAL_VALUE = {};
@@ -23984,21 +24067,19 @@ var Observer = /** @class */ (function () {
  * or the existing observer if the value already has one.
  */
 function observe(value, shallow, ssrMockReactivity) {
-    if (!isObject$1(value) || isRef(value) || value instanceof VNode) {
-        return;
+    if (value && hasOwn(value, '__ob__') && value.__ob__ instanceof Observer) {
+        return value.__ob__;
     }
-    var ob;
-    if (hasOwn(value, '__ob__') && value.__ob__ instanceof Observer) {
-        ob = value.__ob__;
-    }
-    else if (shouldObserve &&
+    if (shouldObserve &&
         (ssrMockReactivity || !isServerRendering()) &&
         (isArray(value) || isPlainObject(value)) &&
         Object.isExtensible(value) &&
-        !value.__v_skip /* ReactiveFlags.SKIP */) {
-        ob = new Observer(value, shallow, ssrMockReactivity);
+        !value.__v_skip /* ReactiveFlags.SKIP */ &&
+        !rawMap.has(value) &&
+        !isRef(value) &&
+        !(value instanceof VNode)) {
+        return new Observer(value, shallow, ssrMockReactivity);
     }
-    return ob;
 }
 /**
  * Define a reactive property on an Object.
@@ -24130,25 +24211,6 @@ function dependArray(value) {
             dependArray(e);
         }
     }
-}
-/**
- * Return a shallowly-reactive copy of the original object, where only the root
- * level properties are reactive. It also does not auto-unwrap refs (even at the
- * root level).
- */
-function shallowReactive(target) {
-    makeReactive(target, true);
-    def(target, "__v_isShallow" /* ReactiveFlags.IS_SHALLOW */, true);
-    return target;
-}
-function makeReactive(target, shallow) {
-    // if trying to observe a readonly proxy, return the readonly version.
-    if (!isReadonly(target)) {
-        observe(target, shallow, isServerRendering() /* ssr mock reactivity */);
-    }
-}
-function isReadonly(value) {
-    return !!(value && value.__v_isReadonly);
 }
 function isRef(r) {
     return !!(r && r.__v_isRef === true);
@@ -25693,6 +25755,7 @@ function flushSchedulerQueue() {
     // call component updated and activated hooks
     callActivatedHooks(activatedQueue);
     callUpdatedHooks(updatedQueue);
+    cleanupDeps();
     // devtool hook
     /* istanbul ignore if */
     if (devtools && config$1.devtools) {
@@ -25762,6 +25825,7 @@ var activeEffectScope;
 var EffectScope = /** @class */ (function () {
     function EffectScope(detached) {
         if (detached === void 0) { detached = false; }
+        this.detached = detached;
         /**
          * @internal
          */
@@ -25774,8 +25838,8 @@ var EffectScope = /** @class */ (function () {
          * @internal
          */
         this.cleanups = [];
+        this.parent = activeEffectScope;
         if (!detached && activeEffectScope) {
-            this.parent = activeEffectScope;
             this.index =
                 (activeEffectScope.scopes || (activeEffectScope.scopes = [])).push(this) - 1;
         }
@@ -25821,7 +25885,7 @@ var EffectScope = /** @class */ (function () {
                 }
             }
             // nested scope, dereference from parent to avoid memory leaks
-            if (this.parent && !fromParent) {
+            if (!this.detached && this.parent && !fromParent) {
                 // optimized O(1) removal
                 var last = this.parent.scopes.pop();
                 if (last && last !== this) {
@@ -25829,6 +25893,7 @@ var EffectScope = /** @class */ (function () {
                     last.index = this.index;
                 }
             }
+            this.parent = undefined;
             this.active = false;
         }
     };
@@ -26039,7 +26104,7 @@ function nextTick(cb, ctx) {
 /**
  * Note: also update dist/vue.runtime.mjs when adding new exports to this file.
  */
-var version = '2.7.10';
+var version = '2.7.13';
 
 var seenObjects = new _Set();
 /**
@@ -26056,6 +26121,7 @@ function _traverse(val, seen) {
     var i, keys;
     var isA = isArray(val);
     if ((!isA && !isObject$1(val)) ||
+        val.__v_skip /* ReactiveFlags.SKIP */ ||
         Object.isFrozen(val) ||
         val instanceof VNode) {
         return;
