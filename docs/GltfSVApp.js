@@ -18760,7 +18760,11 @@ class gltfSkin extends GltfObject
 
     computeJoints(gltf, parentNode, webGlContext)
     {
-        const ibmAccessor = gltf.accessors[this.inverseBindMatrices].getDeinterlacedView(gltf);
+        let ibmAccessor = null;
+        if (this.inverseBindMatrices !== undefined) {
+            ibmAccessor = gltf.accessors[this.inverseBindMatrices].getDeinterlacedView(gltf);
+        }
+
         this.jointMatrices = [];
         this.jointNormalMatrices = [];
 
@@ -18772,10 +18776,13 @@ class gltfSkin extends GltfObject
         {
             const node = gltf.nodes[joint];
 
-            let jointMatrix = create$4();
-            let ibm = jsToGlSlice(ibmAccessor, i * 16, 16);
-            mul(jointMatrix, node.worldTransform, ibm);
-            mul(jointMatrix, parentNode.inverseWorldTransform, jointMatrix);
+            let jointMatrix = clone$1(node.worldTransform);
+
+            if (ibmAccessor !== null) {
+                let ibm = jsToGlSlice(ibmAccessor, i * 16, 16);
+                mul(jointMatrix, jointMatrix, ibm);
+                mul(jointMatrix, parentNode.inverseWorldTransform, jointMatrix);
+            }
 
             let normalMatrix = create$4();
             invert(normalMatrix, jointMatrix);
