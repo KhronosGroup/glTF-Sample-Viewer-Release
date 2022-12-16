@@ -3725,6 +3725,7 @@ class gltfRenderer
             this.drawPrimitive(state, renderpassConfiguration, drawable.primitive, drawable.node, this.viewProjectionMatrix, this.opaqueRenderTexture);
         }
 
+        this.transparentDrawables = currentCamera.sortPrimitivesByDepth(state.gltf, this.transparentDrawables);
         for (const drawable of this.transparentDrawables)
         {
             let renderpassConfiguration = {};
