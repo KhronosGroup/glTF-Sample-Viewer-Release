@@ -3914,7 +3914,7 @@ class gltfRenderer
             this.webGl.setTexture(this.shader.getUniformLocation("u_SheenELUT"), state.environment, state.environment.sheenELUT, textureCount++);
         }
 
-        if(transmissionSampleTexture !== undefined && (state.renderingParameters.useIBL || state.renderingParameters.usePunctual)
+        if(transmissionSampleTexture !== undefined && state.renderingParameters.useIBL
                     && state.environment && state.renderingParameters.enabledExtensions.KHR_materials_transmission)
         {
             this.webGl.context.activeTexture(GL.TEXTURE0 + textureCount);
@@ -8717,6 +8717,23 @@ function encode(str) {
 }
 
 const defaultByteLength = 1024 * 8;
+const hostBigEndian = (() => {
+    const array = new Uint8Array(4);
+    const view = new Uint32Array(array.buffer);
+    return !((view[0] = 1) & array[0]);
+})();
+const typedArrays = {
+    int8: Int8Array,
+    uint8: Uint8Array,
+    int16: Int16Array,
+    uint16: Uint16Array,
+    int32: Int32Array,
+    uint32: Uint32Array,
+    uint64: BigUint64Array,
+    int64: BigInt64Array,
+    float32: Float32Array,
+    float64: Float64Array,
+};
 class IOBuffer {
     /**
      * @param data - The data to construct the IOBuffer with.
@@ -8914,11 +8931,31 @@ class IOBuffer {
      * Read `n` bytes and move pointer forward by `n` bytes.
      */
     readBytes(n = 1) {
-        const bytes = new Uint8Array(n);
-        for (let i = 0; i < n; i++) {
-            bytes[i] = this.readByte();
+        return this.readArray(n, 'uint8');
+    }
+    /**
+     * Creates an array of corresponding to the type `type` and size `size`.
+     * For example type `uint8` will create a `Uint8Array`.
+     * @param size - size of the resulting array
+     * @param type - number type of elements to read
+     */
+    readArray(size, type) {
+        const bytes = typedArrays[type].BYTES_PER_ELEMENT * size;
+        const offset = this.byteOffset + this.offset;
+        const slice = this.buffer.slice(offset, offset + bytes);
+        if (this.littleEndian === hostBigEndian &&
+            type !== 'uint8' &&
+            type !== 'int8') {
+            const slice = new Uint8Array(this.buffer.slice(offset, offset + bytes));
+            slice.reverse();
+            const returnArray = new typedArrays[type](slice.buffer);
+            this.offset += bytes;
+            returnArray.reverse();
+            return returnArray;
         }
-        return bytes;
+        const returnArray = new typedArrays[type](slice);
+        this.offset += bytes;
+        return returnArray;
     }
     /**
      * Read a 16-bit signed integer and move pointer forward by 2 bytes.
