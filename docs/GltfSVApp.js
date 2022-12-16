@@ -23114,64 +23114,93 @@ class UIModel
             filter$1(file => file !== undefined),
         );
 
-        const move = fromEvent(document, 'mousemove');
-        const mousedown = fromEvent(inputDomElement, 'mousedown');
-        const cancelMouse = merge$1(fromEvent(document, 'mouseup'), fromEvent(document, 'mouseleave'));
+        const mouseMove = fromEvent(document, 'mousemove');
+        const mouseDown = fromEvent(inputDomElement, 'mousedown');
+        const mouseUp = merge$1(fromEvent(document, 'mouseup'), fromEvent(document, 'mouseleave'));
+        
+        inputDomElement.addEventListener('mousemove', event => event.preventDefault());
+        inputDomElement.addEventListener('mousedown', event => event.preventDefault());
+        inputDomElement.addEventListener('mouseup', event => event.preventDefault());
 
-        const mouseOrbit = mousedown.pipe(
+        const mouseOrbit = mouseDown.pipe(
             filter$1( event => event.button === 0 && event.shiftKey === false),
-            mergeMap(() => move.pipe(takeUntil(cancelMouse))),
-            map( mouse => ({deltaPhi: mouse.movementX, deltaTheta: mouse.movementY }))
+            mergeMap(() => mouseMove.pipe(
+                pairwise(),
+                map( ([oldMouse, newMouse]) => {
+                    return {
+                        deltaPhi: newMouse.pageX - oldMouse.pageX, 
+                        deltaTheta: newMouse.pageY - oldMouse.pageY 
+                    };
+                }),
+                takeUntil(mouseUp)
+            ))
         );
 
-        const mousePan = mousedown.pipe(
+        const mousePan = mouseDown.pipe(
             filter$1( event => event.button === 1 || event.shiftKey === true),
-            mergeMap(() => move.pipe(takeUntil(cancelMouse))),
-            map( mouse => ({deltaX: mouse.movementX, deltaY: mouse.movementY }))
+            mergeMap(() => mouseMove.pipe(
+                pairwise(),
+                map( ([oldMouse, newMouse]) => {
+                    return {
+                        deltaX: newMouse.pageX - oldMouse.pageX, 
+                        deltaY: newMouse.pageY - oldMouse.pageY 
+                    };
+                }),
+                takeUntil(mouseUp)
+            ))
         );
 
-        const smbZoom = mousedown.pipe(
+        const smbZoom = mouseDown.pipe(
             filter$1( event => event.button === 2),
-            mergeMap(() => move.pipe(takeUntil(cancelMouse))),
+            mergeMap(() => mouseMove.pipe(takeUntil(mouseUp))),
             map( mouse => ({deltaZoom: mouse.movementY }))
         );
         const wheelZoom = fromEvent(inputDomElement, 'wheel').pipe(
             map(wheelEvent => normalizeWheel(wheelEvent)),
             map(normalizedZoom => ({deltaZoom: normalizedZoom.spinY }))
         );
-        inputDomElement.addEventListener('onscroll', event => event.preventDefault(), false);
+        inputDomElement.addEventListener('scroll', event => event.preventDefault(), { passive: false });
+        inputDomElement.addEventListener('wheel', event => event.preventDefault(), { passive: false });
         const mouseZoom = merge$1(smbZoom, wheelZoom);
 
         const touchmove = fromEvent(document, 'touchmove');
         const touchstart = fromEvent(inputDomElement, 'touchstart');
         const touchend = merge$1(fromEvent(inputDomElement, 'touchend'), fromEvent(inputDomElement, 'touchcancel'));
-        
+
         const touchOrbit = touchstart.pipe(
-            filter$1( event => event.touches.length === 1),
-            mergeMap(() => touchmove.pipe(takeUntil(touchend))),
-            map( event => event.touches[0]),
-            pairwise(),
-            map( ([oldTouch, newTouch]) => {
-                return { 
-                    deltaPhi: newTouch.pageX - oldTouch.pageX, 
-                    deltaTheta: newTouch.pageY - oldTouch.pageY 
-                };
-            })
+            filter$1(event => event.touches.length === 1),
+            mergeMap(() => touchmove.pipe(
+                filter$1(event => event.touches.length === 1),
+                map(event => event.touches[0]),
+                pairwise(),
+                map(([oldTouch, newTouch]) => {
+                    return {
+                        deltaPhi: 2.0 * (newTouch.clientX - oldTouch.clientX),
+                        deltaTheta: 2.0 * (newTouch.clientY - oldTouch.clientY),
+                    };
+                }),
+                takeUntil(touchend)
+            )),
         );
 
         const touchZoom = touchstart.pipe(
-            filter$1( event => event.touches.length === 2),
-            mergeMap(() => touchmove.pipe(takeUntil(touchend))),
-            map( event => {
-                const pos1 = fromValues(event.touches[0].pageX, event.touches[0].pageY);
-                const pos2 = fromValues(event.touches[1].pageX, event.touches[1].pageY);
-                return dist(pos1, pos2);
-            }),
-            pairwise(),
-            map( ([oldDist, newDist]) => ({ deltaZoom: newDist - oldDist }))
+            filter$1(event => event.touches.length === 2),
+            mergeMap(() => touchmove.pipe(
+                filter$1(event => event.touches.length === 2),
+                map(event => {
+                    const pos1 = fromValues(event.touches[0].clientX, event.touches[0].clientY);
+                    const pos2 = fromValues(event.touches[1].clientX, event.touches[1].clientY);
+                    return dist(pos1, pos2);
+                }),
+                pairwise(),
+                map(([oldDist, newDist]) => ({ deltaZoom: 0.1 * (oldDist - newDist) })),
+                takeUntil(touchend))
+            ),
         );
 
-        inputDomElement.addEventListener('ontouchmove', event => event.preventDefault(), false);
+        inputDomElement.addEventListener('ontouchmove', event => event.preventDefault(), { passive: false });
+        inputDomElement.addEventListener('ontouchstart', event => event.preventDefault(), { passive: false });
+        inputDomElement.addEventListener('ontouchend', event => event.preventDefault(), { passive: false });
 
         observables.orbit = merge$1(mouseOrbit, touchOrbit);
         observables.pan = mousePan;
