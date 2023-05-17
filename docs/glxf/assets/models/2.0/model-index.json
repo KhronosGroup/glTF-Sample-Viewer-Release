@@ -1,0 +1,11 @@
+[
+  {
+  "name": "DamagedHelmet",
+  "screenshot": "screenshot/screenshot.png",
+  "variants": {
+    "glTF": "DamagedHelmet.gltf",
+    "glTF-Binary": "DamagedHelmet.glb",
+    "glTF-Embedded": "DamagedHelmet.gltf"
+  }
+}
+]
