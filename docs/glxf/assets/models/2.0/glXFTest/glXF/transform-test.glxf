@@ -1,0 +1,61 @@
+{ 
+    "asset": {
+        "version": "2.0",
+        "experience": true
+    },
+    "assets": [
+        {
+            "uri": "cube-sphere.glb",
+            "nodes": [ "Cube", "Sphere" ],
+            "transform": "none"
+        },
+        {
+            "uri": "cube-sphere.glb",
+            "nodes": [ "Cube", "Sphere" ],
+            "transform": "local"
+        },
+        {
+            "uri": "cube-sphere.glb",
+            "nodes": [ "Cube", "Sphere" ],
+            "transform": "global"
+        }
+    ],
+    "nodes": [
+        {
+            "name": "root",
+            "children": [2,4,6]
+        },
+        {
+            "name": "none",
+            "asset": 0
+        },
+        {
+            "translation":[-5.0, 0.0, 0.0],
+            "children": [ 1 ]
+        },
+        {
+            "name": "local",
+            "asset": 1
+        },
+        {
+            "translation":[0.0, 0.0, 0.0],
+            "children": [ 3 ]
+        },
+        {
+            "name": "global",
+            "asset": 2
+        },
+        {
+            "translation":[5.0, 0.0, 0.0],
+            "children": [ 5 ]
+        }
+    ],
+    "scene": 0,
+    "scenes": [
+        {
+            "nodes": [
+                0
+            ]
+        }
+    ]
+}
