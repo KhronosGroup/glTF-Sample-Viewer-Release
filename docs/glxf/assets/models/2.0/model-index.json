@@ -2,6 +2,12 @@
   {
     "name": "glXFTest",
     "variants": {
+      "glXF": "TableScene.glxf"
+    }
+  },
+  {
+    "name": "glXFTable",
+    "variants": {
       "glXF": "transform-test.glxf"
     }
   }

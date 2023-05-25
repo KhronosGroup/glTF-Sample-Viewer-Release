@@ -1,0 +1,70 @@
+{
+    "asset": {
+        "version": "2.0",
+        "experience": true
+    },
+    "assets": [
+        {
+            "uri": "RedTable.glb"
+        },
+        {
+            "uri": "IridescentDishWithOlives.glb"
+        },
+        {
+            "uri": "StainedGlassLamp.glb"
+        }
+    ],
+    "nodes": [
+        {
+            "name": "root",
+            "children": [1,2,3,4]
+        },
+        {
+            "name": "Table",
+            "asset": 0,
+            "translation":[0.0, 0.0, 0.0]
+        },
+        {
+            "name": "IridescentDishWithOlives",
+            "asset": 1,
+            "translation":[-0.0, 0.0, -0.2]
+        },
+        {
+            "name": "Lamp",
+            "asset": 2,
+            "translation":[0.20, 0.0, 0.40]
+        },
+		{
+			"camera": 0,
+			"rotation": [
+				-0.12909476333357384,
+				-0.5350785203344225,
+				-0.08315080323337401,
+				0.8307294764712628
+			],
+			"translation": [
+				-1.1538678407669067,
+				0.3662871718406677,
+				0.4870622456073761
+			]
+		}
+    ],
+    "scene": 0,
+    "scenes": [
+        {
+            "nodes": [
+                0
+            ]
+        }
+    ],
+    "cameras": [
+		{
+			"perspective": {
+				"yfov": 1.0,
+				"zfar": 763.0,
+				"znear": 0.07
+			},
+			"type": "perspective"
+		}
+	]
+}
