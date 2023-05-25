@@ -1,11 +1,5 @@
 [
   {
-    "name": "glXFTable",
-    "variants": {
-      "glXF": "TableScene.glxf"
-    }
-  },
-  {
     "name": "glXFTest",
     "variants": {
       "glXF": "transform-test.glxf"
