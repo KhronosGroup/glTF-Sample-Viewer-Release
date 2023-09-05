@@ -17677,12 +17677,173 @@ class DracoDecoder {
 
 }
 
+let wasm;
+
+let cachedTextDecoder = new TextDecoder('utf-8', { ignoreBOM: true, fatal: true });
+
+cachedTextDecoder.decode();
+
+let cachegetUint8Memory0 = null;
+function getUint8Memory0() {
+    if (cachegetUint8Memory0 === null || cachegetUint8Memory0.buffer !== wasm.memory.buffer) {
+        cachegetUint8Memory0 = new Uint8Array(wasm.memory.buffer);
+    }
+    return cachegetUint8Memory0;
+}
+
+function getStringFromWasm0(ptr, len) {
+    return cachedTextDecoder.decode(getUint8Memory0().subarray(ptr, ptr + len));
+}
+
+const heap = new Array(32).fill(undefined);
+
+heap.push(undefined, null, true, false);
+
+let heap_next = heap.length;
+
+function addHeapObject(obj) {
+    if (heap_next === heap.length) heap.push(heap.length + 1);
+    const idx = heap_next;
+    heap_next = heap[idx];
+
+    heap[idx] = obj;
+    return idx;
+}
+
+function getObject(idx) { return heap[idx]; }
+
+function dropObject(idx) {
+    if (idx < 36) return;
+    heap[idx] = heap_next;
+    heap_next = idx;
+}
+
+function takeObject(idx) {
+    const ret = getObject(idx);
+    dropObject(idx);
+    return ret;
+}
+
+let cachegetFloat32Memory0 = null;
+function getFloat32Memory0() {
+    if (cachegetFloat32Memory0 === null || cachegetFloat32Memory0.buffer !== wasm.memory.buffer) {
+        cachegetFloat32Memory0 = new Float32Array(wasm.memory.buffer);
+    }
+    return cachegetFloat32Memory0;
+}
+
+let WASM_VECTOR_LEN = 0;
+
+function passArrayF32ToWasm0(arg, malloc) {
+    const ptr = malloc(arg.length * 4);
+    getFloat32Memory0().set(arg, ptr / 4);
+    WASM_VECTOR_LEN = arg.length;
+    return ptr;
+}
+
+let cachegetInt32Memory0 = null;
+function getInt32Memory0() {
+    if (cachegetInt32Memory0 === null || cachegetInt32Memory0.buffer !== wasm.memory.buffer) {
+        cachegetInt32Memory0 = new Int32Array(wasm.memory.buffer);
+    }
+    return cachegetInt32Memory0;
+}
+
+function getArrayF32FromWasm0(ptr, len) {
+    return getFloat32Memory0().subarray(ptr / 4, ptr / 4 + len);
+}
+/**
+* Generates vertex tangents for the given position/normal/texcoord attributes.
+* @param {Float32Array} position
+* @param {Float32Array} normal
+* @param {Float32Array} texcoord
+* @returns {Float32Array}
+*/
+function generateTangents(position, normal, texcoord) {
+    try {
+        const retptr = wasm.__wbindgen_add_to_stack_pointer(-16);
+        var ptr0 = passArrayF32ToWasm0(position, wasm.__wbindgen_malloc);
+        var len0 = WASM_VECTOR_LEN;
+        var ptr1 = passArrayF32ToWasm0(normal, wasm.__wbindgen_malloc);
+        var len1 = WASM_VECTOR_LEN;
+        var ptr2 = passArrayF32ToWasm0(texcoord, wasm.__wbindgen_malloc);
+        var len2 = WASM_VECTOR_LEN;
+        wasm.generateTangents(retptr, ptr0, len0, ptr1, len1, ptr2, len2);
+        var r0 = getInt32Memory0()[retptr / 4 + 0];
+        var r1 = getInt32Memory0()[retptr / 4 + 1];
+        var v3 = getArrayF32FromWasm0(r0, r1).slice();
+        wasm.__wbindgen_free(r0, r1 * 4);
+        return v3;
+    } finally {
+        wasm.__wbindgen_add_to_stack_pointer(16);
+    }
+}
+
+async function load(module, imports) {
+    if (typeof Response === 'function' && module instanceof Response) {
+        if (typeof WebAssembly.instantiateStreaming === 'function') {
+            try {
+                return await WebAssembly.instantiateStreaming(module, imports);
+
+            } catch (e) {
+                if (module.headers.get('Content-Type') != 'application/wasm') {
+                    console.warn("`WebAssembly.instantiateStreaming` failed because your server does not serve wasm with `application/wasm` MIME type. Falling back to `WebAssembly.instantiate` which is slower. Original error:\n", e);
+
+                } else {
+                    throw e;
+                }
+            }
+        }
+
+        const bytes = await module.arrayBuffer();
+        return await WebAssembly.instantiate(bytes, imports);
+
+    } else {
+        const instance = await WebAssembly.instantiate(module, imports);
+
+        if (instance instanceof WebAssembly.Instance) {
+            return { instance, module };
+
+        } else {
+            return instance;
+        }
+    }
+}
+
+async function init(input) {
+    if (typeof input === 'undefined') {
+        input = new URL('mikktspace_bg.wasm', import.meta.url);
+    }
+    const imports = {};
+    imports.wbg = {};
+    imports.wbg.__wbindgen_string_new = function(arg0, arg1) {
+        var ret = getStringFromWasm0(arg0, arg1);
+        return addHeapObject(ret);
+    };
+    imports.wbg.__wbindgen_rethrow = function(arg0) {
+        throw takeObject(arg0);
+    };
+
+    if (typeof input === 'string' || (typeof Request === 'function' && input instanceof Request) || (typeof URL === 'function' && input instanceof URL)) {
+        input = fetch(input);
+    }
+
+
+
+    const { instance, module } = await load(await input, imports);
+
+    wasm = instance.exports;
+    init.__wbindgen_wasm_module = module;
+
+    return wasm;
+}
+
 class gltfPrimitive extends GltfObject
 {
     constructor()
     {
         super();
-        this.attributes = [];
+        this.attributes = {};
         this.targets = [];
         this.indices = undefined;
         this.material = undefined;
@@ -17720,6 +17881,7 @@ class gltfPrimitive extends GltfObject
 
         if (this.extensions !== undefined)
         {
+            // Decode Draco compressed mesh:
             if (this.extensions.KHR_draco_mesh_compression !== undefined)
             {
                 const dracoDecoder = new DracoDecoder();
@@ -17734,6 +17896,15 @@ class gltfPrimitive extends GltfObject
                     console.warn('Failed to load draco compressed mesh: DracoDecoder not initialized');
                 }
             }
+        }
+
+        if (this.attributes.TANGENT === undefined)
+        {
+            console.info("Generating tangents using the MikkTSpace algorithm.");
+            console.time("Tangent generation");
+            this.unweld(gltf);
+            this.generateTangents(gltf);
+            console.timeEnd("Tangent generation");
         }
 
         // VERTEX ATTRIBUTES
@@ -18387,6 +18558,121 @@ class gltfPrimitive extends GltfObject
             itemSize: numComponents,
             componentType: attributeType
         };
+
+    }
+
+    /**
+     * Unwelds this primitive, i.e. applies the index mapping.
+     * This is required for generating tangents using the MikkTSpace algorithm,
+     * because the same vertex might be mapped to different tangents.
+     * @param {*} gltf The glTF document.
+     */
+    unweld(gltf) {
+        // Unwelding is an idempotent operation.
+        if (this.indices === undefined) {
+            return;
+        }
+        
+        const indices = gltf.accessors[this.indices].getTypedView(gltf);
+
+        // Unweld attributes:
+        for (const [attribute, accessorIndex] of Object.entries(this.attributes)) {
+            this.attributes[attribute] = this.unweldAccessor(gltf, gltf.accessors[accessorIndex], indices);
+        }
+
+        // Unweld morph targets:
+        for (const target of this.targets) {
+            for (const [attribute, accessorIndex] of Object.entries(target)) {
+                target[attribute] = this.unweldAccessor(gltf, gltf.accessors[accessorIndex], indices);
+            }
+        }
+
+        // Dipose the indices:
+        this.indices = undefined;
+    }
+
+    /**
+     * Unwelds a single accessor. Used by {@link unweld}.
+     * @param {*} gltf The glTF document.
+     * @param {*} accessor The accessor to unweld.
+     * @param {*} typedIndexView A typed view of the indices.
+     * @returns A new accessor index containing the unwelded attribute.
+     */
+    unweldAccessor(gltf, accessor, typedIndexView) {
+        const componentCount = accessor.getComponentCount(accessor.type);
+
+        const weldedAttribute = accessor.getTypedView(gltf);
+        const unweldedAttribute = new Float32Array(gltf.accessors[this.indices].count * componentCount);
+
+        // Apply the index mapping.
+        for (let i = 0; i < typedIndexView.length; i++) {
+            for (let j = 0; j < componentCount; j++) {
+                unweldedAttribute[i * componentCount + j] = weldedAttribute[typedIndexView[i] * componentCount + j];
+            }
+        }
+
+        // Create a new buffer and buffer view for the unwelded attribute:
+        const unweldedBuffer = new gltfBuffer();
+        unweldedBuffer.byteLength = unweldedAttribute.byteLength;
+        unweldedBuffer.buffer = unweldedAttribute.buffer;
+        gltf.buffers.push(unweldedBuffer);
+
+        const unweldedBufferView = new gltfBufferView();
+        unweldedBufferView.buffer = gltf.buffers.length - 1;
+        unweldedBufferView.byteLength = unweldedAttribute.byteLength;
+        unweldedBufferView.target = GL.ARRAY_BUFFER;
+        gltf.bufferViews.push(unweldedBufferView);
+
+        // Create a new accessor for the unwelded attribute:
+        const unweldedAccessor = new gltfAccessor();
+        unweldedAccessor.bufferView = gltf.bufferViews.length - 1;
+        unweldedAccessor.byteOffset = 0;
+        unweldedAccessor.count = typedIndexView.length;
+        unweldedAccessor.type = accessor.type;
+        unweldedAccessor.componentType = accessor.componentType;
+        unweldedAccessor.min = accessor.min;
+        unweldedAccessor.max = accessor.max;
+        gltf.accessors.push(unweldedAccessor);
+
+        // Update the primitive to use the unwelded attribute:
+        return gltf.accessors.length - 1;
+    }
+
+    generateTangents(gltf) {
+        if(this.attributes.NORMAL === undefined || this.attributes.TEXCOORD_0 === undefined)
+        {
+            return;
+        }
+
+        const positions = gltf.accessors[this.attributes.POSITION].getTypedView(gltf);
+        const normals = gltf.accessors[this.attributes.NORMAL].getTypedView(gltf);
+        const texcoords = gltf.accessors[this.attributes.TEXCOORD_0].getTypedView(gltf);
+
+        const tangents = generateTangents(positions, normals, texcoords);
+
+        // Create a new buffer and buffer view for the tangents:
+        const tangentBuffer = new gltfBuffer();
+        tangentBuffer.byteLength = tangents.byteLength;
+        tangentBuffer.buffer = tangents.buffer;
+        gltf.buffers.push(tangentBuffer);
+
+        const tangentBufferView = new gltfBufferView();
+        tangentBufferView.buffer = gltf.buffers.length - 1;
+        tangentBufferView.byteLength = tangents.byteLength;
+        tangentBufferView.target = GL.ARRAY_BUFFER;
+        gltf.bufferViews.push(tangentBufferView);
+
+        // Create a new accessor for the tangents:
+        const tangentAccessor = new gltfAccessor();
+        tangentAccessor.bufferView = gltf.bufferViews.length - 1;
+        tangentAccessor.byteOffset = 0;
+        tangentAccessor.count = tangents.length / 4;
+        tangentAccessor.type = "VEC4";
+        tangentAccessor.componentType = GL.FLOAT;
+
+        // Update the primitive to use the tangents:
+        this.attributes.TANGENT = gltf.accessors.length;
+        gltf.accessors.push(tangentAccessor);
 
     }
 }
@@ -19902,6 +20188,69 @@ class iblSampler
     }
 }
 
+function _loadWasmModule (sync, filepath, src, imports) {
+  function _instantiateOrCompile(source, imports, stream) {
+    var instantiateFunc = stream ? WebAssembly.instantiateStreaming : WebAssembly.instantiate;
+    var compileFunc = stream ? WebAssembly.compileStreaming : WebAssembly.compile;
+
+    if (imports) {
+      return instantiateFunc(source, imports)
+    } else {
+      return compileFunc(source)
+    }
+  }
+
+  
+var buf = null;
+var isNode = typeof process !== 'undefined' && process.versions != null && process.versions.node != null;
+
+if (filepath && isNode) {
+  
+var fs = require("fs");
+var path = require("path");
+
+return new Promise((resolve, reject) => {
+  fs.readFile(path.resolve(__dirname, filepath), (error, buffer) => {
+    if (error != null) {
+      reject(error);
+    } else {
+      resolve(_instantiateOrCompile(buffer, imports, false));
+    }
+  });
+});
+
+} else if (filepath) {
+  
+return _instantiateOrCompile(fetch(filepath), imports, true);
+
+}
+
+if (isNode) {
+  
+buf = Buffer.from(src, 'base64');
+
+} else {
+  
+var raw = globalThis.atob(src);
+var rawLength = raw.length;
+buf = new Uint8Array(new ArrayBuffer(rawLength));
+for(var i = 0; i < rawLength; i++) {
+   buf[i] = raw.charCodeAt(i);
+}
+
+}
+
+
+  if(sync) {
+    var mod = new WebAssembly.Module(buf);
+    return imports ? new WebAssembly.Instance(mod, imports) : mod
+  } else {
+    return _instantiateOrCompile(buf, imports, false)
+  }
+}
+
+function mikktspace(imports){return _loadWasmModule(0, '62b6c493308d7b10.wasm', null, imports)}
+
 class KtxDecoder {
 
     constructor (context, externalKtxlib) {
@@ -20212,6 +20561,7 @@ class ResourceLoader
             image.resolveRelativePath(getContainingFolder(gltf.path));
         }
 
+        await init(await mikktspace());
         await gltfLoader.load(gltf, this.view.context, buffers);
 
         return gltf;
@@ -52401,8 +52751,7 @@ function fillEnvironmentWithPaths(environmentNames, environmentsBasePath)
     return environmentNames;
 }
 
-async function main()
-{
+async function main() {
     const canvas = document.getElementById("canvas");
     const context = canvas.getContext("webgl2", { alpha: false, antialias: true });
     document.getElementById("app");
@@ -52411,7 +52760,7 @@ async function main()
     const state = view.createState();
     state.renderingParameters.useDirectionalLightsWithDisabledIBL = true;
 
-    const pathProvider = new gltfModelPathProvider('assets/models/2.0/model-index.json');
+    const pathProvider = new gltfModelPathProvider('assets/models/Models/model-index.json');
     await pathProvider.initialize();
     const environmentPaths = fillEnvironmentWithPaths({
         "footprint_court": "Footprint Court",
