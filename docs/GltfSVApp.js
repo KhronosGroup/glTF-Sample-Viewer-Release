@@ -6522,13 +6522,12 @@ class gltfBuffer extends GltfObject
             return false;
         }
 
-        const foundFile = files.find(function(file)
-        {
+        const foundFile = files.find(([path, file]) => {
             if (file.name === this.uri || file.fullPath === this.uri)
             {
                 return true;
             }
-        }, this);
+        });
 
         if (foundFile === undefined)
         {
@@ -6542,7 +6541,7 @@ class gltfBuffer extends GltfObject
             self.buffer = event.target.result;
             callback();
         };
-        reader.readAsArrayBuffer(foundFile);
+        reader.readAsArrayBuffer(foundFile[1]);
 
         return true;
     }
@@ -16425,12 +16424,9 @@ class gltfImage extends GltfObject
 
     resolveRelativePath(basePath)
     {
-        if (typeof this.uri === 'string' || this.uri instanceof String)
-        {
-            if (this.uri.startsWith('./'))
-            {
-                // Remove preceding './' from URI.
-                this.uri = this.uri.substr(2);
+        if (typeof this.uri === 'string' || this.uri instanceof String) {
+            if (this.uri.startsWith('./')) {
+                this.uri = this.uri.substring(2);
             }
             this.uri = basePath + this.uri;
         }
@@ -16448,7 +16444,7 @@ class gltfImage extends GltfObject
         }
 
         if (!await this.setImageFromBufferView(gltf) &&
-            !await this.setImageFromFiles(additionalFiles, gltf) &&
+            !await this.setImageFromFiles(gltf, additionalFiles) &&
             !await this.setImageFromUri(gltf))
         {
             console.error("Was not able to resolve image with uri '%s'", this.uri);
@@ -16585,21 +16581,18 @@ class gltfImage extends GltfObject
         return true;
     }
 
-    async setImageFromFiles(files, gltf)
+    async setImageFromFiles(gltf, files)
     {
         if (this.uri === undefined || files === undefined)
         {
             return false;
         }
 
-        let foundFile = files.find(function(file)
-        {
-            const uriName = this.uri.split('\\').pop().split('/').pop();
-            if (file.name === uriName)
-            {
+        let foundFile = files.find(file => {
+            if (file[0] == "/" + this.uri) {
                 return true;
             }
-        }, this);
+        });
 
         if (foundFile === undefined)
         {
@@ -16608,7 +16601,7 @@ class gltfImage extends GltfObject
 
         if (this.mimeType === undefined)
         {
-            this.setMimetypeFromFilename(foundFile.name);
+            this.setMimetypeFromFilename(foundFile[0]);
         }
 
 
@@ -16616,7 +16609,7 @@ class gltfImage extends GltfObject
         {
             if (gltf.ktxDecoder !== undefined)
             {
-                const data = new Uint8Array(await foundFile.arrayBuffer());
+                const data = new Uint8Array(await foundFile[1].arrayBuffer());
                 this.image = await gltf.ktxDecoder.loadKtxFromBuffer(data);
             }
             else
@@ -16626,7 +16619,7 @@ class gltfImage extends GltfObject
         }
         else if (typeof(Image) !== 'undefined' && (this.mimeType === ImageMimeType.JPEG || this.mimeType === ImageMimeType.PNG))
         {
-            const imageData = await AsyncFileReader.readAsDataURL(foundFile).catch( () => {
+            const imageData = await AsyncFileReader.readAsDataURL(foundFile[1]).catch( () => {
                 console.error("Could not load image with FileReader");
             });
             this.image = await gltfImage.loadHTMLImage(imageData).catch( () => {
@@ -19723,7 +19716,7 @@ class gltfLoader
     {
         if (appendix && appendix.length > 0)
         {
-            if (appendix[0] instanceof Type)
+            if (appendix[0] instanceof Type || appendix[0][1] instanceof Type)
             {
                 return appendix;
             }
@@ -20520,10 +20513,10 @@ class ResourceLoader
                 console.error("Only .glb files can be loaded from an array buffer");
             }
         }
-        else if (typeof (File) !== 'undefined' && gltfFile instanceof File)
+        else if (Array.isArray(gltfFile) && typeof(File) !== 'undefined' && gltfFile[1] instanceof File)
         {
-            let fileContent = gltfFile;
-            filename = gltfFile.name;
+            let fileContent = gltfFile[1];
+            filename = gltfFile[1].name;
             isGlb = getIsGlb(filename);
             if (isGlb)
             {
@@ -23327,49 +23320,14 @@ var normalizeWheel = /*@__PURE__*/getDefaultExportFromCjs(normalizeWheel$2.expor
 // as close as possible
 class UIModel
 {
-    constructor(app, modelPathProvider, environments)
-    {
+    constructor(app, modelPathProvider, environments) {
         this.app = app;
-        this.pathProvider = modelPathProvider;
 
-        this.app.models = this.pathProvider.getAllKeys();
+        this.app.models = modelPathProvider.getAllKeys();
 
         const queryString = window.location.search;
         const urlParams = new URLSearchParams(queryString);
         const modelURL = urlParams.get("model");
-
-        let dropdownGltfChanged = undefined;
-        if (modelURL === null)
-        {
-            dropdownGltfChanged = app.modelChanged$.pipe(
-                pluck("event", "msg"),
-                startWith("DamagedHelmet"),
-                map(value => {
-                    app.flavours = this.pathProvider.getModelFlavours(value);
-                    app.selectedFlavour = "glTF";
-                    return this.pathProvider.resolve(value, app.selectedFlavour);
-                }),
-                map( value => ({mainFile: value, additionalFiles: undefined})),
-            );
-        } else {
-            dropdownGltfChanged = app.modelChanged$.pipe(
-                pluck("event", "msg"),
-                map(value => {
-                    app.flavours = this.pathProvider.getModelFlavours(value);
-                    app.selectedFlavour = "glTF";
-                    return this.pathProvider.resolve(value, app.selectedFlavour);
-                }),
-                map( value => ({mainFile: value, additionalFiles: undefined})),
-            );
-        }       
-
-        const dropdownFlavourChanged = app.flavourChanged$.pipe(
-            pluck("event", "msg"),
-            map(value => {
-                return this.pathProvider.resolve(app.selectedModel, value);
-            }),
-            map( value => ({mainFile: value, additionalFiles: undefined})),
-        );
 
         this.scene = app.sceneChanged$.pipe(pluck("event", "msg"));
         this.camera = app.cameraChanged$.pipe(pluck("event", "msg"));
@@ -23377,22 +23335,18 @@ class UIModel
         this.app.environments = environments;
         const selectedEnvironment = app.$watchAsObservable('selectedEnvironment').pipe(
             pluck('newValue'),
-            map( environmentName => this.app.environments[environmentName].hdr_path)
+            map(environmentName => this.app.environments[environmentName].hdr_path)
         );
         const initialEnvironment = "footprint_court";
         this.app.selectedEnvironment = initialEnvironment;
 
-        this.app.tonemaps = Object.keys(GltfState.ToneMaps).map((key) => {
-            return {title: GltfState.ToneMaps[key]};
-        });
+        this.app.tonemaps = Object.keys(GltfState.ToneMaps).map((key) => ({title: GltfState.ToneMaps[key]}));
         this.tonemap = app.tonemapChanged$.pipe(
             pluck("event", "msg"),
             startWith(GltfState.ToneMaps.LINEAR)
         );
 
-        this.app.debugchannels = Object.keys(GltfState.DebugOutput).map((key) => {
-            return {title: GltfState.DebugOutput[key]};
-        });
+        this.app.debugchannels = Object.keys(GltfState.DebugOutput).map((key) => ({title: GltfState.DebugOutput[key]}));
         this.debugchannel = app.debugchannelChanged$.pipe(
             pluck("event", "msg"),
             startWith(GltfState.DebugOutput.NONE)
@@ -23404,27 +23358,18 @@ class UIModel
         this.clearcoatEnabled = app.clearcoatChanged$.pipe(pluck("event", "msg"));
         this.sheenEnabled = app.sheenChanged$.pipe(pluck("event", "msg"));
         this.transmissionEnabled = app.transmissionChanged$.pipe(pluck("event", "msg"));
-        this.volumeEnabled = app.$watchAsObservable('volumeEnabled').pipe(
-                                            map( ({ newValue, oldValue }) => newValue));
-        this.iorEnabled = app.$watchAsObservable('iorEnabled').pipe(
-                                            map( ({ newValue, oldValue }) => newValue));
-        this.iridescenceEnabled = app.$watchAsObservable('iridescenceEnabled').pipe(
-                                            map( ({ newValue, oldValue }) => newValue));
-        this.anisotropyEnabled = app.$watchAsObservable('anisotropyEnabled').pipe(
-                                            map( ({ newValue, oldValue }) => newValue));
-        this.specularEnabled = app.$watchAsObservable('specularEnabled').pipe(
-                                            map( ({ newValue, oldValue }) => newValue));
-        this.emissiveStrengthEnabled = app.$watchAsObservable('emissiveStrengthEnabled').pipe(
-                                            map( ({ newValue, oldValue }) => newValue));
+        this.volumeEnabled = app.$watchAsObservable('volumeEnabled').pipe(pluck('newValue'));
+        this.iorEnabled = app.$watchAsObservable('iorEnabled').pipe(pluck('newValue'));
+        this.iridescenceEnabled = app.$watchAsObservable('iridescenceEnabled').pipe(pluck('newValue'));
+        this.anisotropyEnabled = app.$watchAsObservable('anisotropyEnabled').pipe(pluck('newValue'));
+        this.specularEnabled = app.$watchAsObservable('specularEnabled').pipe(pluck('newValue'));
+        this.emissiveStrengthEnabled = app.$watchAsObservable('emissiveStrengthEnabled').pipe(pluck('newValue'));
         this.iblEnabled = app.iblChanged$.pipe(pluck("event", "msg"));
         this.iblIntensity = app.iblIntensityChanged$.pipe(pluck("event", "msg"));
         this.punctualLightsEnabled = app.punctualLightsChanged$.pipe(pluck("event", "msg"));
-        this.renderEnvEnabled = app.$watchAsObservable('renderEnv').pipe(
-                                            map( ({ newValue, oldValue }) => newValue));
+        this.renderEnvEnabled = app.$watchAsObservable('renderEnv').pipe(pluck('newValue'));
         this.blurEnvEnabled = app.blurEnvChanged$.pipe(pluck("event", "msg"));
-        this.addEnvironment = app.$watchAsObservable('uploadedHDR').pipe(
-            pluck('newValue')
-        );
+        this.addEnvironment = app.$watchAsObservable('uploadedHDR').pipe(pluck('newValue'));
         this.captureCanvas = app.captureCanvas$.pipe(pluck('event'));
         this.cameraValuesExport = app.cameraExport$.pipe(pluck('event'));
 
@@ -23434,68 +23379,81 @@ class UIModel
             filter$1(value => value.event !== undefined),
             pluck("event", "msg"),
             startWith(initialClearColor),
-            map(hex => {
-                // convert hex string to rgb values
-                var result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
-                return result ? [
-                    parseInt(result[1], 16),
-                    parseInt(result[2], 16),
-                    parseInt(result[3], 16),
-                    255
-                ] : null;
-            })
+            map(hex => /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex)),
+            filter$1(color => color !== null),
+            map(color => [
+                parseInt(color[1], 16) / 255.0,
+                parseInt(color[2], 16) / 255.0,
+                parseInt(color[3], 16) / 255.0,
+                1.0
+            ])
         );
 
         this.animationPlay = app.animationPlayChanged$.pipe(pluck("event", "msg"));
-        this.activeAnimations = app.$watchAsObservable('selectedAnimations').pipe(
-            map( ({ newValue, oldValue }) => newValue)
-        );
+        this.activeAnimations = app.$watchAsObservable('selectedAnimations').pipe(pluck('newValue'));
 
         const canvas = document.getElementById("canvas");
-        this.registerDropZoneUIHandle(canvas);
-        const inputObservables = UIModel.getInputObservables(canvas, this.app);
-        this.model = merge$1(dropdownGltfChanged, dropdownFlavourChanged, inputObservables.gltfDropped);
-        this.hdr = merge$1(inputObservables.hdrDropped, selectedEnvironment, this.addEnvironment).pipe(
+        canvas.addEventListener('dragenter', () => this.app.showDropDownOverlay = true);
+        canvas.addEventListener('dragleave', () => this.app.showDropDownOverlay = false);
+
+        const inputObservables = getInputObservables(canvas, this.app);
+
+        const dropdownGltfChanged = app.modelChanged$.pipe(
+            pluck("event", "msg"),
+            startWith(modelURL === null ? "DamagedHelmet" : null),
+            filter$1(value => value !== null),
+            map(value => {
+                app.flavours = modelPathProvider.getModelFlavours(value);
+                app.selectedFlavour = "glTF";
+                return modelPathProvider.resolve(value, app.selectedFlavour);
+            }),
+            map(value => ({mainFile: value})),
+        );
+
+        const dropdownFlavourChanged = app.flavourChanged$.pipe(
+            pluck("event", "msg"),
+            map(value => modelPathProvider.resolve(app.selectedModel, value)),
+            map(value => ({mainFile: value})),
+        );
+
+        this.model = merge$1(dropdownGltfChanged, dropdownFlavourChanged, inputObservables.droppedGltf);
+        this.hdr = merge$1(selectedEnvironment, this.addEnvironment, inputObservables.droppedHdr).pipe(
             startWith(environments[initialEnvironment].hdr_path)
         );
 
-        const hdrUIChange = merge$1(inputObservables.hdrDropped, this.addEnvironment);
-        hdrUIChange.subscribe( hdrPath => {
-            this.app.environments[hdrPath.name] = {
-                title: hdrPath.name,
-                hdr_path: hdrPath,
-            };
-            this.app.selectedEnvironment = hdrPath.name;
-        });
+        merge$1(this.addEnvironment, inputObservables.droppedHdr)
+            .subscribe(hdrPath => {
+                this.app.environments[hdrPath.name] = {
+                    title: hdrPath.name,
+                    hdr_path: hdrPath,
+                };
+                this.app.selectedEnvironment = hdrPath.name;
+            });
 
         this.variant = app.variantChanged$.pipe(pluck("event", "msg"));
 
-        this.model.subscribe(() => {
-            // remove last filename
-            if(this.app.models[this.app.models.length -1] === this.lastDroppedFilename)
-            {
+        // remove last filename
+        this.model
+            .pipe(filter$1(() => this.app.models.at(-1) === this.lastDroppedFilename))
+            .subscribe(() => {
                 this.app.models.pop();
                 this.lastDroppedFilename = undefined;
-            }
-        });
+            });
 
-        let dropedGLtfFileName = inputObservables.gltfDropped.pipe(
-            map( (data) => {
-                return data.mainFile.name;
-            })
-        );
+        let droppedGLtfFileName = inputObservables.droppedGltf.pipe(map(droppedGltf => droppedGltf.mainFile.name));
 
-        if (modelURL !== null){
-            let loadFromUrlObservable = new Observable(subscriber => { subscriber.next({mainFile: modelURL, additionalFiles: undefined});});
-            dropedGLtfFileName = merge$1(dropedGLtfFileName, loadFromUrlObservable.pipe(map((data) => {return data.mainFile;} )));
+        if (modelURL !== null) {
+            const loadFromUrlObservable = new Observable(subscriber => subscriber.next({mainFile: modelURL}));
+            droppedGLtfFileName = merge$1(droppedGLtfFileName, loadFromUrlObservable.pipe(map(data => data.mainFile)));
             this.model = merge$1(this.model, loadFromUrlObservable);
         }
 
-        dropedGLtfFileName.subscribe( (filename) => {
-            if(filename !== undefined)
-            {
+        droppedGLtfFileName
+            .pipe(filter$1(filename => filename !== undefined))
+            .subscribe(filename => {
                 filename = filename.split('/').pop();
-                let fileExtension = filename.split('.').pop();                filename = filename.substr(0, filename.lastIndexOf('.'));
+                const fileExtension = filename.split('.').pop();
+                filename = filename.substr(0, filename.lastIndexOf('.'));
 
                 this.app.models.push(filename);
                 this.app.selectedModel = filename;
@@ -23503,308 +23461,95 @@ class UIModel
 
                 app.flavours = [fileExtension];
                 app.selectedFlavour = fileExtension;
-            }
-        });
+            });
 
         this.orbit = inputObservables.orbit;
         this.pan = inputObservables.pan;
         this.zoom = inputObservables.zoom;
     }
 
-    // app has to be the vuejs app instance
-    static getInputObservables(inputDomElement, app)
-    {
-        const observables = {};
-
-        const simpleDropzoneObservabel = new Observable(subscriber => {
-            const dropCtrl = new xe(inputDomElement, inputDomElement);
-            dropCtrl.on('drop', ({files}) => {
-                app.showDropDownOverlay = false;
-                subscriber.next(files);
-            });
-            dropCtrl.on('droperror', () => {
-                app.showDropDownOverlay = false;
-                subscriber.error();
-            });
-        });
-        observables.filesDropped = simpleDropzoneObservabel.pipe(
-            map(files => Array.from(files.values()))
-        );
-
-        observables.gltfDropped = observables.filesDropped.pipe(
-            // filter out any non .gltf or .glb files
-
-            map( (files) => {
-                // restructure the data by separating mainFile (gltf/glb) from additionalFiles
-                const mainFile = files.find( (file) => file.name.endsWith(".glb") || file.name.endsWith(".gltf"));
-                const additionalFiles = files.filter( (file) => file !== mainFile);
-                return {mainFile: mainFile, additionalFiles: additionalFiles};
-            }),
-            filter$1(files => files.mainFile !== undefined),
-        );
-        observables.hdrDropped = observables.filesDropped.pipe(
-            map( (files) => {
-                // extract only the hdr file from the stream of files
-                return files.find( (file) => file.name.endsWith(".hdr"));
-            }),
-            filter$1(file => file !== undefined),
-        );
-
-        const mouseMove = fromEvent(document, 'mousemove');
-        const mouseDown = fromEvent(inputDomElement, 'mousedown');
-        const mouseUp = merge$1(fromEvent(document, 'mouseup'), fromEvent(document, 'mouseleave'));
-        
-        inputDomElement.addEventListener('mousemove', event => event.preventDefault());
-        inputDomElement.addEventListener('mousedown', event => event.preventDefault());
-        inputDomElement.addEventListener('mouseup', event => event.preventDefault());
-
-        const mouseOrbit = mouseDown.pipe(
-            filter$1( event => event.button === 0 && event.shiftKey === false),
-            mergeMap(() => mouseMove.pipe(
-                pairwise(),
-                map( ([oldMouse, newMouse]) => {
-                    return {
-                        deltaPhi: newMouse.pageX - oldMouse.pageX, 
-                        deltaTheta: newMouse.pageY - oldMouse.pageY 
-                    };
-                }),
-                takeUntil(mouseUp)
-            ))
-        );
-
-        const mousePan = mouseDown.pipe(
-            filter$1( event => event.button === 1 || event.shiftKey === true),
-            mergeMap(() => mouseMove.pipe(
-                pairwise(),
-                map( ([oldMouse, newMouse]) => {
-                    return {
-                        deltaX: newMouse.pageX - oldMouse.pageX, 
-                        deltaY: newMouse.pageY - oldMouse.pageY 
-                    };
-                }),
-                takeUntil(mouseUp)
-            ))
-        );
-
-        const smbZoom = mouseDown.pipe(
-            filter$1( event => event.button === 2),
-            mergeMap(() => mouseMove.pipe(takeUntil(mouseUp))),
-            map( mouse => ({deltaZoom: mouse.movementY }))
-        );
-        const wheelZoom = fromEvent(inputDomElement, 'wheel').pipe(
-            map(wheelEvent => normalizeWheel(wheelEvent)),
-            map(normalizedZoom => ({deltaZoom: normalizedZoom.spinY }))
-        );
-        inputDomElement.addEventListener('scroll', event => event.preventDefault(), { passive: false });
-        inputDomElement.addEventListener('wheel', event => event.preventDefault(), { passive: false });
-        const mouseZoom = merge$1(smbZoom, wheelZoom);
-
-        const touchmove = fromEvent(document, 'touchmove');
-        const touchstart = fromEvent(inputDomElement, 'touchstart');
-        const touchend = merge$1(fromEvent(inputDomElement, 'touchend'), fromEvent(inputDomElement, 'touchcancel'));
-
-        const touchOrbit = touchstart.pipe(
-            filter$1(event => event.touches.length === 1),
-            mergeMap(() => touchmove.pipe(
-                filter$1(event => event.touches.length === 1),
-                map(event => event.touches[0]),
-                pairwise(),
-                map(([oldTouch, newTouch]) => {
-                    return {
-                        deltaPhi: 2.0 * (newTouch.clientX - oldTouch.clientX),
-                        deltaTheta: 2.0 * (newTouch.clientY - oldTouch.clientY),
-                    };
-                }),
-                takeUntil(touchend)
-            )),
-        );
-
-        const touchZoom = touchstart.pipe(
-            filter$1(event => event.touches.length === 2),
-            mergeMap(() => touchmove.pipe(
-                filter$1(event => event.touches.length === 2),
-                map(event => {
-                    const pos1 = fromValues(event.touches[0].clientX, event.touches[0].clientY);
-                    const pos2 = fromValues(event.touches[1].clientX, event.touches[1].clientY);
-                    return dist(pos1, pos2);
-                }),
-                pairwise(),
-                map(([oldDist, newDist]) => ({ deltaZoom: 0.1 * (oldDist - newDist) })),
-                takeUntil(touchend))
-            ),
-        );
-
-        inputDomElement.addEventListener('ontouchmove', event => event.preventDefault(), { passive: false });
-        inputDomElement.addEventListener('ontouchstart', event => event.preventDefault(), { passive: false });
-        inputDomElement.addEventListener('ontouchend', event => event.preventDefault(), { passive: false });
-
-        observables.orbit = merge$1(mouseOrbit, touchOrbit);
-        observables.pan = mousePan;
-        observables.zoom = merge$1(mouseZoom, touchZoom);
-
-        // disable context menu
-        inputDomElement.oncontextmenu = () => false;
-
-        return observables;
-    }
-
-    registerDropZoneUIHandle(inputDomElement)
-    {
-        const self = this;
-        inputDomElement.addEventListener('dragenter', function(event) {
-            self.app.showDropDownOverlay = true;
-        });
-        inputDomElement.addEventListener('dragleave', function(event) {
-            self.app.showDropDownOverlay = false;
-        });
-    }
-
     attachGltfLoaded(glTFLoadedStateObservable)
     {
-        const gltfLoadedAndInit = glTFLoadedStateObservable.pipe(
-            map( state => state.gltf )
-        );
+        const gltfLoadedAndInit = glTFLoadedStateObservable.pipe(map(state => state.gltf));
 
         // update scenes
         const sceneIndices = gltfLoadedAndInit.pipe(
-            map( (gltf) => {
-                return gltf.scenes.map( (scene, index) => {
-                    let name = scene.name;
-                    if(name === "" || name === undefined)
-                    {
-                        name = index;
-                    }
-                    return {title: name, index: index};
-                });
-            })
+            map(gltf => gltf.scenes.map((scene, index) => ({title: scene.name || index, index: index})))
         );
-        sceneIndices.subscribe( (scenes) => {
-            this.app.scenes = scenes;
-        });
+        sceneIndices.subscribe(scenes => this.app.scenes = scenes);
 
-        const loadedSceneIndex = glTFLoadedStateObservable.pipe(
-            map( (state) => state.sceneIndex)
-        );
-        loadedSceneIndex.subscribe( (scene) => {
-            this.app.selectedScene = scene;
-        });
+        const loadedSceneIndex = glTFLoadedStateObservable.pipe(map(state => state.sceneIndex));
+        loadedSceneIndex.subscribe(scene => this.app.selectedScene = scene);
 
         // update cameras
         this.attachCameraChangeObservable(glTFLoadedStateObservable);
 
         const variants = gltfLoadedAndInit.pipe(
-            map( (gltf) => {
-                if(gltf.variants !== undefined)
-                {
-                    return gltf.variants.map( (variant, index) => {
-                        return {title: variant.name};
-                    });
-                }
-                return [];
-            }),
-            map(variants => {
-                // Add a "None" variant to the beginning
-                variants.unshift({title: "None"});
-                return variants;
-            })
+            map(gltf => gltf.variants !== undefined
+                ? gltf.variants.map(variant => ({title: variant.name}))
+                : []),
+            map(variants => [{title: "None"}, ...variants])
         );
-        variants.subscribe( (variants) => {
-            this.app.materialVariants = variants;
-        });
+        variants.subscribe(variants => this.app.materialVariants = variants);
 
-        gltfLoadedAndInit.subscribe(
-            (_) => {this.app.setAnimationState(true);
-            }
-        );
+        gltfLoadedAndInit.subscribe(() => this.app.setAnimationState(true));
 
         const xmpData = gltfLoadedAndInit.pipe(
-            map( (gltf) => {
-                if(gltf.extensions !== undefined && gltf.extensions.KHR_xmp_json_ld !== undefined)
-                {
-                    if(gltf.asset.extensions !== undefined && gltf.asset.extensions.KHR_xmp_json_ld !== undefined)
-                    {
-                        let xmpPacket = gltf.extensions.KHR_xmp_json_ld.packets[gltf.asset.extensions.KHR_xmp_json_ld.packet];
-                        return xmpPacket;
-                    }
-                }
-                return null;
-            })
+            map(gltf => gltf.extensions !== undefined && gltf.extensions.KHR_xmp_json_ld !== undefined
+                    && gltf.asset.extensions !== undefined && gltf.asset.extensions.KHR_xmp_json_ld !== undefined
+                ? gltf.extensions.KHR_xmp_json_ld.packets[gltf.asset.extensions.KHR_xmp_json_ld.packet]
+                : null
+            )
         );
-        xmpData.subscribe( (xmpData) => {
-            this.app.xmp = xmpData;
-        });
+        xmpData.subscribe(xmpData => this.app.xmp = xmpData);
 
         const copyrightMsg = gltfLoadedAndInit.pipe(
-            map( (gltf) => {
-                if (gltf.asset.copyright)
-                    return gltf.asset.copyright;
-                return "";
-            })
+            map(gltf => gltf.asset.copyrigh || "")
         );
-        copyrightMsg.subscribe( (copyright) => {
-            this.app.modelCopyright = copyright;
-        });
+        copyrightMsg.subscribe(copyright => this.app.modelCopyright = copyright);
 
         const generatorMsg = gltfLoadedAndInit.pipe(
-            map( (gltf) => {
-                if (gltf.asset.generator)
-                    return "Generator: " + gltf.asset.generator;
-                return "";
-            })
+            map(gltf => gltf.asset.generator
+                ? "Generator: " + gltf.asset.generator
+                : ""
+            )
         );
-        generatorMsg.subscribe( (generator) => {
-            this.app.modelGenerator = generator;
-        });
+        generatorMsg.subscribe(generator => this.app.modelGenerator = generator);
 
         const animations = gltfLoadedAndInit.pipe(
-            map( gltf =>  gltf.animations.map( (anim, index) => {
-                let name = anim.name;
-                if (name === undefined || name === "")
-                {
-                    name = index;
-                }
-                return {
-                    title: name,
-                    index: index
-                };
-            }))
+            map(gltf => gltf.animations.map((anim, index) => ({
+                title: anim.name || index,
+                index: index
+            })))
         );
-        animations.subscribe( animations => {
-            this.app.animations = animations;
-        });
+        animations.subscribe(animations => this.app.animations = animations);
 
-        glTFLoadedStateObservable.pipe(
-            map( state => state.animationIndices)
-        ).subscribe( animationIndices => {
-            this.app.selectedAnimations = animationIndices;
-        });
+        glTFLoadedStateObservable
+            .pipe(map(state => state.animationIndices))
+            .subscribe( animationIndices => this.app.selectedAnimations = animationIndices);
     }
 
     updateStatistics(statisticsUpdateObservable)
     {
         statisticsUpdateObservable.subscribe(
-            data => {
-                let statistics = {};
-                statistics["Mesh Count"] = data.meshCount;
-                statistics["Triangle Count"] = data.faceCount;
-                statistics["Opaque Material Count"] = data.opaqueMaterialsCount;
-                statistics["Transparent Material Count"] = data.transparentMaterialsCount;
-                this.app.statistics = statistics;
+            data => this.app.statistics = {
+                "Mesh Count": data.meshCount,
+                "Triangle Count": data.faceCount,
+                "Opaque Material Count": data.opaqueMaterialsCount,
+                "Transparent Material Count": data.transparentMaterialsCount
             }
         );
     }
 
     disabledAnimations(disabledAnimationsObservable)
     {
-        disabledAnimationsObservable.subscribe(
-            data => { this.app.disabledAnimations = data; }
-        );
+        disabledAnimationsObservable.subscribe(data => this.app.disabledAnimations = data);
     }
 
     attachCameraChangeObservable(sceneChangeObservable)
     {
         const cameraIndices = sceneChangeObservable.pipe(
-            map( (state) => {
+            map(state => {
                 let gltf = state.gltf;
                 let cameraIndices = [{title: "User Camera", index: -1}];
                 if (gltf.scenes[state.sceneIndex] !== undefined)
@@ -23827,40 +23572,148 @@ class UIModel
                 return cameraIndices;
             })
         );
-        cameraIndices.subscribe( (cameras) => {
-            this.app.cameras = cameras;
-        });
-        const loadedCameraIndex = sceneChangeObservable.pipe(
-            map( (state) => {
-                return state.cameraIndex;
-            })
-        );
-        loadedCameraIndex.subscribe( index => {
-            if(index ===  undefined)
-            {
-                index = -1;
-            }
-            this.app.selectedCamera = index;
-        });
-    }
-
-    copyToClipboard(text) {
-        var dummy = document.createElement("textarea");
-        document.body.appendChild(dummy);
-        dummy.value = text;
-        dummy.select();
-        document.execCommand("copy");
-        document.body.removeChild(dummy);
+        cameraIndices.subscribe(cameras => this.app.cameras = cameras);
+        const loadedCameraIndex = sceneChangeObservable.pipe(map(state => state.cameraIndex));
+        loadedCameraIndex.subscribe(index => this.app.selectedCamera = index !== undefined ? index : -1 );
     }
 
     goToLoadingState() {
         this.app.goToLoadingState();
     }
+
     exitLoadingState()
     {
         this.app.exitLoadingState();
     }
 }
+
+const getInputObservables = (inputElement, app) => {
+    const observables = {};
+    
+    const droppedFiles = new Observable(subscriber => {
+        const dropZone = new xe(inputElement, inputElement);
+        dropZone.on('drop', ({files}) => {
+            app.showDropDownOverlay = false;
+            subscriber.next(Array.from(files.entries()));
+        });
+        dropZone.on('droperror', () => {
+            app.showDropDownOverlay = false;
+            subscriber.error();
+        });
+    }).pipe(share());
+
+    // Partition files into a .gltf or .glb and additional files like buffers and textures
+    observables.droppedGltf = droppedFiles.pipe(
+        map(files => ({
+            mainFile: files.find(([path]) => path.endsWith(".glb") || path.endsWith(".gltf")),
+            additionalFiles: files.filter(file => !file[0].endsWith(".glb") && !file[0].endsWith(".gltf"))
+        })),
+        filter$1(files => files.mainFile !== undefined),
+    );
+
+    observables.droppedHdr = droppedFiles.pipe(
+        map(files => files.find(([path]) => path.endsWith(".hdr"))),
+        filter$1(file => file !== undefined),
+        pluck("1")
+    );
+
+    const mouseMove = fromEvent(document, 'mousemove');
+    const mouseDown = fromEvent(inputElement, 'mousedown');
+    const mouseUp = merge$1(fromEvent(document, 'mouseup'), fromEvent(document, 'mouseleave'));
+    
+    inputElement.addEventListener('mousemove', event => event.preventDefault());
+    inputElement.addEventListener('mousedown', event => event.preventDefault());
+    inputElement.addEventListener('mouseup', event => event.preventDefault());
+
+    const mouseOrbit = mouseDown.pipe(
+        filter$1(event => event.button === 0 && event.shiftKey === false),
+        mergeMap(() => mouseMove.pipe(
+            pairwise(),
+            map( ([oldMouse, newMouse]) => {
+                return {
+                    deltaPhi: newMouse.pageX - oldMouse.pageX, 
+                    deltaTheta: newMouse.pageY - oldMouse.pageY 
+                };
+            }),
+            takeUntil(mouseUp)
+        ))
+    );
+
+    const mousePan = mouseDown.pipe(
+        filter$1( event => event.button === 1 || event.shiftKey === true),
+        mergeMap(() => mouseMove.pipe(
+            pairwise(),
+            map( ([oldMouse, newMouse]) => {
+                return {
+                    deltaX: newMouse.pageX - oldMouse.pageX, 
+                    deltaY: newMouse.pageY - oldMouse.pageY 
+                };
+            }),
+            takeUntil(mouseUp)
+        ))
+    );
+
+    const dragZoom = mouseDown.pipe(
+        filter$1( event => event.button === 2),
+        mergeMap(() => mouseMove.pipe(takeUntil(mouseUp))),
+        map( mouse => ({deltaZoom: mouse.movementY}))
+    );
+    const wheelZoom = fromEvent(inputElement, 'wheel').pipe(
+        map(wheelEvent => normalizeWheel(wheelEvent)),
+        map(normalizedZoom => ({deltaZoom: normalizedZoom.spinY }))
+    );
+    inputElement.addEventListener('scroll', event => event.preventDefault(), { passive: false });
+    inputElement.addEventListener('wheel', event => event.preventDefault(), { passive: false });
+    const mouseZoom = merge$1(dragZoom, wheelZoom);
+
+    const touchmove = fromEvent(document, 'touchmove');
+    const touchstart = fromEvent(inputElement, 'touchstart');
+    const touchend = merge$1(fromEvent(inputElement, 'touchend'), fromEvent(inputElement, 'touchcancel'));
+
+    const touchOrbit = touchstart.pipe(
+        filter$1(event => event.touches.length === 1),
+        mergeMap(() => touchmove.pipe(
+            filter$1(event => event.touches.length === 1),
+            map(event => event.touches[0]),
+            pairwise(),
+            map(([oldTouch, newTouch]) => {
+                return {
+                    deltaPhi: 2.0 * (newTouch.clientX - oldTouch.clientX),
+                    deltaTheta: 2.0 * (newTouch.clientY - oldTouch.clientY),
+                };
+            }),
+            takeUntil(touchend)
+        )),
+    );
+
+    const touchZoom = touchstart.pipe(
+        filter$1(event => event.touches.length === 2),
+        mergeMap(() => touchmove.pipe(
+            filter$1(event => event.touches.length === 2),
+            map(event => {
+                const pos1 = fromValues(event.touches[0].clientX, event.touches[0].clientY);
+                const pos2 = fromValues(event.touches[1].clientX, event.touches[1].clientY);
+                return dist(pos1, pos2);
+            }),
+            pairwise(),
+            map(([oldDist, newDist]) => ({ deltaZoom: 0.1 * (oldDist - newDist) })),
+            takeUntil(touchend))
+        ),
+    );
+
+    inputElement.addEventListener('ontouchmove', event => event.preventDefault(), { passive: false });
+    inputElement.addEventListener('ontouchstart', event => event.preventDefault(), { passive: false });
+    inputElement.addEventListener('ontouchend', event => event.preventDefault(), { passive: false });
+
+    observables.orbit = merge$1(mouseOrbit, touchOrbit);
+    observables.pan = mousePan;
+    observables.zoom = merge$1(mouseZoom, touchZoom);
+
+    // disable context menu
+    inputElement.oncontextmenu = () => false;
+
+    return observables;
+};
 
 /*!
  * Vue.js v2.7.14
@@ -34509,6 +34362,7 @@ var config = {
   defaultModalScroll: null,
   defaultDatepickerMobileNative: true,
   defaultTimepickerMobileNative: true,
+  defaultTimepickerMobileModal: true,
   defaultNoticeQueue: true,
   defaultInputHasCounter: true,
   defaultTaginputHasCounter: true,
@@ -35161,9 +35015,22 @@ var script$G = {
     /**
     * When v-model is changed:
     *   1. Set internal value.
+    *   2. Validate it if the value came from outside;
+    *      i.e., not equal to computedValue
     */
     value: function value(_value) {
+      var _this = this;
+
+      var fromOutside = this.computedValue != _value; // eslint-disable-line eqeqeq
+
       this.newValue = _value;
+
+      if (fromOutside) {
+        // validation must wait for DOM updated
+        this.$nextTick(function () {
+          !_this.isValid && _this.checkHtml5Validity();
+        });
+      }
     },
     type: function type(_type) {
       this.newType = _type;
@@ -35175,20 +35042,20 @@ var script$G = {
     * by changing the type and focus the input right away.
     */
     togglePasswordVisibility: function togglePasswordVisibility() {
-      var _this = this;
+      var _this2 = this;
 
       this.isPasswordVisible = !this.isPasswordVisible;
       this.newType = this.isPasswordVisible ? 'text' : 'password';
       this.$nextTick(function () {
-        _this.focus();
+        _this2.focus();
       });
     },
     iconClick: function iconClick(emit, event) {
-      var _this2 = this;
+      var _this3 = this;
 
       this.$emit(emit, event);
       this.$nextTick(function () {
-        _this2.focus();
+        _this3.focus();
       });
     },
     rightIconClick: function rightIconClick(event) {
@@ -37420,6 +37287,10 @@ var script$A = {
     autocomplete: {
       type: String,
       default: 'on'
+    },
+    inputId: {
+      type: String,
+      default: ''
     }
   }
 };
@@ -37428,7 +37299,7 @@ var script$A = {
 const __vue_script__$A = script$A;
 
 /* template */
-var __vue_render__$y = function () {var _vm=this;var _h=_vm.$createElement;var _c=_vm._self._c||_h;return _c('label',{ref:"label",staticClass:"b-checkbox checkbox",class:[_vm.size, { 'is-disabled': _vm.disabled }],attrs:{"disabled":_vm.disabled},on:{"click":_vm.focus,"keydown":[function($event){if(!$event.type.indexOf('key')&&_vm._k($event.keyCode,"enter",13,$event.key,"Enter")){ return null; }$event.preventDefault();return _vm.$refs.label.click()},function($event){if(!$event.type.indexOf('key')&&_vm._k($event.keyCode,"space",32,$event.key,[" ","Spacebar"])){ return null; }$event.preventDefault();return _vm.$refs.label.click()}]}},[_c('input',{directives:[{name:"model",rawName:"v-model",value:(_vm.computedValue),expression:"computedValue"}],ref:"input",attrs:{"type":"checkbox","autocomplete":_vm.autocomplete,"disabled":_vm.disabled,"required":_vm.required,"name":_vm.name,"true-value":_vm.trueValue,"false-value":_vm.falseValue,"aria-labelledby":_vm.ariaLabelledby},domProps:{"indeterminate":_vm.indeterminate,"value":_vm.nativeValue,"checked":Array.isArray(_vm.computedValue)?_vm._i(_vm.computedValue,_vm.nativeValue)>-1:_vm._q(_vm.computedValue,_vm.trueValue)},on:{"click":function($event){$event.stopPropagation();},"change":function($event){var $$a=_vm.computedValue,$$el=$event.target,$$c=$$el.checked?(_vm.trueValue):(_vm.falseValue);if(Array.isArray($$a)){var $$v=_vm.nativeValue,$$i=_vm._i($$a,$$v);if($$el.checked){$$i<0&&(_vm.computedValue=$$a.concat([$$v]));}else {$$i>-1&&(_vm.computedValue=$$a.slice(0,$$i).concat($$a.slice($$i+1)));}}else {_vm.computedValue=$$c;}}}}),_c('span',{staticClass:"check",class:_vm.type}),_c('span',{staticClass:"control-label",attrs:{"id":_vm.ariaLabelledby}},[_vm._t("default")],2)])};
+var __vue_render__$y = function () {var _vm=this;var _h=_vm.$createElement;var _c=_vm._self._c||_h;return _c('label',{ref:"label",staticClass:"b-checkbox checkbox",class:[_vm.size, { 'is-disabled': _vm.disabled }],attrs:{"disabled":_vm.disabled},on:{"click":_vm.focus,"keydown":[function($event){if(!$event.type.indexOf('key')&&_vm._k($event.keyCode,"enter",13,$event.key,"Enter")){ return null; }$event.preventDefault();return _vm.$refs.label.click()},function($event){if(!$event.type.indexOf('key')&&_vm._k($event.keyCode,"space",32,$event.key,[" ","Spacebar"])){ return null; }$event.preventDefault();return _vm.$refs.label.click()}]}},[_c('input',{directives:[{name:"model",rawName:"v-model",value:(_vm.computedValue),expression:"computedValue"}],ref:"input",attrs:{"id":_vm.inputId,"type":"checkbox","autocomplete":_vm.autocomplete,"disabled":_vm.disabled,"required":_vm.required,"name":_vm.name,"true-value":_vm.trueValue,"false-value":_vm.falseValue,"aria-labelledby":_vm.ariaLabelledby},domProps:{"indeterminate":_vm.indeterminate,"value":_vm.nativeValue,"checked":Array.isArray(_vm.computedValue)?_vm._i(_vm.computedValue,_vm.nativeValue)>-1:_vm._q(_vm.computedValue,_vm.trueValue)},on:{"click":function($event){$event.stopPropagation();},"change":function($event){var $$a=_vm.computedValue,$$el=$event.target,$$c=$$el.checked?(_vm.trueValue):(_vm.falseValue);if(Array.isArray($$a)){var $$v=_vm.nativeValue,$$i=_vm._i($$a,$$v);if($$el.checked){$$i<0&&(_vm.computedValue=$$a.concat([$$v]));}else {$$i>-1&&(_vm.computedValue=$$a.slice(0,$$i).concat($$a.slice($$i+1)));}}else {_vm.computedValue=$$c;}}}}),_c('span',{staticClass:"check",class:_vm.type}),_c('span',{staticClass:"control-label",attrs:{"id":_vm.ariaLabelledby}},[_vm._t("default")],2)])};
 var __vue_staticRenderFns__$y = [];
 
   /* style */
@@ -37782,6 +37653,12 @@ var TimepickerMixin = {
       type: Boolean,
       default: function _default() {
         return config.defaultTimepickerMobileNative;
+      }
+    },
+    mobileModal: {
+      type: Boolean,
+      default: function _default() {
+        return config.defaultTimepickerMobileModal;
       }
     },
     timeCreator: {
@@ -39257,7 +39134,7 @@ var script$1$e = {
 const __vue_script__$1$e = script$1$e;
 
 /* template */
-var __vue_render__$v = function () {var _vm=this;var _h=_vm.$createElement;var _c=_vm._self._c||_h;return _c('div',{staticClass:"field",class:_vm.rootClasses},[(_vm.horizontal)?_c('div',{staticClass:"field-label",class:[_vm.customClass, _vm.fieldLabelSize]},[(_vm.hasLabel)?_c('label',{staticClass:"label",class:_vm.customClass,attrs:{"for":_vm.labelFor}},[(_vm.$slots.label)?_vm._t("label"):[_vm._v(_vm._s(_vm.label))]],2):_vm._e()]):[(_vm.hasLabel)?_c('label',{staticClass:"label",class:_vm.customClass,attrs:{"for":_vm.labelFor}},[(_vm.$slots.label)?_vm._t("label"):[_vm._v(_vm._s(_vm.label))]],2):_vm._e()],(_vm.horizontal)?_c('b-field-body',{attrs:{"message":_vm.newMessage ? _vm.formattedMessage : '',"type":_vm.newType}},[_vm._t("default")],2):(_vm.hasInnerField)?_c('div',{staticClass:"field-body"},[_c('b-field',{class:_vm.innerFieldClasses,attrs:{"addons":false,"type":_vm.newType}},[_vm._t("default")],2)],1):[_vm._t("default")],(_vm.hasMessage && !_vm.horizontal)?_c('p',{staticClass:"help",class:_vm.newType},[(_vm.$slots.message)?_vm._t("message",null,{"messages":_vm.formattedMessage}):[_vm._l((_vm.formattedMessage),function(mess,i){return [_vm._v(" "+_vm._s(mess)+" "),((i + 1) < _vm.formattedMessage.length)?_c('br',{key:i}):_vm._e()]})]],2):_vm._e()],2)};
+var __vue_render__$v = function () {var _vm=this;var _h=_vm.$createElement;var _c=_vm._self._c||_h;return _c('div',{staticClass:"field",class:_vm.rootClasses},[(_vm.horizontal)?_c('div',{staticClass:"field-label",class:[_vm.customClass, _vm.fieldLabelSize]},[(_vm.hasLabel)?_c('label',{staticClass:"label",class:_vm.customClass,attrs:{"for":_vm.labelFor}},[(_vm.$slots.label)?_vm._t("label"):[_vm._v(_vm._s(_vm.label))]],2):_vm._e()]):[(_vm.hasLabel)?_c('label',{staticClass:"label",class:_vm.customClass,attrs:{"for":_vm.labelFor}},[(_vm.$slots.label)?_vm._t("label"):[_vm._v(_vm._s(_vm.label))]],2):_vm._e()],(_vm.horizontal)?_c('b-field-body',{attrs:{"message":_vm.newMessage ? _vm.formattedMessage : '',"type":_vm.newType}},[_vm._t("default")],2):(_vm.hasInnerField)?_c('div',{staticClass:"field-body"},[_c('b-field',{class:_vm.innerFieldClasses,attrs:{"addons":false,"type":_vm.type}},[_vm._t("default")],2)],1):[_vm._t("default")],(_vm.hasMessage && !_vm.horizontal)?_c('p',{staticClass:"help",class:_vm.newType},[(_vm.$slots.message)?_vm._t("message",null,{"messages":_vm.formattedMessage}):[_vm._l((_vm.formattedMessage),function(mess,i){return [_vm._v(" "+_vm._s(mess)+" "),((i + 1) < _vm.formattedMessage.length)?_c('br',{key:i}):_vm._e()]})]],2):_vm._e()],2)};
 var __vue_staticRenderFns__$v = [];
 
   /* style */
@@ -39698,7 +39575,7 @@ var script$1$d = {
 const __vue_script__$1$d = script$1$d;
 
 /* template */
-var __vue_render__$1$b = function () {var _vm=this;var _h=_vm.$createElement;var _c=_vm._self._c||_h;return _c('div',{staticClass:"b-clockpicker control",class:[_vm.size, _vm.type, {'is-expanded': _vm.expanded}]},[(!_vm.isMobile || _vm.inline)?_c('b-dropdown',{ref:"dropdown",attrs:{"position":_vm.position,"disabled":_vm.disabled,"inline":_vm.inline,"append-to-body":_vm.appendToBody,"append-to-body-copy-parent":""},on:{"active-change":_vm.onActiveChange},scopedSlots:_vm._u([(!_vm.inline)?{key:"trigger",fn:function(){return [_vm._t("trigger",[_c('b-input',_vm._b({ref:"input",attrs:{"slot":"trigger","autocomplete":"off","value":_vm.formatValue(_vm.computedValue),"placeholder":_vm.placeholder,"size":_vm.size,"icon":_vm.icon,"icon-pack":_vm.iconPack,"loading":_vm.loading,"disabled":_vm.disabled,"readonly":!_vm.editable,"rounded":_vm.rounded,"use-html5-validation":_vm.useHtml5Validation},on:{"focus":_vm.handleOnFocus,"blur":function($event){return _vm.checkHtml5Validity()}},nativeOn:{"click":function($event){return _vm.onInputClick($event)},"keyup":function($event){if(!$event.type.indexOf('key')&&_vm._k($event.keyCode,"enter",13,$event.key,"Enter")){ return null; }return _vm.toggle(true)},"change":function($event){return _vm.onChange($event.target.value)}},slot:"trigger"},'b-input',_vm.$attrs,false))])]},proxy:true}:null],null,true)},[_c('div',{staticClass:"card",attrs:{"disabled":_vm.disabled,"custom":""}},[(_vm.inline)?_c('header',{staticClass:"card-header"},[_c('div',{staticClass:"b-clockpicker-header card-header-title"},[_c('div',{staticClass:"b-clockpicker-time"},[_c('span',{staticClass:"b-clockpicker-btn",class:{ active: _vm.isSelectingHour },on:{"click":function($event){_vm.isSelectingHour = true;}}},[_vm._v(_vm._s(_vm.hoursDisplay))]),_c('span',[_vm._v(_vm._s(_vm.hourLiteral))]),_c('span',{staticClass:"b-clockpicker-btn",class:{ active: !_vm.isSelectingHour },on:{"click":function($event){_vm.isSelectingHour = false;}}},[_vm._v(_vm._s(_vm.minutesDisplay))])]),(!_vm.isHourFormat24)?_c('div',{staticClass:"b-clockpicker-period"},[_c('div',{staticClass:"b-clockpicker-btn",class:{
+var __vue_render__$1$b = function () {var _vm=this;var _h=_vm.$createElement;var _c=_vm._self._c||_h;return _c('div',{staticClass:"b-clockpicker control",class:[_vm.size, _vm.type, {'is-expanded': _vm.expanded}]},[(!_vm.isMobile || _vm.inline)?_c('b-dropdown',{ref:"dropdown",attrs:{"position":_vm.position,"disabled":_vm.disabled,"inline":_vm.inline,"mobile-modal":_vm.mobileModal,"append-to-body":_vm.appendToBody,"append-to-body-copy-parent":""},on:{"active-change":_vm.onActiveChange},scopedSlots:_vm._u([(!_vm.inline)?{key:"trigger",fn:function(){return [_vm._t("trigger",[_c('b-input',_vm._b({ref:"input",attrs:{"slot":"trigger","autocomplete":"off","value":_vm.formatValue(_vm.computedValue),"placeholder":_vm.placeholder,"size":_vm.size,"icon":_vm.icon,"icon-pack":_vm.iconPack,"loading":_vm.loading,"disabled":_vm.disabled,"readonly":!_vm.editable,"rounded":_vm.rounded,"use-html5-validation":_vm.useHtml5Validation},on:{"focus":_vm.handleOnFocus,"blur":function($event){return _vm.checkHtml5Validity()}},nativeOn:{"click":function($event){return _vm.onInputClick($event)},"keyup":function($event){if(!$event.type.indexOf('key')&&_vm._k($event.keyCode,"enter",13,$event.key,"Enter")){ return null; }return _vm.toggle(true)},"change":function($event){return _vm.onChange($event.target.value)}},slot:"trigger"},'b-input',_vm.$attrs,false))])]},proxy:true}:null],null,true)},[_c('div',{staticClass:"card",attrs:{"disabled":_vm.disabled,"custom":""}},[(_vm.inline)?_c('header',{staticClass:"card-header"},[_c('div',{staticClass:"b-clockpicker-header card-header-title"},[_c('div',{staticClass:"b-clockpicker-time"},[_c('span',{staticClass:"b-clockpicker-btn",class:{ active: _vm.isSelectingHour },on:{"click":function($event){_vm.isSelectingHour = true;}}},[_vm._v(_vm._s(_vm.hoursDisplay))]),_c('span',[_vm._v(_vm._s(_vm.hourLiteral))]),_c('span',{staticClass:"b-clockpicker-btn",class:{ active: !_vm.isSelectingHour },on:{"click":function($event){_vm.isSelectingHour = false;}}},[_vm._v(_vm._s(_vm.minutesDisplay))])]),(!_vm.isHourFormat24)?_c('div',{staticClass:"b-clockpicker-period"},[_c('div',{staticClass:"b-clockpicker-btn",class:{
                                 active: _vm.meridienSelected === _vm.amString || _vm.meridienSelected === _vm.AM
                             },on:{"click":function($event){return _vm.onMeridienClick(_vm.amString)}}},[_vm._v(_vm._s(_vm.amString))]),_c('div',{staticClass:"b-clockpicker-btn",class:{
                                 active: _vm.meridienSelected === _vm.pmString || _vm.meridienSelected === _vm.PM
@@ -42286,7 +42163,7 @@ var script$r = {
       nextDay.setDate(day.getDate() + inc);
 
       while ((!this.minDate || nextDay > this.minDate) && (!this.maxDate || nextDay < this.maxDate) && !this.selectableDate(nextDay)) {
-        nextDay.setDate(day.getDate() + Math.sign(inc));
+        nextDay.setDate(nextDay.getDate() + Math.sign(inc));
       }
 
       this.setRangeHoverEndDate(nextDay);
@@ -43773,7 +43650,7 @@ var script$q = {
 const __vue_script__$q = script$q;
 
 /* template */
-var __vue_render__$p = function () {var _vm=this;var _h=_vm.$createElement;var _c=_vm._self._c||_h;return _c('div',{staticClass:"timepicker control",class:[_vm.size, {'is-expanded': _vm.expanded}]},[(!_vm.isMobile || _vm.inline)?_c('b-dropdown',{ref:"dropdown",attrs:{"position":_vm.position,"disabled":_vm.disabled,"inline":_vm.inline,"append-to-body":_vm.appendToBody,"append-to-body-copy-parent":""},on:{"active-change":_vm.onActiveChange},scopedSlots:_vm._u([(!_vm.inline)?{key:"trigger",fn:function(){return [_vm._t("trigger",[_c('b-input',_vm._b({ref:"input",attrs:{"autocomplete":"off","value":_vm.formatValue(_vm.computedValue),"placeholder":_vm.placeholder,"size":_vm.size,"icon":_vm.icon,"icon-pack":_vm.iconPack,"loading":_vm.loading,"disabled":_vm.disabled,"readonly":!_vm.editable,"rounded":_vm.rounded,"use-html5-validation":_vm.useHtml5Validation},on:{"focus":_vm.handleOnFocus},nativeOn:{"keyup":function($event){if(!$event.type.indexOf('key')&&_vm._k($event.keyCode,"enter",13,$event.key,"Enter")){ return null; }return _vm.toggle(true)},"change":function($event){return _vm.onChange($event.target.value)}}},'b-input',_vm.$attrs,false))])]},proxy:true}:null],null,true)},[_c('b-dropdown-item',{attrs:{"disabled":_vm.disabled,"focusable":_vm.focusable,"custom":""}},[_c('b-field',{attrs:{"grouped":"","position":"is-centered"}},[_c('b-select',{attrs:{"disabled":_vm.disabled,"placeholder":"00"},nativeOn:{"change":function($event){return _vm.onHoursChange($event.target.value)}},model:{value:(_vm.hoursSelected),callback:function ($$v) {_vm.hoursSelected=$$v;},expression:"hoursSelected"}},_vm._l((_vm.hours),function(hour){return _c('option',{key:hour.value,attrs:{"disabled":_vm.isHourDisabled(hour.value)},domProps:{"value":hour.value}},[_vm._v(" "+_vm._s(hour.label)+" ")])}),0),_c('span',{staticClass:"control is-colon"},[_vm._v(_vm._s(_vm.hourLiteral))]),_c('b-select',{attrs:{"disabled":_vm.disabled,"placeholder":"00"},nativeOn:{"change":function($event){return _vm.onMinutesChange($event.target.value)}},model:{value:(_vm.minutesSelected),callback:function ($$v) {_vm.minutesSelected=$$v;},expression:"minutesSelected"}},_vm._l((_vm.minutes),function(minute){return _c('option',{key:minute.value,attrs:{"disabled":_vm.isMinuteDisabled(minute.value)},domProps:{"value":minute.value}},[_vm._v(" "+_vm._s(minute.label)+" ")])}),0),(_vm.enableSeconds)?[_c('span',{staticClass:"control is-colon"},[_vm._v(_vm._s(_vm.minuteLiteral))]),_c('b-select',{attrs:{"disabled":_vm.disabled,"placeholder":"00"},nativeOn:{"change":function($event){return _vm.onSecondsChange($event.target.value)}},model:{value:(_vm.secondsSelected),callback:function ($$v) {_vm.secondsSelected=$$v;},expression:"secondsSelected"}},_vm._l((_vm.seconds),function(second){return _c('option',{key:second.value,attrs:{"disabled":_vm.isSecondDisabled(second.value)},domProps:{"value":second.value}},[_vm._v(" "+_vm._s(second.label)+" ")])}),0),_c('span',{staticClass:"control is-colon"},[_vm._v(_vm._s(_vm.secondLiteral))])]:_vm._e(),(!_vm.isHourFormat24)?_c('b-select',{attrs:{"disabled":_vm.disabled},nativeOn:{"change":function($event){return _vm.onMeridienChange($event.target.value)}},model:{value:(_vm.meridienSelected),callback:function ($$v) {_vm.meridienSelected=$$v;},expression:"meridienSelected"}},_vm._l((_vm.meridiens),function(meridien){return _c('option',{key:meridien,domProps:{"value":meridien}},[_vm._v(" "+_vm._s(meridien)+" ")])}),0):_vm._e()],2),(_vm.$slots.default !== undefined && _vm.$slots.default.length)?_c('footer',{staticClass:"timepicker-footer"},[_vm._t("default")],2):_vm._e()],1)],1):_c('b-input',_vm._b({ref:"input",attrs:{"type":"time","step":_vm.nativeStep,"autocomplete":"off","value":_vm.formatHHMMSS(_vm.computedValue),"placeholder":_vm.placeholder,"size":_vm.size,"icon":_vm.icon,"icon-pack":_vm.iconPack,"rounded":_vm.rounded,"loading":_vm.loading,"max":_vm.formatHHMMSS(_vm.maxTime),"min":_vm.formatHHMMSS(_vm.minTime),"disabled":_vm.disabled,"readonly":false,"use-html5-validation":_vm.useHtml5Validation},on:{"focus":_vm.handleOnFocus,"blur":function($event){_vm.onBlur() && _vm.checkHtml5Validity();}},nativeOn:{"change":function($event){return _vm.onChange($event.target.value)}}},'b-input',_vm.$attrs,false))],1)};
+var __vue_render__$p = function () {var _vm=this;var _h=_vm.$createElement;var _c=_vm._self._c||_h;return _c('div',{staticClass:"timepicker control",class:[_vm.size, {'is-expanded': _vm.expanded}]},[(!_vm.isMobile || _vm.inline)?_c('b-dropdown',{ref:"dropdown",attrs:{"position":_vm.position,"disabled":_vm.disabled,"inline":_vm.inline,"mobile-modal":_vm.mobileModal,"append-to-body":_vm.appendToBody,"append-to-body-copy-parent":""},on:{"active-change":_vm.onActiveChange},scopedSlots:_vm._u([(!_vm.inline)?{key:"trigger",fn:function(){return [_vm._t("trigger",[_c('b-input',_vm._b({ref:"input",attrs:{"autocomplete":"off","value":_vm.formatValue(_vm.computedValue),"placeholder":_vm.placeholder,"size":_vm.size,"icon":_vm.icon,"icon-pack":_vm.iconPack,"loading":_vm.loading,"disabled":_vm.disabled,"readonly":!_vm.editable,"rounded":_vm.rounded,"use-html5-validation":_vm.useHtml5Validation},on:{"focus":_vm.handleOnFocus},nativeOn:{"keyup":function($event){if(!$event.type.indexOf('key')&&_vm._k($event.keyCode,"enter",13,$event.key,"Enter")){ return null; }return _vm.toggle(true)},"change":function($event){return _vm.onChange($event.target.value)}}},'b-input',_vm.$attrs,false))])]},proxy:true}:null],null,true)},[_c('b-dropdown-item',{attrs:{"disabled":_vm.disabled,"focusable":_vm.focusable,"custom":""}},[_c('b-field',{attrs:{"grouped":"","position":"is-centered"}},[_c('b-select',{attrs:{"disabled":_vm.disabled,"placeholder":"00"},nativeOn:{"change":function($event){return _vm.onHoursChange($event.target.value)}},model:{value:(_vm.hoursSelected),callback:function ($$v) {_vm.hoursSelected=$$v;},expression:"hoursSelected"}},_vm._l((_vm.hours),function(hour){return _c('option',{key:hour.value,attrs:{"disabled":_vm.isHourDisabled(hour.value)},domProps:{"value":hour.value}},[_vm._v(" "+_vm._s(hour.label)+" ")])}),0),_c('span',{staticClass:"control is-colon"},[_vm._v(_vm._s(_vm.hourLiteral))]),_c('b-select',{attrs:{"disabled":_vm.disabled,"placeholder":"00"},nativeOn:{"change":function($event){return _vm.onMinutesChange($event.target.value)}},model:{value:(_vm.minutesSelected),callback:function ($$v) {_vm.minutesSelected=$$v;},expression:"minutesSelected"}},_vm._l((_vm.minutes),function(minute){return _c('option',{key:minute.value,attrs:{"disabled":_vm.isMinuteDisabled(minute.value)},domProps:{"value":minute.value}},[_vm._v(" "+_vm._s(minute.label)+" ")])}),0),(_vm.enableSeconds)?[_c('span',{staticClass:"control is-colon"},[_vm._v(_vm._s(_vm.minuteLiteral))]),_c('b-select',{attrs:{"disabled":_vm.disabled,"placeholder":"00"},nativeOn:{"change":function($event){return _vm.onSecondsChange($event.target.value)}},model:{value:(_vm.secondsSelected),callback:function ($$v) {_vm.secondsSelected=$$v;},expression:"secondsSelected"}},_vm._l((_vm.seconds),function(second){return _c('option',{key:second.value,attrs:{"disabled":_vm.isSecondDisabled(second.value)},domProps:{"value":second.value}},[_vm._v(" "+_vm._s(second.label)+" ")])}),0),_c('span',{staticClass:"control is-colon"},[_vm._v(_vm._s(_vm.secondLiteral))])]:_vm._e(),(!_vm.isHourFormat24)?_c('b-select',{attrs:{"disabled":_vm.disabled},nativeOn:{"change":function($event){return _vm.onMeridienChange($event.target.value)}},model:{value:(_vm.meridienSelected),callback:function ($$v) {_vm.meridienSelected=$$v;},expression:"meridienSelected"}},_vm._l((_vm.meridiens),function(meridien){return _c('option',{key:meridien,domProps:{"value":meridien}},[_vm._v(" "+_vm._s(meridien)+" ")])}),0):_vm._e()],2),(_vm.$slots.default !== undefined && _vm.$slots.default.length)?_c('footer',{staticClass:"timepicker-footer"},[_vm._t("default")],2):_vm._e()],1)],1):_c('b-input',_vm._b({ref:"input",attrs:{"type":"time","step":_vm.nativeStep,"autocomplete":"off","value":_vm.formatHHMMSS(_vm.computedValue),"placeholder":_vm.placeholder,"size":_vm.size,"icon":_vm.icon,"icon-pack":_vm.iconPack,"rounded":_vm.rounded,"loading":_vm.loading,"max":_vm.formatHHMMSS(_vm.maxTime),"min":_vm.formatHHMMSS(_vm.minTime),"disabled":_vm.disabled,"readonly":false,"use-html5-validation":_vm.useHtml5Validation},on:{"focus":_vm.handleOnFocus,"blur":function($event){_vm.onBlur() && _vm.checkHtml5Validity();}},nativeOn:{"change":function($event){return _vm.onChange($event.target.value)}}},'b-input',_vm.$attrs,false))],1)};
 var __vue_staticRenderFns__$p = [];
 
   /* style */
@@ -43849,6 +43726,10 @@ var script$p = {
     },
     minDatetime: Date,
     maxDatetime: Date,
+    nearbyMonthDays: {
+      type: Boolean,
+      default: config.defaultDatepickerNearbyMonthDays
+    },
     datetimeFormatter: {
       type: Function
     },
@@ -44135,7 +44016,7 @@ var script$p = {
 const __vue_script__$p = script$p;
 
 /* template */
-var __vue_render__$o = function () {var _vm=this;var _h=_vm.$createElement;var _c=_vm._self._c||_h;return (!_vm.isMobile || _vm.inline)?_c('b-datepicker',_vm._b({ref:"datepicker",attrs:{"rounded":_vm.rounded,"open-on-focus":_vm.openOnFocus,"position":_vm.position,"loading":_vm.loading,"inline":_vm.inline,"editable":_vm.editable,"expanded":_vm.expanded,"close-on-click":false,"first-day-of-week":_vm.firstDayOfWeek,"rules-for-first-week":_vm.rulesForFirstWeek,"date-formatter":_vm.defaultDatetimeFormatter,"date-parser":_vm.defaultDatetimeParser,"min-date":_vm.minDate,"max-date":_vm.maxDate,"icon":_vm.icon,"icon-right":_vm.iconRight,"icon-right-clickable":_vm.iconRightClickable,"icon-pack":_vm.iconPack,"size":_vm.datepickerSize,"placeholder":_vm.placeholder,"horizontal-time-picker":_vm.horizontalTimePicker,"range":false,"disabled":_vm.disabled,"mobile-native":_vm.isMobileNative,"locale":_vm.locale,"focusable":_vm.focusable,"append-to-body":_vm.appendToBody},on:{"focus":_vm.onFocus,"blur":_vm.onBlur,"active-change":_vm.onActiveChange,"icon-right-click":function($event){return _vm.$emit('icon-right-click')},"change-month":function($event){return _vm.$emit('change-month', $event)},"change-year":function($event){return _vm.$emit('change-year', $event)}},model:{value:(_vm.computedValue),callback:function ($$v) {_vm.computedValue=$$v;},expression:"computedValue"}},'b-datepicker',_vm.datepicker,false),[_c('nav',{staticClass:"level is-mobile"},[(_vm.$slots.left !== undefined)?_c('div',{staticClass:"level-item has-text-centered"},[_vm._t("left")],2):_vm._e(),_c('div',{staticClass:"level-item has-text-centered"},[_c('b-timepicker',_vm._b({ref:"timepicker",attrs:{"inline":"","editable":_vm.editable,"min-time":_vm.minTime,"max-time":_vm.maxTime,"size":_vm.timepickerSize,"disabled":_vm.timepickerDisabled,"focusable":_vm.focusable,"mobile-native":_vm.isMobileNative,"locale":_vm.locale},model:{value:(_vm.computedValue),callback:function ($$v) {_vm.computedValue=$$v;},expression:"computedValue"}},'b-timepicker',_vm.timepicker,false))],1),(_vm.$slots.right !== undefined)?_c('div',{staticClass:"level-item has-text-centered"},[_vm._t("right")],2):_vm._e()])]):_c('b-input',_vm._b({ref:"input",attrs:{"type":"datetime-local","autocomplete":"off","value":_vm.formatNative(_vm.computedValue),"placeholder":_vm.placeholder,"size":_vm.size,"icon":_vm.icon,"icon-pack":_vm.iconPack,"rounded":_vm.rounded,"loading":_vm.loading,"max":_vm.formatNative(_vm.maxDate),"min":_vm.formatNative(_vm.minDate),"disabled":_vm.disabled,"readonly":false,"use-html5-validation":_vm.useHtml5Validation},on:{"focus":_vm.onFocus,"blur":_vm.onBlur},nativeOn:{"change":function($event){return _vm.onChangeNativePicker($event)}}},'b-input',_vm.$attrs,false))};
+var __vue_render__$o = function () {var _vm=this;var _h=_vm.$createElement;var _c=_vm._self._c||_h;return (!_vm.isMobile || _vm.inline)?_c('b-datepicker',_vm._b({ref:"datepicker",attrs:{"rounded":_vm.rounded,"open-on-focus":_vm.openOnFocus,"position":_vm.position,"loading":_vm.loading,"inline":_vm.inline,"editable":_vm.editable,"expanded":_vm.expanded,"close-on-click":false,"first-day-of-week":_vm.firstDayOfWeek,"rules-for-first-week":_vm.rulesForFirstWeek,"date-formatter":_vm.defaultDatetimeFormatter,"date-parser":_vm.defaultDatetimeParser,"min-date":_vm.minDate,"max-date":_vm.maxDate,"nearby-month-days":_vm.nearbyMonthDays,"icon":_vm.icon,"icon-right":_vm.iconRight,"icon-right-clickable":_vm.iconRightClickable,"icon-pack":_vm.iconPack,"size":_vm.datepickerSize,"placeholder":_vm.placeholder,"horizontal-time-picker":_vm.horizontalTimePicker,"range":false,"disabled":_vm.disabled,"mobile-native":_vm.isMobileNative,"locale":_vm.locale,"focusable":_vm.focusable,"append-to-body":_vm.appendToBody},on:{"focus":_vm.onFocus,"blur":_vm.onBlur,"active-change":_vm.onActiveChange,"icon-right-click":function($event){return _vm.$emit('icon-right-click')},"change-month":function($event){return _vm.$emit('change-month', $event)},"change-year":function($event){return _vm.$emit('change-year', $event)}},model:{value:(_vm.computedValue),callback:function ($$v) {_vm.computedValue=$$v;},expression:"computedValue"}},'b-datepicker',_vm.datepicker,false),[_c('nav',{staticClass:"level is-mobile"},[(_vm.$slots.left !== undefined)?_c('div',{staticClass:"level-item has-text-centered"},[_vm._t("left")],2):_vm._e(),_c('div',{staticClass:"level-item has-text-centered"},[_c('b-timepicker',_vm._b({ref:"timepicker",attrs:{"inline":"","editable":_vm.editable,"min-time":_vm.minTime,"max-time":_vm.maxTime,"size":_vm.timepickerSize,"disabled":_vm.timepickerDisabled,"focusable":_vm.focusable,"mobile-native":_vm.isMobileNative,"locale":_vm.locale},model:{value:(_vm.computedValue),callback:function ($$v) {_vm.computedValue=$$v;},expression:"computedValue"}},'b-timepicker',_vm.timepicker,false))],1),(_vm.$slots.right !== undefined)?_c('div',{staticClass:"level-item has-text-centered"},[_vm._t("right")],2):_vm._e()])]):_c('b-input',_vm._b({ref:"input",attrs:{"type":"datetime-local","autocomplete":"off","value":_vm.formatNative(_vm.computedValue),"placeholder":_vm.placeholder,"size":_vm.size,"icon":_vm.icon,"icon-pack":_vm.iconPack,"rounded":_vm.rounded,"loading":_vm.loading,"max":_vm.formatNative(_vm.maxDate),"min":_vm.formatNative(_vm.minDate),"disabled":_vm.disabled,"readonly":false,"use-html5-validation":_vm.useHtml5Validation},on:{"focus":_vm.onFocus,"blur":_vm.onBlur},nativeOn:{"change":function($event){return _vm.onChangeNativePicker($event)}}},'b-input',_vm.$attrs,false))};
 var __vue_staticRenderFns__$o = [];
 
   /* style */
@@ -46570,11 +46451,7 @@ var script$h = {
         var newValue = Number(value) === 0 ? 0 : Number(value) || null;
 
         if (value === '' || value === undefined || value === null) {
-          if (this.minNumber !== undefined) {
-            newValue = this.minNumber;
-          } else {
-            newValue = null;
-          }
+          newValue = null;
         }
 
         this.newValue = newValue;
@@ -46696,7 +46573,7 @@ var script$h = {
       }
     },
     increment: function increment() {
-      if (this.computedValue === null || typeof this.computedValue === 'undefined') {
+      if (this.computedValue === null || typeof this.computedValue === 'undefined' || this.computedValue < this.minNumber) {
         if (this.minNumber !== null && typeof this.minNumber !== 'undefined') {
           this.computedValue = this.minNumber;
           return;
@@ -46719,12 +46596,12 @@ var script$h = {
       var _this2 = this;
 
       if (inc) this.increment();else this.decrement();
+      if (!this.longPress) return;
       this._$intervalRef = setTimeout(function () {
         _this2.longPressTick(inc);
       }, this.exponential ? 250 / (this.exponential * this.timesPressed++) : 250);
     },
     onStartLongPress: function onStartLongPress(event, inc) {
-      if (!this.longPress) return;
       if (event.button !== 0 && event.type !== 'touchstart') return;
       clearTimeout(this._$intervalRef);
       this.longPressTick(inc);
@@ -48006,6 +47883,17 @@ var script$b = {
       this.hasLeaved = true;
       this.timer = null;
       this.isDelayOver = false;
+    },
+
+    /**
+     * Close sidebar if close button is clicked.
+     */
+    clickedCloseButton: function clickedCloseButton() {
+      if (this.isFixed) {
+        if (this.isOpen && this.fullwidth) {
+          this.cancel('outside');
+        }
+      }
     }
   },
   created: function created() {
@@ -48050,7 +47938,7 @@ var script$b = {
 const __vue_script__$b = script$b;
 
 /* template */
-var __vue_render__$b = function () {var _vm=this;var _h=_vm.$createElement;var _c=_vm._self._c||_h;return _c('div',{staticClass:"b-sidebar"},[(_vm.overlay && _vm.isOpen)?_c('div',{staticClass:"sidebar-background"}):_vm._e(),_c('transition',{attrs:{"name":_vm.transitionName},on:{"before-enter":_vm.beforeEnter,"after-enter":_vm.afterEnter}},[_c('div',{directives:[{name:"show",rawName:"v-show",value:(_vm.isOpen),expression:"isOpen"}],ref:"sidebarContent",staticClass:"sidebar-content",class:_vm.rootClasses,on:{"mouseenter":_vm.onHover,"mouseleave":_vm.onHoverLeave}},[_vm._t("default")],2)])],1)};
+var __vue_render__$b = function () {var _vm=this;var _h=_vm.$createElement;var _c=_vm._self._c||_h;return _c('div',{staticClass:"b-sidebar"},[(_vm.overlay && _vm.isOpen)?_c('div',{staticClass:"sidebar-background"}):_vm._e(),_c('transition',{attrs:{"name":_vm.transitionName},on:{"before-enter":_vm.beforeEnter,"after-enter":_vm.afterEnter}},[_c('div',{directives:[{name:"show",rawName:"v-show",value:(_vm.isOpen),expression:"isOpen"}],ref:"sidebarContent",staticClass:"sidebar-content",class:_vm.rootClasses,on:{"mouseenter":_vm.onHover,"mouseleave":_vm.onHoverLeave}},[(_vm.fullwidth)?_c('button',{staticClass:"modal-close is-large sidebar-close",attrs:{"type":"button","aria-label":"Close"},on:{"click":_vm.clickedCloseButton}}):_vm._e(),_vm._t("default")],2)])],1)};
 var __vue_staticRenderFns__$b = [];
 
   /* style */
@@ -52161,7 +52049,7 @@ Vue$2.component('toggle-button', {
     },
     methods:
     {
-        buttonclicked: function(value)
+        buttonclicked: function()
         {
             this.isOn = !this.isOn;
             this.name = this.isOn ? this.ontext : this.offtext;
@@ -52286,7 +52174,7 @@ const app = new Vue$2({
         {
             this.$refs.animationState.setState(value);
         },
-        iblTriggered: function(value)
+        iblTriggered: function()
         {
             if(this.ibl == false)
             {
@@ -52297,7 +52185,7 @@ const app = new Vue$2({
                 this.renderEnv = this.environmentVisiblePrefState;
             }
         },
-        transmissionTriggered: function(value)
+        transmissionTriggered: function()
         {
             if(this.transmissionEnabled == false)
             {
@@ -52388,7 +52276,7 @@ new Vue$2({
     methods:
     {
         toggleFullscreen() {
-            if(this.fullscreen) {
+            if (this.fullscreen) {
                 app.show();
             } else {
                 app.hide();
@@ -52410,10 +52298,9 @@ new Vue$2({
 }).$mount('#canvasUI');
 
 // pipe error messages to UI
-(function(){
-
-    var originalWarn = console.warn;
-    var originalError = console.error;
+(() => {
+    const originalWarn = console.warn;
+    const originalError = console.error;
 
     console.warn = function(txt) {
         app.warn(txt);
@@ -52425,14 +52312,13 @@ new Vue$2({
     };
 
     window.onerror = function(msg, url, lineNo, columnNo, error) {
-        var message = [
+        app.error([
             'Message: ' + msg,
             'URL: ' + url,
             'Line: ' + lineNo,
             'Column: ' + columnNo,
             'Error object: ' + JSON.stringify(error)
-          ].join(' - ');
-        app.error(message);
+        ].join(' - '));
     };
 })();
 
@@ -52669,9 +52555,9 @@ var substr = 'ab'.substr(-1) === 'b' ?
     }
 ;
 
-class gltfModelPathProvider
+class GltfModelPathProvider
 {
-    constructor(modelIndexerPath, currentFalvour="glTF", ignoredVariants = ["glTF-Embedded"])
+    constructor(modelIndexerPath, ignoredVariants = ["glTF-Embedded"])
     {
         this.modelIndexerPath = modelIndexerPath;
         this.ignoredVariants = ignoredVariants;
@@ -52681,10 +52567,8 @@ class gltfModelPathProvider
     async initialize()
     {
         const self = this;
-        return axios.get(this.modelIndexerPath).then(response =>
-        {
-            self.populateDictionary(response.data);
-        });
+        const response = await axios.get(this.modelIndexerPath);
+        self.populateDictionary(response.data);
     }
 
     resolve(modelKey, flavour)
@@ -52703,7 +52587,6 @@ class gltfModelPathProvider
         this.modelsDictionary = {};
         for (const entry of modelIndexer)
         {
-            // TODO maybe handle undefined names better
             if (entry.variants === undefined || entry.name === undefined)
             {
                 continue;
@@ -52721,7 +52604,6 @@ class gltfModelPathProvider
                 const fileName = entry.variants[variant];
                 const modelPath = path.join(modelsFolder, entry.name, variant, fileName);
                 variants[variant] = modelPath;
-
             }
             this.modelsDictionary[entry.name] = variants;
         }
@@ -52751,16 +52633,15 @@ function fillEnvironmentWithPaths(environmentNames, environmentsBasePath)
     return environmentNames;
 }
 
-async function main() {
+var main = async () => {
     const canvas = document.getElementById("canvas");
     const context = canvas.getContext("webgl2", { alpha: false, antialias: true });
-    document.getElementById("app");
     const view = new GltfView(context);
     const resourceLoader = view.createResourceLoader();
     const state = view.createState();
     state.renderingParameters.useDirectionalLightsWithDisabledIBL = true;
 
-    const pathProvider = new gltfModelPathProvider('assets/models/Models/model-index.json');
+    const pathProvider = new GltfModelPathProvider('assets/models/Models/model-index.json');
     await pathProvider.initialize();
     const environmentPaths = fillEnvironmentWithPaths({
         "footprint_court": "Footprint Court",
@@ -52780,24 +52661,21 @@ async function main() {
 
     // whenever a new model is selected, load it and when complete pass the loaded gltf
     // into a stream back into the UI
-    const gltfLoadedSubject = new Subject();
-    const gltfLoadedMulticast = uiModel.model.pipe(
-        mergeMap( (model) =>
-        {
-        	uiModel.goToLoadingState();
+    const gltfLoaded = uiModel.model.pipe(
+        mergeMap(model => {
+            uiModel.goToLoadingState();
 
             // Workaround for errors in ktx lib after loading an asset with ktx2 files for the second time:
             resourceLoader.initKtxLib();
 
-            return from(resourceLoader.loadGltf(model.mainFile, model.additionalFiles).then( (gltf) => {
+            return from(resourceLoader.loadGltf(model.mainFile, model.additionalFiles).then(gltf => {
                 state.gltf = gltf;
                 const defaultScene = state.gltf.scene;
                 state.sceneIndex = defaultScene === undefined ? 0 : defaultScene;
                 state.cameraIndex = undefined;
-                if (state.gltf.scenes.length != 0)
-                {
-                    if(state.sceneIndex > state.gltf.scenes.length - 1)
-                    {
+
+                if (state.gltf.scenes.length != 0) {
+                    if (state.sceneIndex > state.gltf.scenes.length - 1) {
                         state.sceneIndex = 0;
                     }
                     const scene = state.gltf.scenes[state.sceneIndex];
@@ -52807,10 +52685,8 @@ async function main() {
 
                     // Try to start as many animations as possible without generating conficts.
                     state.animationIndices = [];
-                    for (let i = 0; i < gltf.animations.length; i++)
-                    {
-                        if (!gltf.nonDisjointAnimations(state.animationIndices).includes(i))
-                        {
+                    for (let i = 0; i < gltf.animations.length; i++) {
+                        if (!gltf.nonDisjointAnimations(state.animationIndices).includes(i)) {
                             state.animationIndices.push(i);
                         }
                     }
@@ -52820,71 +52696,54 @@ async function main() {
                 uiModel.exitLoadingState();
 
                 return state;
-            })
-            );
+            }));
         }),
-        // transform gltf loaded observable to multicast observable to avoid multiple execution with multiple subscriptions
-        multicast(gltfLoadedSubject)
+        share()
     );
 
-    uiModel.disabledAnimations(uiModel.activeAnimations.pipe(map(animationIndices => {
-        // Disable all animations which are not disjoint to the current selection of animations.
-        return state.gltf.nonDisjointAnimations(animationIndices);
-    })));
+    // Disable all animations which are not disjoint to the current selection of animations.
+    uiModel.disabledAnimations(uiModel.activeAnimations.pipe(map(animationIndices => state.gltf.nonDisjointAnimations(animationIndices))));
 
-    const sceneChangedSubject = new Subject();
-    const sceneChangedObservable = uiModel.scene.pipe(map( newSceneIndex => {
-        state.sceneIndex = newSceneIndex;
-        state.cameraIndex = undefined;
-        const scene = state.gltf.scenes[state.sceneIndex];
-        if (scene !== undefined)
-        {
-            scene.applyTransformHierarchy(state.gltf);
-            state.userCamera.fitViewToScene(state.gltf, state.sceneIndex);
-        }
-    }),
-    multicast(sceneChangedSubject)
+    const sceneChangedObservable = uiModel.scene.pipe(
+        map(sceneIndex => {
+            state.sceneIndex = sceneIndex;
+            state.cameraIndex = undefined;
+            const scene = state.gltf.scenes[state.sceneIndex];
+            if (scene !== undefined)
+            {
+                scene.applyTransformHierarchy(state.gltf);
+                state.userCamera.fitViewToScene(state.gltf, state.sceneIndex);
+            }
+        }),
+        share()
     );
 
-    const statisticsUpdateObservableTemp = merge$1(
-        gltfLoadedMulticast,
-        sceneChangedObservable
-    );
+    const statisticsUpdateObservable = merge$1(sceneChangedObservable, gltfLoaded).pipe(map(() => view.gatherStatistics(state)));
 
-    const statisticsUpdateObservable = statisticsUpdateObservableTemp.pipe(
-        map( (_) => view.gatherStatistics(state) )
-    );
-
-    const cameraExportChangedObservable = uiModel.cameraValuesExport.pipe( map(_ => {
-        let camera = state.userCamera;
-        if(state.cameraIndex !== undefined)
-        {
-            camera = state.gltf.cameras[state.cameraIndex];
-        }
-        const cameraDesc = camera.getDescription(state.gltf);
-        return cameraDesc;
+    const cameraExportChangedObservable = uiModel.cameraValuesExport.pipe(map(() => {
+        const camera = state.cameraIndex === undefined
+            ? state.userCamera
+            : state.gltf.cameras[state.cameraIndex];
+        return camera.getDescription(state.gltf);
     }));
 
     const downloadDataURL = (filename, dataURL) => {
-        var element = document.createElement('a');
+        const element = document.createElement('a');
         element.setAttribute('href', dataURL);
         element.setAttribute('download', filename);
-
         element.style.display = 'none';
         document.body.appendChild(element);
-
         element.click();
-
         document.body.removeChild(element);
     };
 
-    cameraExportChangedObservable.subscribe( cameraDesc => {
+    cameraExportChangedObservable.subscribe(cameraDesc => {
         const gltf = JSON.stringify(cameraDesc, undefined, 4);
         const dataURL = 'data:text/plain;charset=utf-8,' +  encodeURIComponent(gltf);
         downloadDataURL("camera.gltf", dataURL);
     });
 
-    uiModel.captureCanvas.subscribe( () => {
+    uiModel.captureCanvas.subscribe(() => {
         view.renderFrame(state, canvas.width, canvas.height);
         const dataURL = canvas.toDataURL();
         downloadDataURL("capture.png", dataURL);
@@ -52894,116 +52753,74 @@ async function main() {
     let redraw = false;
     const listenForRedraw = stream => stream.subscribe(() => redraw = true);
     
-    uiModel.scene.pipe(filter$1(scene => scene === -1)).subscribe( () => {
-        state.sceneIndex = undefined;
-    });
-    uiModel.scene.pipe(filter$1(scene => scene !== -1)).subscribe( scene => {
-        state.sceneIndex = scene;
-    });
+    uiModel.scene.subscribe(scene => state.sceneIndex = scene !== -1 ? scene : undefined);
     listenForRedraw(uiModel.scene);
 
-    uiModel.camera.pipe(filter$1(camera => camera === -1)).subscribe( () => {
-        state.cameraIndex = undefined;
-    });
-    uiModel.camera.pipe(filter$1(camera => camera !== -1)).subscribe( camera => {
-        state.cameraIndex = camera;
-    });
+    uiModel.camera.subscribe(camera => state.cameraIndex = camera !== -1 ? camera : undefined);
     listenForRedraw(uiModel.camera);
 
-    uiModel.variant.subscribe( variant => {
-        state.variant = variant;
-    });
+    uiModel.variant.subscribe(variant => state.variant = variant);
     listenForRedraw(uiModel.variant);
 
-    uiModel.tonemap.subscribe( tonemap => {
-        state.renderingParameters.toneMap = tonemap;
-    });
+    uiModel.tonemap.subscribe(tonemap => state.renderingParameters.toneMap = tonemap);
     listenForRedraw(uiModel.tonemap);
 
-    uiModel.debugchannel.subscribe( debugchannel => {
-        state.renderingParameters.debugOutput = debugchannel;
-    });
+    uiModel.debugchannel.subscribe(debugchannel => state.renderingParameters.debugOutput = debugchannel);
     listenForRedraw(uiModel.debugchannel);
 
-    uiModel.skinningEnabled.subscribe( skinningEnabled => {
-        state.renderingParameters.skinning = skinningEnabled;
-    });
+    uiModel.skinningEnabled.subscribe(skinningEnabled => state.renderingParameters.skinning = skinningEnabled);
     listenForRedraw(uiModel.skinningEnabled);
 
-    uiModel.exposure.subscribe( exposure => {
-        state.renderingParameters.exposure = (1.0 / Math.pow(2.0, exposure));
-    });
+    uiModel.exposure.subscribe(exposure => state.renderingParameters.exposure = (1.0 / Math.pow(2.0, exposure)));
     listenForRedraw(uiModel.exposure);
 
-    uiModel.morphingEnabled.subscribe( morphingEnabled => {
-        state.renderingParameters.morphing = morphingEnabled;
-    });
+    uiModel.morphingEnabled.subscribe(morphingEnabled => state.renderingParameters.morphing = morphingEnabled);
     listenForRedraw(uiModel.morphingEnabled);
 
-    uiModel.clearcoatEnabled.subscribe( clearcoatEnabled => {
-        state.renderingParameters.enabledExtensions.KHR_materials_clearcoat = clearcoatEnabled;
-    });
-    uiModel.sheenEnabled.subscribe( sheenEnabled => {
-        state.renderingParameters.enabledExtensions.KHR_materials_sheen = sheenEnabled;
-    });
-    uiModel.transmissionEnabled.subscribe( transmissionEnabled => {
-        state.renderingParameters.enabledExtensions.KHR_materials_transmission = transmissionEnabled;
-    });
-    uiModel.volumeEnabled.subscribe( volumeEnabled => {
-        state.renderingParameters.enabledExtensions.KHR_materials_volume = volumeEnabled;
-    });
-    uiModel.iorEnabled.subscribe( iorEnabled => {
-        state.renderingParameters.enabledExtensions.KHR_materials_ior = iorEnabled;
-    });
-    uiModel.iridescenceEnabled.subscribe( iridescenceEnabled => {
-        state.renderingParameters.enabledExtensions.KHR_materials_iridescence = iridescenceEnabled;
-    });
-    uiModel.anisotropyEnabled.subscribe( anisotropyEnabled => {
-        state.renderingParameters.enabledExtensions.KHR_materials_anisotropy = anisotropyEnabled;
-    });
-    uiModel.specularEnabled.subscribe( specularEnabled => {
-        state.renderingParameters.enabledExtensions.KHR_materials_specular = specularEnabled;
-    });
-    uiModel.emissiveStrengthEnabled.subscribe( enabled => {
-        state.renderingParameters.enabledExtensions.KHR_materials_emissive_strength = enabled;
-    });
+    uiModel.clearcoatEnabled.subscribe(clearcoatEnabled => state.renderingParameters.enabledExtensions.KHR_materials_clearcoat = clearcoatEnabled);
     listenForRedraw(uiModel.clearcoatEnabled);
+
+    uiModel.sheenEnabled.subscribe(sheenEnabled => state.renderingParameters.enabledExtensions.KHR_materials_sheen = sheenEnabled);
     listenForRedraw(uiModel.sheenEnabled);
+
+    uiModel.transmissionEnabled.subscribe(transmissionEnabled => state.renderingParameters.enabledExtensions.KHR_materials_transmission = transmissionEnabled);
     listenForRedraw(uiModel.transmissionEnabled);
+
+    uiModel.volumeEnabled.subscribe(volumeEnabled => state.renderingParameters.enabledExtensions.KHR_materials_volume = volumeEnabled);
     listenForRedraw(uiModel.volumeEnabled);
+
+    uiModel.iorEnabled.subscribe(iorEnabled => state.renderingParameters.enabledExtensions.KHR_materials_ior = iorEnabled);
     listenForRedraw(uiModel.iorEnabled);
+
+    uiModel.iridescenceEnabled.subscribe(iridescenceEnabled => state.renderingParameters.enabledExtensions.KHR_materials_iridescence = iridescenceEnabled);
     listenForRedraw(uiModel.specularEnabled);
+
+    uiModel.anisotropyEnabled.subscribe(anisotropyEnabled => state.renderingParameters.enabledExtensions.KHR_materials_anisotropy = anisotropyEnabled);
     listenForRedraw(uiModel.iridescenceEnabled);
+
+    uiModel.specularEnabled.subscribe(specularEnabled => state.renderingParameters.enabledExtensions.KHR_materials_specular = specularEnabled);
     listenForRedraw(uiModel.anisotropyEnabled);
+
+    uiModel.emissiveStrengthEnabled.subscribe(enabled => state.renderingParameters.enabledExtensions.KHR_materials_emissive_strength = enabled);
     listenForRedraw(uiModel.emissiveStrengthEnabled);
 
-    uiModel.iblEnabled.subscribe( iblEnabled => {
-        state.renderingParameters.useIBL = iblEnabled;
-    });
+    uiModel.iblEnabled.subscribe(iblEnabled => state.renderingParameters.useIBL = iblEnabled);
     listenForRedraw(uiModel.iblEnabled);
 
-    uiModel.iblIntensity.subscribe( iblIntensity => {
-        state.renderingParameters.iblIntensity = Math.pow(10, iblIntensity);
-    });
+    uiModel.iblIntensity.subscribe(iblIntensity => state.renderingParameters.iblIntensity = Math.pow(10, iblIntensity));
     listenForRedraw(uiModel.iblIntensity);
 
-    uiModel.renderEnvEnabled.subscribe( renderEnvEnabled => {
-        state.renderingParameters.renderEnvironmentMap = renderEnvEnabled;
-    });
-    uiModel.blurEnvEnabled.subscribe( blurEnvEnabled => {
-        state.renderingParameters.blurEnvironmentMap = blurEnvEnabled;
-    });
+    uiModel.renderEnvEnabled.subscribe(renderEnvEnabled => state.renderingParameters.renderEnvironmentMap = renderEnvEnabled);
     listenForRedraw(uiModel.renderEnvEnabled);
+    
+    uiModel.blurEnvEnabled.subscribe(blurEnvEnabled => state.renderingParameters.blurEnvironmentMap = blurEnvEnabled);
     listenForRedraw(uiModel.blurEnvEnabled);
 
-    uiModel.punctualLightsEnabled.subscribe( punctualLightsEnabled => {
-        state.renderingParameters.usePunctual = punctualLightsEnabled;
-    });
+    uiModel.punctualLightsEnabled.subscribe(punctualLightsEnabled => state.renderingParameters.usePunctual = punctualLightsEnabled);
     listenForRedraw(uiModel.punctualLightsEnabled);
 
-    uiModel.environmentRotation.subscribe( environmentRotation => {
-        switch (environmentRotation)
-        {
+    uiModel.environmentRotation.subscribe(environmentRotation => {
+        switch (environmentRotation) {
         case "+Z":
             state.renderingParameters.environmentRotation = 90.0;
             break;
@@ -53021,60 +52838,50 @@ async function main() {
     listenForRedraw(uiModel.environmentRotation);
 
 
-    uiModel.clearColor.subscribe( clearColor => {
-        state.renderingParameters.clearColor = clearColor;
-    });
+    uiModel.clearColor.subscribe(clearColor => state.renderingParameters.clearColor = clearColor);
     listenForRedraw(uiModel.clearColor);
 
-    uiModel.animationPlay.subscribe( animationPlay => {
-        if(animationPlay)
-        {
+    uiModel.animationPlay.subscribe(animationPlay => {
+        if(animationPlay) {
             state.animationTimer.unpause();
         }
-        else
-        {
+        else {
             state.animationTimer.pause();
         }
     });
 
-    uiModel.activeAnimations.subscribe( animations => {
-        state.animationIndices = animations;
-    });
+    uiModel.activeAnimations.subscribe(animations => state.animationIndices = animations);
     listenForRedraw(uiModel.activeAnimations);
 
-    uiModel.hdr.subscribe( hdrFile => {
+    uiModel.hdr.subscribe(hdrFile => {
         resourceLoader.loadEnvironment(hdrFile).then( (environment) => {
             state.environment = environment;
-            //We neeed to wait until the environment is loaded to redraw
+            // We need to wait until the environment is loaded to redraw
             redraw = true;
         });
     });
 
-    uiModel.attachGltfLoaded(gltfLoadedMulticast);
+    uiModel.attachGltfLoaded(gltfLoaded);
     uiModel.updateStatistics(statisticsUpdateObservable);
-    const sceneChangedStateObservable = uiModel.scene.pipe(map( newSceneIndex => state));
+    const sceneChangedStateObservable = uiModel.scene.pipe(map(() => state));
     uiModel.attachCameraChangeObservable(sceneChangedStateObservable);
-    gltfLoadedMulticast.connect();
 
     uiModel.orbit.subscribe( orbit => {
-        if (state.cameraIndex === undefined)
-        {
+        if (state.cameraIndex === undefined) {
             state.userCamera.orbit(orbit.deltaPhi, orbit.deltaTheta);
         }
     });
     listenForRedraw(uiModel.orbit);
 
     uiModel.pan.subscribe( pan => {
-        if (state.cameraIndex === undefined)
-        {
+        if (state.cameraIndex === undefined) {
             state.userCamera.pan(pan.deltaX, -pan.deltaY);
         }
     });
     listenForRedraw(uiModel.pan);
 
     uiModel.zoom.subscribe( zoom => {
-        if (state.cameraIndex === undefined)
-        {
+        if (state.cameraIndex === undefined) {
             state.userCamera.zoomBy(zoom.deltaZoom);
         }
     });
@@ -53082,8 +52889,7 @@ async function main() {
 
     // configure the animation loop
     const past = {};
-    const update = () =>
-    {
+    const update = () => {
         const devicePixelRatio = window.devicePixelRatio || 1;
 
         // set the size of the drawingBuffer based on the size it's displayed.
@@ -53104,7 +52910,7 @@ async function main() {
 
     // After this start executing animation loop.
     window.requestAnimationFrame(update);
-}
+};
 
-export { main };
+export { main as default };
 //# sourceMappingURL=GltfSVApp.js.map
