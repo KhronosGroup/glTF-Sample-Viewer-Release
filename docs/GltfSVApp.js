@@ -16563,8 +16563,6 @@ class gltfImage extends GltfObject
             return false;
         }
 
-        console.log("Load image: " + this.mimeType);
-
         const buffer = gltf.buffers[view.buffer].buffer;
         const array = new Uint8Array(buffer, view.byteOffset, view.byteLength);
         if (this.mimeType === ImageMimeType.KTX2)
@@ -19383,6 +19381,27 @@ class gltfVariant extends GltfObject
     }
 }
 
+const allowedExtensions = [
+    "KHR_draco_mesh_compression",
+    "KHR_texture_basisu",
+    "KHR_texture_transform",
+    "KHR_lights_punctual",
+    "KHR_lights_image_based",
+    "KHR_materials_variants",
+    "KHR_materials_unlit",
+    "KHR_materials_clearcoat",
+    "KHR_materials_sheen",
+    "KHR_materials_transmission",
+    "KHR_materials_volume",
+    "KHR_materials_ior",
+    "KHR_materials_iridescence",
+    "KHR_materials_anisotropy",
+    "KHR_materials_specular",
+    "KHR_materials_emissive_strength",
+    "KHR_materials_xmp_json_ld",
+    "KHR_materials_pbrSpecularGlossiness",
+];
+
 class glTF extends GltfObject
 {
     constructor(file)
@@ -19416,6 +19435,12 @@ class glTF extends GltfObject
     fromJson(json)
     {
         super.fromJson(json);
+
+        for (const extensionName of json.extensionsRequired ?? []) {
+            if (!allowedExtensions.includes(extensionName)) {
+                throw new Error("Unsupported extension: " + extensionName);
+            }
+        }
 
         this.asset = objectFromJson(json.asset, gltfAsset);
         this.cameras = objectsFromJsons(json.cameras, gltfCamera);
@@ -21988,6 +22013,9 @@ var ConnectableSubscriber = /*@__PURE__*/ (function (_super) {
     return ConnectableSubscriber;
 }(SubjectSubscriber));
 
+/** PURE_IMPORTS_START _Observable PURE_IMPORTS_END */
+var EMPTY = /*@__PURE__*/ new Observable(function (subscriber) { return subscriber.complete(); });
+
 /** PURE_IMPORTS_START  PURE_IMPORTS_END */
 function isScheduler(value) {
     return value && typeof value.schedule === 'function';
@@ -22606,6 +22634,53 @@ var FilterSubscriber = /*@__PURE__*/ (function (_super) {
     };
     return FilterSubscriber;
 }(Subscriber));
+
+/** PURE_IMPORTS_START tslib,_innerSubscribe PURE_IMPORTS_END */
+function catchError(selector) {
+    return function catchErrorOperatorFunction(source) {
+        var operator = new CatchOperator(selector);
+        var caught = source.lift(operator);
+        return (operator.caught = caught);
+    };
+}
+var CatchOperator = /*@__PURE__*/ (function () {
+    function CatchOperator(selector) {
+        this.selector = selector;
+    }
+    CatchOperator.prototype.call = function (subscriber, source) {
+        return source.subscribe(new CatchSubscriber(subscriber, this.selector, this.caught));
+    };
+    return CatchOperator;
+}());
+var CatchSubscriber = /*@__PURE__*/ (function (_super) {
+    __extends(CatchSubscriber, _super);
+    function CatchSubscriber(destination, selector, caught) {
+        var _this = _super.call(this, destination) || this;
+        _this.selector = selector;
+        _this.caught = caught;
+        return _this;
+    }
+    CatchSubscriber.prototype.error = function (err) {
+        if (!this.isStopped) {
+            var result = void 0;
+            try {
+                result = this.selector(err, this.caught);
+            }
+            catch (err2) {
+                _super.prototype.error.call(this, err2);
+                return;
+            }
+            this._unsubscribeAndRecycle();
+            var innerSubscriber = new SimpleInnerSubscriber(this);
+            this.add(innerSubscriber);
+            var innerSubscription = innerSubscribe(result, innerSubscriber);
+            if (innerSubscription !== innerSubscriber) {
+                this.add(innerSubscription);
+            }
+        }
+    };
+    return CatchSubscriber;
+}(SimpleOuterSubscriber));
 
 /** PURE_IMPORTS_START _observable_ConnectableObservable PURE_IMPORTS_END */
 function multicast(subjectOrSubjectFactory, selector) {
@@ -52123,6 +52198,11 @@ var main = async () => {
 
                 return state;
             }));
+        }),
+        catchError(error => {
+            console.error(error);
+            uiModel.exitLoadingState();
+            return EMPTY;
         }),
         share()
     );
