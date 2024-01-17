@@ -12073,8 +12073,8 @@ div.b-colorpicker-square .colorpicker-square-slider-sl .sl-range-thumb:active {
   stroke-width: 0;
   stroke: currentColor;
   pointer-events: none;
-  width: auto;
-  height: auto;
+  width: 100%;
+  height: 100%;
 }
 
 .b-image-wrapper > img {
@@ -12185,6 +12185,19 @@ div.b-colorpicker-square .colorpicker-square-slider-sl .sl-range-thumb:active {
 }
 .modal .modal-content {
   width: 100%;
+}
+@media screen and (max-width: 768px) {
+  .modal .modal-close {
+    /* keep modal-close visible when the contents fill the screen */
+    background-color: color-mix(in hsl, rgba(245, 245, 245, 0.86) 10%, transparent);
+  }
+  .modal .modal-close:hover,
+  .modal .modal-close :focus {
+    background-color: color-mix(in hsl, rgba(245, 245, 245, 0.86) 20%, transparent);
+  }
+  .modal .modal-close:active {
+    background-color: color-mix(in hsl, rgba(245, 245, 245, 0.86) 30%, transparent);
+  }
 }
 
 .navbar.has-navbar-centered .navbar-start {
@@ -14571,6 +14584,8 @@ MIT (https://github.com/Wikiki/bulma-steps/blob/master/LICENSE)
 }
 .b-table .table th .th-wrap {
   display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
   align-items: center;
 }
 .b-table .table th .th-wrap .icon {
@@ -14583,9 +14598,11 @@ MIT (https://github.com/Wikiki/bulma-steps/blob/master/LICENSE)
   text-align: right;
   width: 95%;
 }
-.b-table .table th .th-wrap.is-numeric .icon {
+.b-table .table th .th-wrap.is-numeric .sort-icon {
   margin-left: 0;
   margin-right: 0.5rem;
+  left: 0;
+  right: auto;
 }
 .b-table .table th .th-wrap.is-centered {
   justify-content: center;
@@ -14604,13 +14621,17 @@ MIT (https://github.com/Wikiki/bulma-steps/blob/master/LICENSE)
 .b-table .table th.is-sortable .is-relative, .b-table .table th.is-sortable .th-wrap .is-relative {
   position: absolute;
 }
-.b-table .table th .sort-icon, .b-table .table th .multi-sort-cancel-icon {
+.b-table .table th .sort-icon {
   position: absolute;
   bottom: 50%;
-  left: 100%;
+  right: 0;
   transform: translateY(50%);
 }
-.b-table .table th .multi-sort-cancel-icon {
+.b-table .table th .multi-sort-icons {
+  display: flex;
+  align-items: center;
+}
+.b-table .table th .multi-sort-icons .multi-sort-cancel-icon {
   margin-left: 10px;
 }
 .b-table .table th.is-sticky {
@@ -14812,6 +14833,40 @@ MIT (https://github.com/Wikiki/bulma-steps/blob/master/LICENSE)
   font-weight: 600;
   padding-right: 0.5em;
   text-align: left;
+}
+
+.touch-dragged-cell {
+  position: absolute;
+}
+
+.touch-dragged-cell,
+.touch-dragged-cell .table {
+  pointer-events: none;
+  background-color: color-mix(in srgb, #363636 10%, transparent);
+}
+
+.touch-dragged-cell .table {
+  width: 100%;
+}
+.touch-dragged-cell .table tr, .touch-dragged-cell .table td {
+  background-color: transparent;
+}
+
+@media screen and (max-width: 768px) {
+  .touch-dragged-cell.has-mobile-cards .table tr {
+    display: block;
+  }
+  .touch-dragged-cell.has-mobile-cards .table tr td {
+    display: flex;
+    justify-content: space-between;
+    text-align: right;
+  }
+  .touch-dragged-cell.has-mobile-cards .table tr td:before {
+    content: attr(data-label);
+    font-weight: 600;
+    padding-right: 0.5em;
+    text-align: left;
+  }
 }
 
 .b-tabs .tabs {
@@ -15016,6 +15071,13 @@ MIT (https://github.com/Wikiki/bulma-steps/blob/master/LICENSE)
 .tag.has-delete-icon .icon:first-child:not(:last-child) {
   margin-right: 0px;
   margin-left: 0px;
+}
+
+.tags.inline-tags {
+  margin-bottom: 0px;
+}
+.tags.inline-tags:not(:last-child) {
+  margin-right: 0.5rem;
 }
 
 .taginput .taginput-container {
