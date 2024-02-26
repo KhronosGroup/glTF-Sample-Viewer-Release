@@ -11777,7 +11777,7 @@ div.b-colorpicker-square .colorpicker-square-slider-sl .sl-range-thumb:active {
 .dropdown.is-hoverable:not(.is-active) .dropdown-menu {
   display: none;
 }
-.dropdown.is-hoverable:hover .dropdown-menu {
+.dropdown.is-hoverable:not(.is-touch-enabled):hover .dropdown-menu {
   display: inherit;
 }
 .dropdown.is-expanded {
@@ -11825,7 +11825,10 @@ div.b-colorpicker-square .colorpicker-square-slider-sl .sl-range-thumb:active {
   left: auto;
 }
 @media screen and (max-width: 1023px) {
-  .dropdown.is-mobile-modal > .dropdown-menu {
+  .dropdown {
+    /* prevents modal on hover unless it is on touch devices */
+  }
+  .dropdown.is-mobile-modal:not(.is-hoverable) > .dropdown-menu, .dropdown.is-mobile-modal.is-touch-enabled > .dropdown-menu {
     position: fixed !important;
     width: calc(100vw - 40px);
     max-width: 460px;
@@ -11839,7 +11842,7 @@ div.b-colorpicker-square .colorpicker-square-slider-sl .sl-range-thumb:active {
     overflow-y: auto;
     z-index: 50 !important;
   }
-  .dropdown.is-mobile-modal > .dropdown-menu > .dropdown-content > .dropdown-item, .dropdown .dropdown-menu .has-link .dropdown.is-mobile-modal > .dropdown-menu > .dropdown-content > a, .dropdown.is-mobile-modal > .dropdown-menu > .dropdown-content > .has-link a {
+  .dropdown.is-mobile-modal:not(.is-hoverable) > .dropdown-menu > .dropdown-content > .dropdown-item, .dropdown .dropdown-menu .has-link .dropdown.is-mobile-modal:not(.is-hoverable) > .dropdown-menu > .dropdown-content > a, .dropdown.is-mobile-modal:not(.is-hoverable) > .dropdown-menu > .dropdown-content > .has-link a, .dropdown.is-mobile-modal.is-touch-enabled > .dropdown-menu > .dropdown-content > .dropdown-item, .dropdown .dropdown-menu .has-link .dropdown.is-mobile-modal.is-touch-enabled > .dropdown-menu > .dropdown-content > a, .dropdown.is-mobile-modal.is-touch-enabled > .dropdown-menu > .dropdown-content > .has-link a {
     padding: 1rem 1.5rem;
   }
 }
