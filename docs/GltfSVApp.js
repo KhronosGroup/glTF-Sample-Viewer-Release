@@ -1984,9 +1984,9 @@ class gltfCamera extends GltfObject
         const node = {
             "camera": 0,
             "matrix": [mat[0], mat[1], mat[2], mat[3],
-                       mat[4], mat[5], mat[6], mat[7],
-                       mat[8], mat[9], mat[10], mat[11],
-                       mat[12], mat[13], mat[14], mat[15]]
+                mat[4], mat[5], mat[6], mat[7],
+                mat[8], mat[9], mat[10], mat[11],
+                mat[12], mat[13], mat[14], mat[15]]
         };
 
         if (this.nodeIndex !== undefined && gltf.nodes[this.nodeIndex].name !== undefined)
@@ -2277,6 +2277,8 @@ class gltfWebGl
         }
     }
 }
+
+/* globals WebGl */
 
 class gltfAccessor extends GltfObject
 {
@@ -3604,12 +3606,12 @@ class EnvironmentRenderer
         gl.bindBuffer(gl.ARRAY_BUFFER, this.vertexBuffer);
         gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([
             -1, -1, -1,
-             1, -1, -1,
-             1,  1, -1,
+            1, -1, -1,
+            1,  1, -1,
             -1,  1, -1,
             -1, -1,  1,
-             1, -1,  1,
-             1,  1,  1,
+            1, -1,  1,
+            1,  1,  1,
             -1,  1,  1
         ]), gl.STATIC_DRAW);
     }
@@ -4589,12 +4591,7 @@ class gltfBuffer extends GltfObject
             return false;
         }
 
-        const foundFile = files.find(([path, file]) => {
-            if (file.name === this.uri || file.fullPath === this.uri)
-            {
-                return true;
-            }
-        });
+        const foundFile = files.find(file => file[1].name === this.uri || file[1].fullPath === this.uri);
 
         if (foundFile === undefined)
         {
@@ -14542,7 +14539,7 @@ class gltfImage extends GltfObject
         if(extension == "ktx2" || extension == "ktx")
         {
             this.mimeType = ImageMimeType.KTX2;
-        } 
+        }
         else if(extension == "jpg" || extension == "jpeg")
         {
             this.mimeType = ImageMimeType.JPEG;
@@ -14550,14 +14547,14 @@ class gltfImage extends GltfObject
         else if(extension == "png" )
         {
             this.mimeType = ImageMimeType.PNG;
-        } 
-        else 
+        }
+        else
         {
             console.warn("MimeType not defined");
             // assume jpeg encoding as best guess
-            this.mimeType = ImageMimeType.JPEG; 
+            this.mimeType = ImageMimeType.JPEG;
         }
-    
+
     }
 
     async setImageFromUri(gltf)
@@ -14743,7 +14740,7 @@ class ImageBasedLight extends GltfObject
         }
     }
 
-    initGl(gltf, webGlContext)
+    initGl(gltf)
     {
         if (this.diffuseEnvironmentTexture !== undefined)
         {
@@ -14771,6 +14768,8 @@ class ImageBasedLight extends GltfObject
         }
     }
 }
+
+/* globals WebGl */
 
 class gltfTexture extends GltfObject
 {
@@ -15722,6 +15721,8 @@ class gltfSampler extends GltfObject
     }
 }
 
+/* globals DracoDecoderModule */
+
 class DracoDecoder {
 
     constructor(dracoLib) {
@@ -16046,7 +16047,7 @@ class gltfPrimitive extends GltfObject
         {
             const max2DTextureSize = Math.pow(webGlContext.getParameter(GL.MAX_TEXTURE_SIZE), 2);
             const maxTextureArraySize = webGlContext.getParameter(GL.MAX_ARRAY_TEXTURE_LAYERS);
-            // Check which attributes are affected by morph targets and 
+            // Check which attributes are affected by morph targets and
             // define offsets for the attributes in the morph target texture.
             const attributeOffsets = {};
             let attributeOffset = 0;
@@ -16072,7 +16073,7 @@ class gltfPrimitive extends GltfObject
                 // Add morph target defines
                 this.defines.push(`HAS_MORPH_TARGET_${attribute} 1`);
                 this.defines.push(`MORPH_TARGET_${attribute}_OFFSET ${attributeOffset}`);
-                // Store the attribute offset so that later the 
+                // Store the attribute offset so that later the
                 // morph target texture can be assembled.
                 attributeOffsets[attribute] = attributeOffset;
                 attributeOffset += targetCount;
@@ -16131,7 +16132,7 @@ class gltfPrimitive extends GltfObject
 
                 // Add the morph target texture.
                 // We have to create a WebGL2 texture as the format of the
-                // morph target texture has to be explicitly specified 
+                // morph target texture has to be explicitly specified
                 // (gltf image would assume uint8).
                 let texture = webGlContext.createTexture();
                 webGlContext.bindTexture( webGlContext.TEXTURE_2D_ARRAY, texture);
@@ -16156,8 +16157,8 @@ class gltfPrimitive extends GltfObject
                 webGlContext.texParameteri( GL.TEXTURE_2D_ARRAY,  GL.TEXTURE_WRAP_T,  GL.CLAMP_TO_EDGE);
                 webGlContext.texParameteri( GL.TEXTURE_2D_ARRAY,  GL.TEXTURE_MIN_FILTER,  GL.NEAREST);
                 webGlContext.texParameteri( GL.TEXTURE_2D_ARRAY,  GL.TEXTURE_MAG_FILTER,  GL.NEAREST);
-                
-                // Now we add the morph target texture as a gltf texture info resource, so that 
+
+                // Now we add the morph target texture as a gltf texture info resource, so that
                 // we can just call webGl.setTexture(..., gltfTextureInfo, ...) in the renderer.
                 const morphTargetImage = new gltfImage(
                     undefined, // uri
@@ -16187,7 +16188,7 @@ class gltfPrimitive extends GltfObject
                 this.morphTargetTextureInfo.generateMips = false;
             } else {
                 console.warn("Mesh of Morph targets too big. Cannot apply morphing.");
-            }         
+            }
         }
 
         this.computeCentroid(gltf);
@@ -16411,42 +16412,34 @@ class gltfPrimitive extends GltfObject
         {
         case "Int8Array":
             arrayBuffer = new ArrayBuffer(arrayData.length);
-            let int8Array = new Int8Array(arrayBuffer);
-            int8Array.set(arrayData);
+            new Int8Array(arrayBuffer).set(arrayData);
             break;
         case "Uint8Array":
             arrayBuffer = new ArrayBuffer(arrayData.length);
-            let uint8Array = new Uint8Array(arrayBuffer);
-            uint8Array.set(arrayData);
+            new Uint8Array(arrayBuffer).set(arrayData);
             break;
         case "Int16Array":
             arrayBuffer = new ArrayBuffer(arrayData.length * 2);
-            let int16Array = new Int16Array(arrayBuffer);
-            int16Array.set(arrayData);
+            new Int16Array(arrayBuffer).set(arrayData);
             break;
         case "Uint16Array":
             arrayBuffer = new ArrayBuffer(arrayData.length * 2);
-            let uint16Array = new Uint16Array(arrayBuffer);
-            uint16Array.set(arrayData);
+            new Uint16Array(arrayBuffer).set(arrayData);
             break;
         case "Int32Array":
             arrayBuffer = new ArrayBuffer(arrayData.length * 4);
-            let int32Array = new Int32Array(arrayBuffer);
-            int32Array.set(arrayData);
+            new Int32Array(arrayBuffer).set(arrayData);
             break;
         case "Uint32Array":
             arrayBuffer = new ArrayBuffer(arrayData.length * 4);
-            let uint32Array = new Uint32Array(arrayBuffer);
-            uint32Array.set(arrayData);
+            new Uint32Array(arrayBuffer).set(arrayData);
             break;
         default:
         case "Float32Array":
             arrayBuffer = new ArrayBuffer(arrayData.length * 4);
-            let floatArray = new Float32Array(arrayBuffer);
-            floatArray.set(arrayData);
+            new Float32Array(arrayBuffer).set(arrayData);
             break;
         }
-
 
         return arrayBuffer;
     }
@@ -16470,7 +16463,7 @@ class gltfPrimitive extends GltfObject
         decoderBuffer.Init(actualBuffer, origGltfDrBufViewObj.byteLength);
         let geometry = this.decodeGeometry( draco, decoder, decoderBuffer, dracoExtension.attributes, gltf );
 
-        draco.destroy( decoderBuffer );
+        draco.destroy(decoderBuffer);
 
         return geometry;
     }
@@ -16657,7 +16650,7 @@ class gltfPrimitive extends GltfObject
         if (this.indices === undefined) {
             return;
         }
-        
+
         const indices = gltf.accessors[this.indices].getTypedView(gltf);
 
         // Unweld attributes:
@@ -16685,7 +16678,7 @@ class gltfPrimitive extends GltfObject
      */
     unweldAccessor(gltf, accessor, typedIndexView) {
         const componentCount = accessor.getComponentCount(accessor.type);
-        
+
         const weldedAttribute = accessor.getDeinterlacedView(gltf);
         // Create new array with same type as weldedAttribute
         const unweldedAttribute = new weldedAttribute.constructor(gltf.accessors[this.indices].count * componentCount);
@@ -16737,9 +16730,9 @@ class gltfPrimitive extends GltfObject
 
         const tangents = generateTangents(positions, normals, texcoords);
 
-        // convert coordinate system handedness to respect output format of MikkTSpace 
+        // convert coordinate system handedness to respect output format of MikkTSpace
         for (let idx = 0; idx < tangents.length; idx += 4) {
-           tangents[idx+3] = -tangents[idx+3]; // Flip w-channel
+            tangents[idx+3] = -tangents[idx+3]; // Flip w-channel
         }
 
         // Create a new buffer and buffer view for the tangents:
@@ -18370,6 +18363,8 @@ for(var i = 0; i < rawLength; i++) {
 }
 
 function mikktspace(imports){return _loadWasmModule(0, '62b6c493308d7b10.wasm', null, imports)}
+
+/* globals LIBKTX */
 
 class KtxDecoder {
 
