@@ -56258,7 +56258,7 @@ var main = async () => {
       Colorful_Studio: "Colorful Studio",
       Wide_Street: "Wide Street",
     },
-    "assets/environments/"
+    "https://raw.githubusercontent.com/KhronosGroup/glTF-Sample-Environments/low_resolution_hdrs/",
   );
 
   const uiModel = new UIModel(app, pathProvider, environmentPaths);
