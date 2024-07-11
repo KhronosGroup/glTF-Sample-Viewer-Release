@@ -10375,7 +10375,7 @@ a.has-text-danger-dark:hover, a.has-text-danger-dark:focus {
   transition: opacity 150ms ease-out;
 }
 
-.fade-enter,
+.fade-enter-from,
 .fade-leave-to {
   opacity: 0;
 }
@@ -10391,12 +10391,12 @@ a.has-text-danger-dark:hover, a.has-text-danger-dark:focus {
   transition: transform 150ms ease-out;
 }
 
-.zoom-in-enter,
+.zoom-in-enter-from,
 .zoom-in-leave-active {
   opacity: 0;
 }
-.zoom-in-enter .animation-content,
-.zoom-in-enter .animation-content,
+.zoom-in-enter-from .animation-content,
+.zoom-in-enter-from .animation-content,
 .zoom-in-leave-active .animation-content,
 .zoom-in-leave-active .animation-content {
   transform: scale(0.95);
@@ -10413,12 +10413,12 @@ a.has-text-danger-dark:hover, a.has-text-danger-dark:focus {
   transition: transform 150ms ease-out;
 }
 
-.zoom-out-enter,
+.zoom-out-enter-from,
 .zoom-out-leave-active {
   opacity: 0;
 }
-.zoom-out-enter .animation-content,
-.zoom-out-enter .animation-content,
+.zoom-out-enter-from .animation-content,
+.zoom-out-enter-from .animation-content,
 .zoom-out-leave-active .animation-content,
 .zoom-out-leave-active .animation-content {
   transform: scale(1.05);
@@ -10431,13 +10431,13 @@ a.has-text-danger-dark:hover, a.has-text-danger-dark:focus {
   transition: transform 250ms cubic-bezier(0.785, 0.135, 0.15, 0.86);
 }
 
-.slide-prev-leave-to, .slide-next-enter {
+.slide-prev-leave-to, .slide-next-enter-from {
   transform: translate3d(-100%, 0, 0);
   position: absolute;
   width: 100%;
 }
 
-.slide-prev-enter, .slide-next-leave-to {
+.slide-prev-enter-from, .slide-next-leave-to {
   transform: translate3d(100%, 0, 0);
   position: absolute;
   width: 100%;
@@ -10450,13 +10450,13 @@ a.has-text-danger-dark:hover, a.has-text-danger-dark:focus {
   transition: transform 250ms cubic-bezier(0.785, 0.135, 0.15, 0.86);
 }
 
-.slide-up-leave-to, .slide-down-enter {
+.slide-up-leave-to, .slide-down-enter-from {
   transform: translate3d(0, -100%, 0);
   position: absolute;
   height: 100%;
 }
 
-.slide-up-enter, .slide-down-leave-to {
+.slide-up-enter-from, .slide-down-leave-to {
   transform: translate3d(0, 100%, 0);
   position: absolute;
   height: 100%;
@@ -10471,12 +10471,12 @@ a.has-text-danger-dark:hover, a.has-text-danger-dark:focus {
   transition-timing-function: cubic-bezier(0, 1, 0.5, 1);
 }
 
-.slide-enter-to, .slide-leave {
+.slide-enter-to, .slide-leave-from {
   max-height: 100px;
   overflow: hidden;
 }
 
-.slide-enter, .slide-leave-to {
+.slide-enter-from, .slide-leave-to {
   overflow: hidden;
   max-height: 0;
 }
@@ -15847,6 +15847,7 @@ label.switch {
 }
 
 .colorInput {
+  appearance: none;
   -webkit-appearance: none;
   border: solid 1px #f2f2f2;
   padding: 0;
