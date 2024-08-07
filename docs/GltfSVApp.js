@@ -1,6 +1,6 @@
 /**
  * Bundle of gltf-sample-viewer-example
- * Generated: 2024-08-02
+ * Generated: 2024-08-07
  * Version: 1.0.0
  * Dependencies:
  *
@@ -18,19 +18,19 @@
  *
  * normalize-wheel -- 1.0.1 -- BSD-3-Clause
  *
- * vue -- 3.4.35 -- MIT
+ * vue -- 3.4.36 -- MIT
  *
- * @vue/shared -- 3.4.35 -- MIT
+ * @vue/shared -- 3.4.36 -- MIT
  *
- * @vue/compiler-core -- 3.4.35 -- MIT
+ * @vue/compiler-core -- 3.4.36 -- MIT
  *
- * @vue/compiler-dom -- 3.4.35 -- MIT
+ * @vue/compiler-dom -- 3.4.36 -- MIT
  *
- * @vue/reactivity -- 3.4.35 -- MIT
+ * @vue/reactivity -- 3.4.36 -- MIT
  *
- * @vue/runtime-core -- 3.4.35 -- MIT
+ * @vue/runtime-core -- 3.4.36 -- MIT
  *
- * @vue/runtime-dom -- 3.4.35 -- MIT
+ * @vue/runtime-dom -- 3.4.36 -- MIT
  *
  * @ntohq/buefy-next -- 0.1.4 -- MIT
  */
@@ -18396,7 +18396,7 @@ const getInputObservables = (inputElement, app) => {
 var vue_cjs = {};
 
 /**
-* @vue/shared v3.4.35
+* @vue/shared v3.4.36
 * (c) 2018-present Yuxi (Evan) You and Vue contributors
 * @license MIT
 **/
@@ -18966,7 +18966,7 @@ var shared_esmBundler = /*#__PURE__*/Object.freeze({
 });
 
 /**
-* @vue/compiler-core v3.4.35
+* @vue/compiler-core v3.4.36
 * (c) 2018-present Yuxi (Evan) You and Vue contributors
 * @license MIT
 **/
@@ -20427,14 +20427,20 @@ function walkBlockDeclarations(block, onIdent) {
     } else if (stmt.type === "FunctionDeclaration" || stmt.type === "ClassDeclaration") {
       if (stmt.declare || !stmt.id) continue;
       onIdent(stmt.id);
-    } else if (stmt.type === "ForOfStatement" || stmt.type === "ForInStatement" || stmt.type === "ForStatement") {
-      const variable = stmt.type === "ForStatement" ? stmt.init : stmt.left;
-      if (variable && variable.type === "VariableDeclaration") {
-        for (const decl of variable.declarations) {
-          for (const id of extractIdentifiers(decl.id)) {
-            onIdent(id);
-          }
-        }
+    } else if (isForStatement(stmt)) {
+      walkForStatement(stmt, true, onIdent);
+    }
+  }
+}
+function isForStatement(stmt) {
+  return stmt.type === "ForOfStatement" || stmt.type === "ForInStatement" || stmt.type === "ForStatement";
+}
+function walkForStatement(stmt, isVar, onIdent) {
+  const variable = stmt.type === "ForStatement" ? stmt.init : stmt.left;
+  if (variable && variable.type === "VariableDeclaration" && (variable.kind === "var" ? isVar : !isVar)) {
+    for (const decl of variable.declarations) {
+      for (const id of extractIdentifiers(decl.id)) {
+        onIdent(id);
       }
     }
   }
@@ -24308,7 +24314,7 @@ const BindingTypes = {
 const noopDirectiveTransform = () => ({ props: [] });
 
 /**
-* @vue/compiler-dom v3.4.35
+* @vue/compiler-dom v3.4.36
 * (c) 2018-present Yuxi (Evan) You and Vue contributors
 * @license MIT
 **/
@@ -24896,7 +24902,7 @@ var compilerDom_esmBundler = /*#__PURE__*/Object.freeze({
 var require$$0 = /*@__PURE__*/getAugmentedNamespace(compilerDom_esmBundler);
 
 /**
-* @vue/reactivity v3.4.35
+* @vue/reactivity v3.4.36
 * (c) 2018-present Yuxi (Evan) You and Vue contributors
 * @license MIT
 **/
@@ -26028,7 +26034,7 @@ const TriggerOpTypes = {
 };
 
 /**
-* @vue/runtime-core v3.4.35
+* @vue/runtime-core v3.4.36
 * (c) 2018-present Yuxi (Evan) You and Vue contributors
 * @license MIT
 **/
@@ -29210,6 +29216,7 @@ Server rendered element contains more child nodes than client vdom.`
       }
       if (props) {
         if (__VUE_PROD_HYDRATION_MISMATCH_DETAILS__ || forcePatch || !optimized || patchFlag & (16 | 32)) {
+          const isCustomElement = el.tagName.includes("-");
           for (const key in props) {
             if ((__VUE_PROD_HYDRATION_MISMATCH_DETAILS__) && // #11189 skip if this node has directives that have created hooks
             // as it could have mutated the DOM in any possible way
@@ -29217,7 +29224,7 @@ Server rendered element contains more child nodes than client vdom.`
               logMismatchError();
             }
             if (forcePatch && (key.endsWith("value") || key === "indeterminate") || isOn(key) && !isReservedProp(key) || // force hydrate v-bind with .prop modifiers
-            key[0] === ".") {
+            key[0] === "." || isCustomElement) {
               patchProp(el, key, null, props[key], void 0, parentComponent);
             }
           }
@@ -32778,7 +32785,7 @@ function isMemoSame(cached, memo) {
   return true;
 }
 
-const version = "3.4.35";
+const version = "3.4.36";
 const warn = NOOP;
 const ErrorTypeStrings = ErrorTypeStrings$1 ;
 const devtools = devtools$1 ;
@@ -32798,7 +32805,7 @@ const compatUtils = null;
 const DeprecationTypes = null;
 
 /**
-* @vue/runtime-dom v3.4.35
+* @vue/runtime-dom v3.4.36
 * (c) 2018-present Yuxi (Evan) You and Vue contributors
 * @license MIT
 **/
@@ -34459,7 +34466,7 @@ var require$$1 = /*@__PURE__*/getAugmentedNamespace(runtimeDom_esmBundler);
 var require$$2 = /*@__PURE__*/getAugmentedNamespace(shared_esmBundler);
 
 /**
-* vue v3.4.35
+* vue v3.4.36
 * (c) 2018-present Yuxi (Evan) You and Vue contributors
 * @license MIT
 **/
