@@ -15709,6 +15709,10 @@ html {
   height: 100%;
 }
 
+a:hover {
+  color: #f5faef;
+}
+
 body {
   margin: 0;
   height: 100%;
@@ -15757,7 +15761,7 @@ nav.tabs {
   margin-top: 11vh;
 }
 
-.tabs li:nth-child(5) {
+.tabs li:nth-child(6) {
   margin-top: auto;
   margin-bottom: 2vh;
 }
@@ -15787,6 +15791,11 @@ nav.tabs {
 
 .tabContent {
   padding: 1em;
+}
+
+textarea {
+  background-color: #1b1b1b;
+  color: #f5f5f5;
 }
 
 .tab-item h2 {
