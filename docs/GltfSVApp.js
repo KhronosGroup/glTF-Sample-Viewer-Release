@@ -1,6 +1,6 @@
 /**
  * Bundle of gltf-sample-viewer-example
- * Generated: 2024-08-09
+ * Generated: 2024-08-13
  * Version: 1.0.0
  * Dependencies:
  *
