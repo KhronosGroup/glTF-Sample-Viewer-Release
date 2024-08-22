@@ -56019,6 +56019,17 @@ const appCreated = vue_cjs.createApp({
                 this.error("Error copying to clipboard.");
             }
         },
+        downloadJSON(filename, json) {
+            const text = JSON.stringify(json, undefined, 4);
+            const dataURL = "data:application/json;charset=utf-8," + encodeURIComponent(text);
+            const element = document.createElement("a");
+            element.setAttribute("href", dataURL);
+            element.setAttribute("download", filename);
+            element.style.display = "none";
+            document.body.appendChild(element);
+            element.click();
+            document.body.removeChild(element);
+        },
         getValidationCounter: function(){
             let number = 0;
             let color = "white";
@@ -67200,8 +67211,8 @@ var main = async () => {
               const parent = model.mainFile.substring(0, model.mainFile.lastIndexOf("/") + 1);
               return new Promise((resolve, reject) => {
                 fetch(parent + uri).then(response => {
-                  response.bytes().then(buffer => {
-                    resolve(buffer);
+                  response.arrayBuffer().then(buffer => {
+                    resolve(new Uint8Array(buffer));
                   }).catch(error => {
                     reject(error);
                   });
@@ -67211,9 +67222,11 @@ var main = async () => {
               });
             };
             const response = await fetch(model.mainFile);
-            const buffer = await response.bytes();
-            const result = await validateBytes(buffer, {externalResourceFunction: externalRefFunction, uri: model.mainFile});
-            return result;
+            const buffer = await response.arrayBuffer();
+            return await validateBytes(new Uint8Array(buffer), {
+              externalResourceFunction: externalRefFunction,
+               uri: model.mainFile
+              });
           } else if (Array.isArray(model.mainFile)) {
             const externalRefFunction = (uri) => {
               uri = "/" + uri;
@@ -67227,8 +67240,8 @@ var main = async () => {
                   }
                 }
                 if (foundFile) {
-                  foundFile.bytes().then((buffer) => {
-                    resolve(buffer);
+                  foundFile.arrayBuffer().then((buffer) => {
+                    resolve(new Uint8Array(buffer));
                   }).catch((error) => {
                     reject(error);
                   });
@@ -67238,14 +67251,17 @@ var main = async () => {
               });
             };
 
-            const buffer = await model.mainFile[1].bytes();
-            return await validateBytes(buffer, {externalResourceFunction: externalRefFunction, uri: model.mainFile[0]});
+            const buffer = await model.mainFile[1].arrayBuffer();
+            return await validateBytes(new Uint8Array(buffer), {
+              externalResourceFunction: externalRefFunction,
+              uri: model.mainFile[0]
+            });
           }
         } catch (error) {
           console.error(error);
         }
       };
-      return from(func(model));
+      return from(func(model)).pipe(catchError((error) => { console.error(`Validation failed: ${error}`); return EMPTY; }));
     })
   );
 
