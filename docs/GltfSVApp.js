@@ -2940,11 +2940,38 @@ class UserCamera extends gltfCamera
      * @param {Gltf} gltf 
      * @param {number} sceneIndex 
      */
-    fitViewToScene(gltf, sceneIndex)
+    resetView(gltf, sceneIndex)
     {
+        if(gltf === undefined)
+        {
+            return;
+        }
+
         this.transform = create$3();
         this.rotAroundX = 0;
         this.rotAroundY = 0;
+        getSceneExtents(gltf, sceneIndex, this.sceneExtents.min, this.sceneExtents.max);
+        this.fitDistanceToExtents(this.sceneExtents.min, this.sceneExtents.max);
+        this.fitCameraTargetToExtents(this.sceneExtents.min, this.sceneExtents.max);
+
+        this.fitPanSpeedToScene(this.sceneExtents.min, this.sceneExtents.max);
+        this.fitCameraPlanesToExtents(this.sceneExtents.min, this.sceneExtents.max);
+
+    }
+
+    /**
+     * Fit view to updated canvas size without changing rotation if distance is incorrect
+     * @param {Gltf} gltf 
+     * @param {number} sceneIndex 
+     */
+    fitViewToScene(gltf, sceneIndex)
+    {
+        if(gltf === undefined)
+        {
+            return;
+        }
+
+        this.transform = create$3();
         getSceneExtents(gltf, sceneIndex, this.sceneExtents.min, this.sceneExtents.max);
         this.fitDistanceToExtents(this.sceneExtents.min, this.sceneExtents.max);
         this.fitCameraTargetToExtents(this.sceneExtents.min, this.sceneExtents.max);
@@ -3608,7 +3635,7 @@ var iridescenceShader = "#define GLSLIFY 1\nconst mat3 XYZ_TO_REC709=mat3(3.2404
 
 var materialInfoShader = "#define GLSLIFY 1\nuniform float u_MetallicFactor;uniform float u_RoughnessFactor;uniform vec4 u_BaseColorFactor;uniform vec3 u_SpecularFactor;uniform vec4 u_DiffuseFactor;uniform float u_GlossinessFactor;uniform float u_SheenRoughnessFactor;uniform vec3 u_SheenColorFactor;uniform float u_ClearcoatFactor;uniform float u_ClearcoatRoughnessFactor;uniform vec3 u_KHR_materials_specular_specularColorFactor;uniform float u_KHR_materials_specular_specularFactor;uniform float u_TransmissionFactor;uniform float u_ThicknessFactor;uniform vec3 u_AttenuationColor;uniform float u_AttenuationDistance;uniform float u_IridescenceFactor;uniform float u_IridescenceIor;uniform float u_IridescenceThicknessMinimum;uniform float u_IridescenceThicknessMaximum;uniform float u_DiffuseTransmissionFactor;uniform vec3 u_DiffuseTransmissionColorFactor;uniform float u_EmissiveStrength;uniform float u_Ior;uniform vec3 u_Anisotropy;uniform float u_Dispersion;uniform float u_AlphaCutoff;uniform vec3 u_Camera;\n#ifdef MATERIAL_TRANSMISSION\nuniform ivec2 u_ScreenSize;\n#endif\nuniform mat4 u_ModelMatrix;uniform mat4 u_ViewMatrix;uniform mat4 u_ProjectionMatrix;struct MaterialInfo{float ior;float perceptualRoughness;vec3 f0_dielectric;float alphaRoughness;float fresnel_w;vec3 f90;vec3 f90_dielectric;float metallic;vec3 baseColor;float sheenRoughnessFactor;vec3 sheenColorFactor;vec3 clearcoatF0;vec3 clearcoatF90;float clearcoatFactor;vec3 clearcoatNormal;float clearcoatRoughness;float specularWeight;float transmissionFactor;float thickness;vec3 attenuationColor;float attenuationDistance;float iridescenceFactor;float iridescenceIor;float iridescenceThickness;float diffuseTransmissionFactor;vec3 diffuseTransmissionColorFactor;vec3 anisotropicT;vec3 anisotropicB;float anisotropyStrength;float dispersion;};NormalInfo getNormalInfo(vec3 v){vec2 UV=getNormalUV();vec2 uv_dx=dFdx(UV);vec2 uv_dy=dFdy(UV);if(length(uv_dx)<=1e-2){uv_dx=vec2(1.0,0.0);}if(length(uv_dy)<=1e-2){uv_dy=vec2(0.0,1.0);}vec3 t_=(uv_dy.t*dFdx(v_Position)-uv_dx.t*dFdy(v_Position))/(uv_dx.s*uv_dy.t-uv_dy.s*uv_dx.t);vec3 n,t,b,ng;\n#ifdef HAS_NORMAL_VEC3\n#ifdef HAS_TANGENT_VEC4\nt=normalize(v_TBN[0]);b=normalize(v_TBN[1]);ng=normalize(v_TBN[2]);\n#else\nng=normalize(v_Normal);t=normalize(t_-ng*dot(ng,t_));b=cross(ng,t);\n#endif\n#else\nng=normalize(cross(dFdx(v_Position),dFdy(v_Position)));t=normalize(t_-ng*dot(ng,t_));b=cross(ng,t);\n#endif\nif(gl_FrontFacing==false){t*=-1.0;b*=-1.0;ng*=-1.0;}NormalInfo info;info.ng=ng;\n#ifdef HAS_NORMAL_MAP\ninfo.ntex=texture(u_NormalSampler,UV).rgb*2.0-vec3(1.0);info.ntex*=vec3(u_NormalScale,u_NormalScale,1.0);info.ntex=normalize(info.ntex);info.n=normalize(mat3(t,b,ng)*info.ntex);\n#else\ninfo.n=ng;\n#endif\ninfo.t=t;info.b=b;return info;}\n#ifdef MATERIAL_CLEARCOAT\nvec3 getClearcoatNormal(NormalInfo normalInfo){\n#ifdef HAS_CLEARCOAT_NORMAL_MAP\nvec3 n=texture(u_ClearcoatNormalSampler,getClearcoatNormalUV()).rgb*2.0-vec3(1.0);n*=vec3(u_ClearcoatNormalScale,u_ClearcoatNormalScale,1.0);n=mat3(normalInfo.t,normalInfo.b,normalInfo.ng)*normalize(n);return n;\n#else\nreturn normalInfo.ng;\n#endif\n}\n#endif\nvec4 getBaseColor(){vec4 baseColor=vec4(1);\n#if defined(MATERIAL_SPECULARGLOSSINESS)\nbaseColor=u_DiffuseFactor;\n#elif defined(MATERIAL_METALLICROUGHNESS)\nbaseColor=u_BaseColorFactor;\n#endif\n#if defined(MATERIAL_SPECULARGLOSSINESS) && defined(HAS_DIFFUSE_MAP)\nbaseColor*=texture(u_DiffuseSampler,getDiffuseUV());\n#elif defined(MATERIAL_METALLICROUGHNESS) && defined(HAS_BASE_COLOR_MAP)\nbaseColor*=texture(u_BaseColorSampler,getBaseColorUV());\n#endif\nreturn baseColor*getVertexColor();}\n#ifdef MATERIAL_SPECULARGLOSSINESS\nMaterialInfo getSpecularGlossinessInfo(MaterialInfo info){info.f0_dielectric=u_SpecularFactor;info.perceptualRoughness=u_GlossinessFactor;\n#ifdef HAS_SPECULAR_GLOSSINESS_MAP\nvec4 sgSample=texture(u_SpecularGlossinessSampler,getSpecularGlossinessUV());info.perceptualRoughness*=sgSample.a;info.f0_dielectric*=sgSample.rgb;\n#endif\ninfo.perceptualRoughness=1.0-info.perceptualRoughness;return info;}\n#endif\n#ifdef MATERIAL_METALLICROUGHNESS\nMaterialInfo getMetallicRoughnessInfo(MaterialInfo info){info.metallic=u_MetallicFactor;info.perceptualRoughness=u_RoughnessFactor;\n#ifdef HAS_METALLIC_ROUGHNESS_MAP\nvec4 mrSample=texture(u_MetallicRoughnessSampler,getMetallicRoughnessUV());info.perceptualRoughness*=mrSample.g;info.metallic*=mrSample.b;\n#endif\nreturn info;}\n#endif\n#ifdef MATERIAL_SHEEN\nMaterialInfo getSheenInfo(MaterialInfo info){info.sheenColorFactor=u_SheenColorFactor;info.sheenRoughnessFactor=u_SheenRoughnessFactor;\n#ifdef HAS_SHEEN_COLOR_MAP\nvec4 sheenColorSample=texture(u_SheenColorSampler,getSheenColorUV());info.sheenColorFactor*=sheenColorSample.rgb;\n#endif\n#ifdef HAS_SHEEN_ROUGHNESS_MAP\nvec4 sheenRoughnessSample=texture(u_SheenRoughnessSampler,getSheenRoughnessUV());info.sheenRoughnessFactor*=sheenRoughnessSample.a;\n#endif\nreturn info;}\n#endif\n#ifdef MATERIAL_SPECULAR\nMaterialInfo getSpecularInfo(MaterialInfo info){vec4 specularTexture=vec4(1.0);\n#ifdef HAS_SPECULAR_MAP\nspecularTexture.a=texture(u_SpecularSampler,getSpecularUV()).a;\n#endif\n#ifdef HAS_SPECULAR_COLOR_MAP\nspecularTexture.rgb=texture(u_SpecularColorSampler,getSpecularColorUV()).rgb;\n#endif\ninfo.f0_dielectric=min(info.f0_dielectric*u_KHR_materials_specular_specularColorFactor*specularTexture.rgb,vec3(1.0));info.specularWeight=u_KHR_materials_specular_specularFactor*specularTexture.a;info.f90_dielectric=vec3(info.specularWeight);return info;}\n#endif\n#ifdef MATERIAL_TRANSMISSION\nMaterialInfo getTransmissionInfo(MaterialInfo info){info.transmissionFactor=u_TransmissionFactor;\n#ifdef HAS_TRANSMISSION_MAP\nvec4 transmissionSample=texture(u_TransmissionSampler,getTransmissionUV());info.transmissionFactor*=transmissionSample.r;\n#endif\n#ifdef MATERIAL_DISPERSION\ninfo.dispersion=u_Dispersion;\n#else\ninfo.dispersion=0.0;\n#endif\nreturn info;}\n#endif\n#ifdef MATERIAL_VOLUME\nMaterialInfo getVolumeInfo(MaterialInfo info){info.thickness=u_ThicknessFactor;info.attenuationColor=u_AttenuationColor;info.attenuationDistance=u_AttenuationDistance;\n#ifdef HAS_THICKNESS_MAP\nvec4 thicknessSample=texture(u_ThicknessSampler,getThicknessUV());info.thickness*=thicknessSample.g;\n#endif\nreturn info;}\n#endif\n#ifdef MATERIAL_IRIDESCENCE\nMaterialInfo getIridescenceInfo(MaterialInfo info){info.iridescenceFactor=u_IridescenceFactor;info.iridescenceIor=u_IridescenceIor;info.iridescenceThickness=u_IridescenceThicknessMaximum;\n#ifdef HAS_IRIDESCENCE_MAP\ninfo.iridescenceFactor*=texture(u_IridescenceSampler,getIridescenceUV()).r;\n#endif\n#ifdef HAS_IRIDESCENCE_THICKNESS_MAP\nfloat thicknessSampled=texture(u_IridescenceThicknessSampler,getIridescenceThicknessUV()).g;float thickness=mix(u_IridescenceThicknessMinimum,u_IridescenceThicknessMaximum,thicknessSampled);info.iridescenceThickness=thickness;\n#endif\nreturn info;}\n#endif\n#ifdef MATERIAL_DIFFUSE_TRANSMISSION\nMaterialInfo getDiffuseTransmissionInfo(MaterialInfo info){info.diffuseTransmissionFactor=u_DiffuseTransmissionFactor;info.diffuseTransmissionColorFactor=u_DiffuseTransmissionColorFactor;\n#ifdef HAS_DIFFUSE_TRANSMISSION_MAP\ninfo.diffuseTransmissionFactor*=texture(u_DiffuseTransmissionSampler,getDiffuseTransmissionUV()).a;\n#endif\n#ifdef HAS_DIFFUSE_TRANSMISSION_COLOR_MAP\ninfo.diffuseTransmissionColorFactor*=texture(u_DiffuseTransmissionColorSampler,getDiffuseTransmissionColorUV()).rgb;\n#endif\nreturn info;}\n#endif\n#ifdef MATERIAL_CLEARCOAT\nMaterialInfo getClearCoatInfo(MaterialInfo info,NormalInfo normalInfo){info.clearcoatFactor=u_ClearcoatFactor;info.clearcoatRoughness=u_ClearcoatRoughnessFactor;info.clearcoatF0=vec3(pow((info.ior-1.0)/(info.ior+1.0),2.0));info.clearcoatF90=vec3(1.0);\n#ifdef HAS_CLEARCOAT_MAP\nvec4 clearcoatSample=texture(u_ClearcoatSampler,getClearcoatUV());info.clearcoatFactor*=clearcoatSample.r;\n#endif\n#ifdef HAS_CLEARCOAT_ROUGHNESS_MAP\nvec4 clearcoatSampleRoughness=texture(u_ClearcoatRoughnessSampler,getClearcoatRoughnessUV());info.clearcoatRoughness*=clearcoatSampleRoughness.g;\n#endif\ninfo.clearcoatNormal=getClearcoatNormal(normalInfo);info.clearcoatRoughness=clamp(info.clearcoatRoughness,0.0,1.0);return info;}\n#endif\n#ifdef MATERIAL_IOR\nMaterialInfo getIorInfo(MaterialInfo info){info.f0_dielectric=vec3(pow((u_Ior-1.0)/(u_Ior+1.0),2.0));info.ior=u_Ior;return info;}\n#endif\n#ifdef MATERIAL_ANISOTROPY\nMaterialInfo getAnisotropyInfo(MaterialInfo info,NormalInfo normalInfo){vec2 direction=vec2(1.0,0.0);float strengthFactor=1.0;\n#ifdef HAS_ANISOTROPY_MAP\nvec3 anisotropySample=texture(u_AnisotropySampler,getAnisotropyUV()).xyz;direction=anisotropySample.xy*2.0-vec2(1.0);strengthFactor=anisotropySample.z;\n#endif\nvec2 directionRotation=u_Anisotropy.xy;mat2 rotationMatrix=mat2(directionRotation.x,directionRotation.y,-directionRotation.y,directionRotation.x);direction=rotationMatrix*direction.xy;info.anisotropicT=mat3(normalInfo.t,normalInfo.b,normalInfo.n)*normalize(vec3(direction,0.0));info.anisotropicB=cross(normalInfo.ng,info.anisotropicT);info.anisotropyStrength=clamp(u_Anisotropy.z*strengthFactor,0.0,1.0);return info;}\n#endif\nfloat albedoSheenScalingLUT(float NdotV,float sheenRoughnessFactor){return texture(u_SheenELUT,vec2(NdotV,sheenRoughnessFactor)).r;}"; // eslint-disable-line
 
-var iblShader = "#define GLSLIFY 1\nuniform float u_EnvIntensity;vec3 getDiffuseLight(vec3 n){return texture(u_LambertianEnvSampler,u_EnvRotation*n).rgb*u_EnvIntensity;}vec4 getSpecularSample(vec3 reflection,float lod){return textureLod(u_GGXEnvSampler,u_EnvRotation*reflection,lod)*u_EnvIntensity;}vec4 getSheenSample(vec3 reflection,float lod){return textureLod(u_CharlieEnvSampler,u_EnvRotation*reflection,lod)*u_EnvIntensity;}vec3 getIBLGGXFresnel(vec3 n,vec3 v,float roughness,vec3 F0,float specularWeight){float NdotV=clampedDot(n,v);vec2 brdfSamplePoint=clamp(vec2(NdotV,roughness),vec2(0.0,0.0),vec2(1.0,1.0));vec2 f_ab=texture(u_GGXLUT,brdfSamplePoint).rg;vec3 Fr=max(vec3(1.0-roughness),F0)-F0;vec3 k_S=F0+Fr*pow(1.0-NdotV,5.0);vec3 FssEss=specularWeight*(k_S*f_ab.x+f_ab.y);float Ems=(1.0-(f_ab.x+f_ab.y));vec3 F_avg=specularWeight*(F0+(1.0-F0)/21.0);vec3 FmsEms=Ems*FssEss*F_avg/(1.0-F_avg*Ems);return FssEss+FmsEms;}vec3 getIBLRadianceGGX(vec3 n,vec3 v,float roughness){float NdotV=clampedDot(n,v);float lod=roughness*float(u_MipCount-1);vec3 reflection=normalize(reflect(-v,n));vec4 specularSample=getSpecularSample(reflection,lod);vec3 specularLight=specularSample.rgb;return specularLight;}\n#ifdef MATERIAL_TRANSMISSION\nvec3 getTransmissionSample(vec2 fragCoord,float roughness,float ior){float framebufferLod=log2(float(u_TransmissionFramebufferSize.x))*applyIorToRoughness(roughness,ior);vec3 transmittedLight=textureLod(u_TransmissionFramebufferSampler,fragCoord.xy,framebufferLod).rgb;return transmittedLight;}\n#endif\n#ifdef MATERIAL_TRANSMISSION\nvec3 getIBLVolumeRefraction(vec3 n,vec3 v,float perceptualRoughness,vec3 baseColor,vec3 f0,vec3 f90,vec3 position,mat4 modelMatrix,mat4 viewMatrix,mat4 projMatrix,float ior,float thickness,vec3 attenuationColor,float attenuationDistance,float dispersion){\n#ifdef MATERIAL_DISPERSION\nfloat halfSpread=(ior-1.0)*0.025*dispersion;vec3 iors=vec3(ior-halfSpread,ior,ior+halfSpread);vec3 transmittedLight;float transmissionRayLength;for(int i=0;i<3;i++){vec3 transmissionRay=getVolumeTransmissionRay(n,v,thickness,iors[i],modelMatrix);transmissionRayLength=length(transmissionRay);vec3 refractedRayExit=position+transmissionRay;vec4 ndcPos=projMatrix*viewMatrix*vec4(refractedRayExit,1.0);vec2 refractionCoords=ndcPos.xy/ndcPos.w;refractionCoords+=1.0;refractionCoords/=2.0;transmittedLight[i]=getTransmissionSample(refractionCoords,perceptualRoughness,iors[i])[i];}\n#else\nvec3 transmissionRay=getVolumeTransmissionRay(n,v,thickness,ior,modelMatrix);float transmissionRayLength=length(transmissionRay);vec3 refractedRayExit=position+transmissionRay;vec4 ndcPos=projMatrix*viewMatrix*vec4(refractedRayExit,1.0);vec2 refractionCoords=ndcPos.xy/ndcPos.w;refractionCoords+=1.0;refractionCoords/=2.0;vec3 transmittedLight=getTransmissionSample(refractionCoords,perceptualRoughness,ior);\n#endif\nvec3 attenuatedColor=applyVolumeAttenuation(transmittedLight,transmissionRayLength,attenuationColor,attenuationDistance);float NdotV=clampedDot(n,v);vec2 brdfSamplePoint=clamp(vec2(NdotV,perceptualRoughness),vec2(0.0,0.0),vec2(1.0,1.0));vec2 brdf=texture(u_GGXLUT,brdfSamplePoint).rg;vec3 specularColor=f0*brdf.x+f90*brdf.y;return(1.0-specularColor)*attenuatedColor*baseColor;}\n#endif\n#ifdef MATERIAL_ANISOTROPY\nvec3 getIBLRadianceAnisotropy(vec3 n,vec3 v,float roughness,float anisotropy,vec3 anisotropyDirection){float NdotV=clampedDot(n,v);float tangentRoughness=mix(roughness,1.0,anisotropy*anisotropy);vec3 anisotropicTangent=cross(anisotropyDirection,v);vec3 anisotropicNormal=cross(anisotropicTangent,anisotropyDirection);float bendFactor=1.0-anisotropy*(1.0-roughness);float bendFactorPow4=bendFactor*bendFactor*bendFactor*bendFactor;vec3 bentNormal=normalize(mix(anisotropicNormal,n,bendFactorPow4));float lod=roughness*float(u_MipCount-1);vec3 reflection=normalize(reflect(-v,bentNormal));vec4 specularSample=getSpecularSample(reflection,lod);vec3 specularLight=specularSample.rgb;return specularLight;}\n#endif\nvec3 getIBLRadianceCharlie(vec3 n,vec3 v,float sheenRoughness,vec3 sheenColor){float NdotV=clampedDot(n,v);float lod=sheenRoughness*float(u_MipCount-1);vec3 reflection=normalize(reflect(-v,n));vec2 brdfSamplePoint=clamp(vec2(NdotV,sheenRoughness),vec2(0.0,0.0),vec2(1.0,1.0));float brdf=texture(u_CharlieLUT,brdfSamplePoint).b;vec4 sheenSample=getSheenSample(reflection,lod);vec3 sheenLight=sheenSample.rgb;return sheenLight*sheenColor*brdf;}"; // eslint-disable-line
+var iblShader = "#define GLSLIFY 1\nuniform float u_EnvIntensity;vec3 getDiffuseLight(vec3 n){vec4 textureSample=texture(u_LambertianEnvSampler,u_EnvRotation*n);return(textureSample.rgb/textureSample.a)*u_EnvIntensity;}vec4 getSpecularSample(vec3 reflection,float lod){vec4 textureSample=textureLod(u_GGXEnvSampler,u_EnvRotation*reflection,lod);textureSample.rgb/=textureSample.a;textureSample.rgb*=u_EnvIntensity;return textureSample;}vec4 getSheenSample(vec3 reflection,float lod){vec4 textureSample=textureLod(u_CharlieEnvSampler,u_EnvRotation*reflection,lod);textureSample.rgb/=textureSample.a;textureSample.rgb*=u_EnvIntensity;return textureSample;}vec3 getIBLGGXFresnel(vec3 n,vec3 v,float roughness,vec3 F0,float specularWeight){float NdotV=clampedDot(n,v);vec2 brdfSamplePoint=clamp(vec2(NdotV,roughness),vec2(0.0,0.0),vec2(1.0,1.0));vec2 f_ab=texture(u_GGXLUT,brdfSamplePoint).rg;vec3 Fr=max(vec3(1.0-roughness),F0)-F0;vec3 k_S=F0+Fr*pow(1.0-NdotV,5.0);vec3 FssEss=specularWeight*(k_S*f_ab.x+f_ab.y);float Ems=(1.0-(f_ab.x+f_ab.y));vec3 F_avg=specularWeight*(F0+(1.0-F0)/21.0);vec3 FmsEms=Ems*FssEss*F_avg/(1.0-F_avg*Ems);return FssEss+FmsEms;}vec3 getIBLRadianceGGX(vec3 n,vec3 v,float roughness){float NdotV=clampedDot(n,v);float lod=roughness*float(u_MipCount-1);vec3 reflection=normalize(reflect(-v,n));vec4 specularSample=getSpecularSample(reflection,lod);vec3 specularLight=specularSample.rgb;return specularLight;}\n#ifdef MATERIAL_TRANSMISSION\nvec3 getTransmissionSample(vec2 fragCoord,float roughness,float ior){float framebufferLod=log2(float(u_TransmissionFramebufferSize.x))*applyIorToRoughness(roughness,ior);vec3 transmittedLight=textureLod(u_TransmissionFramebufferSampler,fragCoord.xy,framebufferLod).rgb;return transmittedLight;}\n#endif\n#ifdef MATERIAL_TRANSMISSION\nvec3 getIBLVolumeRefraction(vec3 n,vec3 v,float perceptualRoughness,vec3 baseColor,vec3 f0,vec3 f90,vec3 position,mat4 modelMatrix,mat4 viewMatrix,mat4 projMatrix,float ior,float thickness,vec3 attenuationColor,float attenuationDistance,float dispersion){\n#ifdef MATERIAL_DISPERSION\nfloat halfSpread=(ior-1.0)*0.025*dispersion;vec3 iors=vec3(ior-halfSpread,ior,ior+halfSpread);vec3 transmittedLight;float transmissionRayLength;for(int i=0;i<3;i++){vec3 transmissionRay=getVolumeTransmissionRay(n,v,thickness,iors[i],modelMatrix);transmissionRayLength=length(transmissionRay);vec3 refractedRayExit=position+transmissionRay;vec4 ndcPos=projMatrix*viewMatrix*vec4(refractedRayExit,1.0);vec2 refractionCoords=ndcPos.xy/ndcPos.w;refractionCoords+=1.0;refractionCoords/=2.0;transmittedLight[i]=getTransmissionSample(refractionCoords,perceptualRoughness,iors[i])[i];}\n#else\nvec3 transmissionRay=getVolumeTransmissionRay(n,v,thickness,ior,modelMatrix);float transmissionRayLength=length(transmissionRay);vec3 refractedRayExit=position+transmissionRay;vec4 ndcPos=projMatrix*viewMatrix*vec4(refractedRayExit,1.0);vec2 refractionCoords=ndcPos.xy/ndcPos.w;refractionCoords+=1.0;refractionCoords/=2.0;vec3 transmittedLight=getTransmissionSample(refractionCoords,perceptualRoughness,ior);\n#endif\nvec3 attenuatedColor=applyVolumeAttenuation(transmittedLight,transmissionRayLength,attenuationColor,attenuationDistance);float NdotV=clampedDot(n,v);vec2 brdfSamplePoint=clamp(vec2(NdotV,perceptualRoughness),vec2(0.0,0.0),vec2(1.0,1.0));vec2 brdf=texture(u_GGXLUT,brdfSamplePoint).rg;vec3 specularColor=f0*brdf.x+f90*brdf.y;return(1.0-specularColor)*attenuatedColor*baseColor;}\n#endif\n#ifdef MATERIAL_ANISOTROPY\nvec3 getIBLRadianceAnisotropy(vec3 n,vec3 v,float roughness,float anisotropy,vec3 anisotropyDirection){float NdotV=clampedDot(n,v);float tangentRoughness=mix(roughness,1.0,anisotropy*anisotropy);vec3 anisotropicTangent=cross(anisotropyDirection,v);vec3 anisotropicNormal=cross(anisotropicTangent,anisotropyDirection);float bendFactor=1.0-anisotropy*(1.0-roughness);float bendFactorPow4=bendFactor*bendFactor*bendFactor*bendFactor;vec3 bentNormal=normalize(mix(anisotropicNormal,n,bendFactorPow4));float lod=roughness*float(u_MipCount-1);vec3 reflection=normalize(reflect(-v,bentNormal));vec4 specularSample=getSpecularSample(reflection,lod);vec3 specularLight=specularSample.rgb;return specularLight;}\n#endif\nvec3 getIBLRadianceCharlie(vec3 n,vec3 v,float sheenRoughness,vec3 sheenColor){float NdotV=clampedDot(n,v);float lod=sheenRoughness*float(u_MipCount-1);vec3 reflection=normalize(reflect(-v,n));vec2 brdfSamplePoint=clamp(vec2(NdotV,sheenRoughness),vec2(0.0,0.0),vec2(1.0,1.0));float brdf=texture(u_CharlieLUT,brdfSamplePoint).b;vec4 sheenSample=getSheenSample(reflection,lod);vec3 sheenLight=sheenSample.rgb;return sheenLight*sheenColor*brdf;}"; // eslint-disable-line
 
 var punctualShader = "#define GLSLIFY 1\nstruct Light{vec3 direction;float range;vec3 color;float intensity;vec3 position;float innerConeCos;float outerConeCos;int type;};const int LightType_Directional=0;const int LightType_Point=1;const int LightType_Spot=2;\n#ifdef USE_PUNCTUAL\nuniform Light u_Lights[LIGHT_COUNT+1];\n#endif\nfloat getRangeAttenuation(float range,float distance){if(range<=0.0){return 1.0/pow(distance,2.0);}return max(min(1.0-pow(distance/range,4.0),1.0),0.0)/pow(distance,2.0);}float getSpotAttenuation(vec3 pointToLight,vec3 spotDirection,float outerConeCos,float innerConeCos){float actualCos=dot(normalize(spotDirection),normalize(-pointToLight));if(actualCos>outerConeCos){if(actualCos<innerConeCos){float angularAttenuation=(actualCos-outerConeCos)/(innerConeCos-outerConeCos);return angularAttenuation*angularAttenuation;}return 1.0;}return 0.0;}vec3 getLighIntensity(Light light,vec3 pointToLight){float rangeAttenuation=1.0;float spotAttenuation=1.0;if(light.type!=LightType_Directional){rangeAttenuation=getRangeAttenuation(light.range,length(pointToLight));}if(light.type==LightType_Spot){spotAttenuation=getSpotAttenuation(pointToLight,light.direction,light.outerConeCos,light.innerConeCos);}return rangeAttenuation*spotAttenuation*light.intensity*light.color;}vec3 getPunctualRadianceTransmission(vec3 normal,vec3 view,vec3 pointToLight,float alphaRoughness,vec3 f0,vec3 f90,vec3 baseColor,float ior){float transmissionRougness=applyIorToRoughness(alphaRoughness,ior);vec3 n=normalize(normal);vec3 v=normalize(view);vec3 l=normalize(pointToLight);vec3 l_mirror=normalize(l+2.0*n*dot(-l,n));vec3 h=normalize(l_mirror+v);float D=D_GGX(clamp(dot(n,h),0.0,1.0),transmissionRougness);vec3 F=F_Schlick(f0,f90,clamp(dot(v,h),0.0,1.0));float Vis=V_GGX(clamp(dot(n,l_mirror),0.0,1.0),clamp(dot(n,v),0.0,1.0),transmissionRougness);return(1.0-F)*baseColor*D*Vis;}vec3 getPunctualRadianceClearCoat(vec3 clearcoatNormal,vec3 v,vec3 l,vec3 h,float VdotH,vec3 f0,vec3 f90,float clearcoatRoughness){float NdotL=clampedDot(clearcoatNormal,l);float NdotV=clampedDot(clearcoatNormal,v);float NdotH=clampedDot(clearcoatNormal,h);return NdotL*BRDF_specularGGX(clearcoatRoughness*clearcoatRoughness,NdotL,NdotV,NdotH);}vec3 getPunctualRadianceSheen(vec3 sheenColor,float sheenRoughness,float NdotL,float NdotV,float NdotH){return NdotL*BRDF_specularSheen(sheenColor,sheenRoughness,NdotL,NdotV,NdotH);}vec3 applyVolumeAttenuation(vec3 radiance,float transmissionDistance,vec3 attenuationColor,float attenuationDistance){if(attenuationDistance==0.0){return radiance;}else{vec3 transmittance=pow(attenuationColor,vec3(transmissionDistance/attenuationDistance));return transmittance*radiance;}}vec3 getVolumeTransmissionRay(vec3 n,vec3 v,float thickness,float ior,mat4 modelMatrix){vec3 refractionVector=refract(-v,normalize(n),1.0/ior);vec3 modelScale;modelScale.x=length(vec3(modelMatrix[0].xyz));modelScale.y=length(vec3(modelMatrix[1].xyz));modelScale.z=length(vec3(modelMatrix[2].xyz));return normalize(refractionVector)*thickness*modelScale;}"; // eslint-disable-line
 
@@ -3624,7 +3651,7 @@ var animationShader = "#define GLSLIFY 1\n#ifdef HAS_MORPH_TARGETS\nuniform high
 
 var cubemapVertShader = "#define GLSLIFY 1\nuniform mat4 u_ViewProjectionMatrix;uniform mat3 u_EnvRotation;in vec3 a_position;out vec3 v_TexCoords;void main(){v_TexCoords=u_EnvRotation*a_position;mat4 mat=u_ViewProjectionMatrix;mat[3]=vec4(0.0,0.0,0.0,0.1);vec4 pos=mat*vec4(a_position,1.0);gl_Position=pos.xyww;}"; // eslint-disable-line
 
-var cubemapFragShader = "precision highp float;\n#define GLSLIFY 1\n#include <tonemapping.glsl>\nuniform float u_EnvIntensity;uniform float u_EnvBlurNormalized;uniform int u_MipCount;uniform samplerCube u_GGXEnvSampler;out vec4 FragColor;in vec3 v_TexCoords;void main(){vec4 color=textureLod(u_GGXEnvSampler,v_TexCoords,u_EnvBlurNormalized*float(u_MipCount-1))*u_EnvIntensity;\n#ifdef LINEAR_OUTPUT\nFragColor=color.rgba;\n#else\nFragColor=vec4(toneMap(color.rgb),color.a);\n#endif\n}"; // eslint-disable-line
+var cubemapFragShader = "precision highp float;\n#define GLSLIFY 1\n#include <tonemapping.glsl>\nuniform float u_EnvIntensity;uniform float u_EnvBlurNormalized;uniform int u_MipCount;uniform samplerCube u_GGXEnvSampler;out vec4 FragColor;in vec3 v_TexCoords;void main(){vec4 color=textureLod(u_GGXEnvSampler,v_TexCoords,u_EnvBlurNormalized*float(u_MipCount-1))*u_EnvIntensity;color.rgb/=color.a;\n#ifdef LINEAR_OUTPUT\nFragColor=color.rgba;\n#else\nFragColor=vec4(toneMap(color.rgb),color.a);\n#endif\n}"; // eslint-disable-line
 
 class gltfLight extends GltfObject
 {
@@ -14477,7 +14504,7 @@ class gltfLoader
     }
 }
 
-var iblFiltering = "precision mediump float;\n#define GLSLIFY 1\n#define MATH_PI 3.1415926535897932384626433832795\nuniform samplerCube uCubeMap;const int cLambertian=0;const int cGGX=1;const int cCharlie=2;uniform float u_roughness;uniform int u_sampleCount;uniform int u_width;uniform float u_lodBias;uniform int u_distribution;uniform int u_currentFace;uniform int u_isGeneratingLUT;in vec2 texCoord;out vec4 fragmentColor;vec3 uvToXYZ(int face,vec2 uv){if(face==0)return vec3(1.f,uv.y,-uv.x);else if(face==1)return vec3(-1.f,uv.y,uv.x);else if(face==2)return vec3(+uv.x,-1.f,+uv.y);else if(face==3)return vec3(+uv.x,1.f,-uv.y);else if(face==4)return vec3(+uv.x,uv.y,1.f);else{return vec3(-uv.x,+uv.y,-1.f);}}vec2 dirToUV(vec3 dir){return vec2(0.5f+0.5f*atan(dir.z,dir.x)/MATH_PI,1.f-acos(dir.y)/MATH_PI);}float saturate(float v){return clamp(v,0.0f,1.0f);}float radicalInverse_VdC(uint bits){bits=(bits<<16u)|(bits>>16u);bits=((bits&0x55555555u)<<1u)|((bits&0xAAAAAAAAu)>>1u);bits=((bits&0x33333333u)<<2u)|((bits&0xCCCCCCCCu)>>2u);bits=((bits&0x0F0F0F0Fu)<<4u)|((bits&0xF0F0F0F0u)>>4u);bits=((bits&0x00FF00FFu)<<8u)|((bits&0xFF00FF00u)>>8u);return float(bits)*2.3283064365386963e-10;}vec2 hammersley2d(int i,int N){return vec2(float(i)/float(N),radicalInverse_VdC(uint(i)));}mat3 generateTBN(vec3 normal){vec3 bitangent=vec3(0.0,1.0,0.0);float NdotUp=dot(normal,vec3(0.0,1.0,0.0));float epsilon=0.0000001;if(1.0-abs(NdotUp)<=epsilon){if(NdotUp>0.0){bitangent=vec3(0.0,0.0,1.0);}else{bitangent=vec3(0.0,0.0,-1.0);}}vec3 tangent=normalize(cross(bitangent,normal));bitangent=cross(normal,tangent);return mat3(tangent,bitangent,normal);}struct MicrofacetDistributionSample{float pdf;float cosTheta;float sinTheta;float phi;};float D_GGX(float NdotH,float roughness){float a=NdotH*roughness;float k=roughness/(1.0-NdotH*NdotH+a*a);return k*k*(1.0/MATH_PI);}MicrofacetDistributionSample GGX(vec2 xi,float roughness){MicrofacetDistributionSample ggx;float alpha=roughness*roughness;ggx.cosTheta=saturate(sqrt((1.0-xi.y)/(1.0+(alpha*alpha-1.0)*xi.y)));ggx.sinTheta=sqrt(1.0-ggx.cosTheta*ggx.cosTheta);ggx.phi=2.0*MATH_PI*xi.x;ggx.pdf=D_GGX(ggx.cosTheta,alpha);ggx.pdf/=4.0;return ggx;}float D_Ashikhmin(float NdotH,float roughness){float alpha=roughness*roughness;float a2=alpha*alpha;float cos2h=NdotH*NdotH;float sin2h=1.0-cos2h;float sin4h=sin2h*sin2h;float cot2=-cos2h/(a2*sin2h);return 1.0/(MATH_PI*(4.0*a2+1.0)*sin4h)*(4.0*exp(cot2)+sin4h);}float D_Charlie(float sheenRoughness,float NdotH){sheenRoughness=max(sheenRoughness,0.000001);float invR=1.0/sheenRoughness;float cos2h=NdotH*NdotH;float sin2h=1.0-cos2h;return(2.0+invR)*pow(sin2h,invR*0.5)/(2.0*MATH_PI);}MicrofacetDistributionSample Charlie(vec2 xi,float roughness){MicrofacetDistributionSample charlie;float alpha=roughness*roughness;charlie.sinTheta=pow(xi.y,alpha/(2.0*alpha+1.0));charlie.cosTheta=sqrt(1.0-charlie.sinTheta*charlie.sinTheta);charlie.phi=2.0*MATH_PI*xi.x;charlie.pdf=D_Charlie(alpha,charlie.cosTheta);charlie.pdf/=4.0;return charlie;}MicrofacetDistributionSample Lambertian(vec2 xi,float roughness){MicrofacetDistributionSample lambertian;lambertian.cosTheta=sqrt(1.0-xi.y);lambertian.sinTheta=sqrt(xi.y);lambertian.phi=2.0*MATH_PI*xi.x;lambertian.pdf=lambertian.cosTheta/MATH_PI;return lambertian;}vec4 getImportanceSample(int sampleIndex,vec3 N,float roughness){vec2 xi=hammersley2d(sampleIndex,u_sampleCount);MicrofacetDistributionSample importanceSample;if(u_distribution==cLambertian){importanceSample=Lambertian(xi,roughness);}else if(u_distribution==cGGX){importanceSample=GGX(xi,roughness);}else if(u_distribution==cCharlie){importanceSample=Charlie(xi,roughness);}vec3 localSpaceDirection=normalize(vec3(importanceSample.sinTheta*cos(importanceSample.phi),importanceSample.sinTheta*sin(importanceSample.phi),importanceSample.cosTheta));mat3 TBN=generateTBN(N);vec3 direction=TBN*localSpaceDirection;return vec4(direction,importanceSample.pdf);}float computeLod(float pdf){float lod=0.5*log2(6.0*float(u_width)*float(u_width)/(float(u_sampleCount)*pdf));return lod;}vec3 filterColor(vec3 N){vec3 color=vec3(0.f);float weight=0.0f;for(int i=0;i<u_sampleCount;++i){vec4 importanceSample=getImportanceSample(i,N,u_roughness);vec3 H=vec3(importanceSample.xyz);float pdf=importanceSample.w;float lod=computeLod(pdf);lod+=u_lodBias;if(u_distribution==cLambertian){vec3 lambertian=textureLod(uCubeMap,H,lod).rgb;color+=lambertian;}else if(u_distribution==cGGX||u_distribution==cCharlie){vec3 V=N;vec3 L=normalize(reflect(-V,H));float NdotL=dot(N,L);if(NdotL>0.0){if(u_roughness==0.0){lod=u_lodBias;}vec3 sampleColor=textureLod(uCubeMap,L,lod).rgb;color+=sampleColor*NdotL;weight+=NdotL;}}}if(weight!=0.0f){color/=weight;}else{color/=float(u_sampleCount);}return color.rgb;}float V_SmithGGXCorrelated(float NoV,float NoL,float roughness){float a2=pow(roughness,4.0);float GGXV=NoL*sqrt(NoV*NoV*(1.0-a2)+a2);float GGXL=NoV*sqrt(NoL*NoL*(1.0-a2)+a2);return 0.5/(GGXV+GGXL);}float V_Ashikhmin(float NdotL,float NdotV){return clamp(1.0/(4.0*(NdotL+NdotV-NdotL*NdotV)),0.0,1.0);}vec3 LUT(float NdotV,float roughness){vec3 V=vec3(sqrt(1.0-NdotV*NdotV),0.0,NdotV);vec3 N=vec3(0.0,0.0,1.0);float A=0.0;float B=0.0;float C=0.0;for(int i=0;i<u_sampleCount;++i){vec4 importanceSample=getImportanceSample(i,N,roughness);vec3 H=importanceSample.xyz;vec3 L=normalize(reflect(-V,H));float NdotL=saturate(L.z);float NdotH=saturate(H.z);float VdotH=saturate(dot(V,H));if(NdotL>0.0){if(u_distribution==cGGX){float V_pdf=V_SmithGGXCorrelated(NdotV,NdotL,roughness)*VdotH*NdotL/NdotH;float Fc=pow(1.0-VdotH,5.0);A+=(1.0-Fc)*V_pdf;B+=Fc*V_pdf;C+=0.0;}if(u_distribution==cCharlie){float sheenDistribution=D_Charlie(roughness,NdotH);float sheenVisibility=V_Ashikhmin(NdotL,NdotV);A+=0.0;B+=0.0;C+=sheenVisibility*sheenDistribution*NdotL*VdotH;}}}return vec3(4.0*A,4.0*B,4.0*2.0*MATH_PI*C)/float(u_sampleCount);}void main(){vec3 color=vec3(0);if(u_isGeneratingLUT==0){vec2 newUV=texCoord;newUV=newUV*2.0-1.0;vec3 scan=uvToXYZ(u_currentFace,newUV);vec3 direction=normalize(scan);direction.y=-direction.y;color=filterColor(direction);}else{color=LUT(texCoord.x,texCoord.y);}fragmentColor=vec4(color,1.0);}"; // eslint-disable-line
+var iblFiltering = "precision mediump float;\n#define GLSLIFY 1\n#define MATH_PI 3.1415926535897932384626433832795\nuniform samplerCube uCubeMap;const int cLambertian=0;const int cGGX=1;const int cCharlie=2;uniform float u_roughness;uniform int u_sampleCount;uniform int u_width;uniform float u_lodBias;uniform int u_distribution;uniform int u_currentFace;uniform int u_isGeneratingLUT;uniform float u_intensityScale;in vec2 texCoord;out vec4 fragmentColor;vec3 uvToXYZ(int face,vec2 uv){if(face==0)return vec3(1.f,uv.y,-uv.x);else if(face==1)return vec3(-1.f,uv.y,uv.x);else if(face==2)return vec3(+uv.x,-1.f,+uv.y);else if(face==3)return vec3(+uv.x,1.f,-uv.y);else if(face==4)return vec3(+uv.x,uv.y,1.f);else{return vec3(-uv.x,+uv.y,-1.f);}}vec2 dirToUV(vec3 dir){return vec2(0.5f+0.5f*atan(dir.z,dir.x)/MATH_PI,1.f-acos(dir.y)/MATH_PI);}float saturate(float v){return clamp(v,0.0f,1.0f);}float radicalInverse_VdC(uint bits){bits=(bits<<16u)|(bits>>16u);bits=((bits&0x55555555u)<<1u)|((bits&0xAAAAAAAAu)>>1u);bits=((bits&0x33333333u)<<2u)|((bits&0xCCCCCCCCu)>>2u);bits=((bits&0x0F0F0F0Fu)<<4u)|((bits&0xF0F0F0F0u)>>4u);bits=((bits&0x00FF00FFu)<<8u)|((bits&0xFF00FF00u)>>8u);return float(bits)*2.3283064365386963e-10;}vec2 hammersley2d(int i,int N){return vec2(float(i)/float(N),radicalInverse_VdC(uint(i)));}mat3 generateTBN(vec3 normal){vec3 bitangent=vec3(0.0,1.0,0.0);float NdotUp=dot(normal,vec3(0.0,1.0,0.0));float epsilon=0.0000001;if(1.0-abs(NdotUp)<=epsilon){if(NdotUp>0.0){bitangent=vec3(0.0,0.0,1.0);}else{bitangent=vec3(0.0,0.0,-1.0);}}vec3 tangent=normalize(cross(bitangent,normal));bitangent=cross(normal,tangent);return mat3(tangent,bitangent,normal);}struct MicrofacetDistributionSample{float pdf;float cosTheta;float sinTheta;float phi;};float D_GGX(float NdotH,float roughness){float a=NdotH*roughness;float k=roughness/(1.0-NdotH*NdotH+a*a);return k*k*(1.0/MATH_PI);}MicrofacetDistributionSample GGX(vec2 xi,float roughness){MicrofacetDistributionSample ggx;float alpha=roughness*roughness;ggx.cosTheta=saturate(sqrt((1.0-xi.y)/(1.0+(alpha*alpha-1.0)*xi.y)));ggx.sinTheta=sqrt(1.0-ggx.cosTheta*ggx.cosTheta);ggx.phi=2.0*MATH_PI*xi.x;ggx.pdf=D_GGX(ggx.cosTheta,alpha);ggx.pdf/=4.0;return ggx;}float D_Ashikhmin(float NdotH,float roughness){float alpha=roughness*roughness;float a2=alpha*alpha;float cos2h=NdotH*NdotH;float sin2h=1.0-cos2h;float sin4h=sin2h*sin2h;float cot2=-cos2h/(a2*sin2h);return 1.0/(MATH_PI*(4.0*a2+1.0)*sin4h)*(4.0*exp(cot2)+sin4h);}float D_Charlie(float sheenRoughness,float NdotH){sheenRoughness=max(sheenRoughness,0.000001);float invR=1.0/sheenRoughness;float cos2h=NdotH*NdotH;float sin2h=1.0-cos2h;return(2.0+invR)*pow(sin2h,invR*0.5)/(2.0*MATH_PI);}MicrofacetDistributionSample Charlie(vec2 xi,float roughness){MicrofacetDistributionSample charlie;float alpha=roughness*roughness;charlie.sinTheta=pow(xi.y,alpha/(2.0*alpha+1.0));charlie.cosTheta=sqrt(1.0-charlie.sinTheta*charlie.sinTheta);charlie.phi=2.0*MATH_PI*xi.x;charlie.pdf=D_Charlie(alpha,charlie.cosTheta);charlie.pdf/=4.0;return charlie;}MicrofacetDistributionSample Lambertian(vec2 xi,float roughness){MicrofacetDistributionSample lambertian;lambertian.cosTheta=sqrt(1.0-xi.y);lambertian.sinTheta=sqrt(xi.y);lambertian.phi=2.0*MATH_PI*xi.x;lambertian.pdf=lambertian.cosTheta/MATH_PI;return lambertian;}vec4 getImportanceSample(int sampleIndex,vec3 N,float roughness){vec2 xi=hammersley2d(sampleIndex,u_sampleCount);MicrofacetDistributionSample importanceSample;if(u_distribution==cLambertian){importanceSample=Lambertian(xi,roughness);}else if(u_distribution==cGGX){importanceSample=GGX(xi,roughness);}else if(u_distribution==cCharlie){importanceSample=Charlie(xi,roughness);}vec3 localSpaceDirection=normalize(vec3(importanceSample.sinTheta*cos(importanceSample.phi),importanceSample.sinTheta*sin(importanceSample.phi),importanceSample.cosTheta));mat3 TBN=generateTBN(N);vec3 direction=TBN*localSpaceDirection;return vec4(direction,importanceSample.pdf);}float computeLod(float pdf){float lod=0.5*log2(6.0*float(u_width)*float(u_width)/(float(u_sampleCount)*pdf));return lod;}vec3 filterColor(vec3 N){vec3 color=vec3(0.f);float weight=0.0f;for(int i=0;i<u_sampleCount;++i){vec4 importanceSample=getImportanceSample(i,N,u_roughness);vec3 H=vec3(importanceSample.xyz);float pdf=importanceSample.w;float lod=computeLod(pdf);lod+=u_lodBias;if(u_distribution==cLambertian){vec3 lambertian=textureLod(uCubeMap,H,lod).rgb*u_intensityScale;color+=lambertian;}else if(u_distribution==cGGX||u_distribution==cCharlie){vec3 V=N;vec3 L=normalize(reflect(-V,H));float NdotL=dot(N,L);if(NdotL>0.0){if(u_roughness==0.0){lod=u_lodBias;}vec3 sampleColor=textureLod(uCubeMap,L,lod).rgb*u_intensityScale;color+=sampleColor*NdotL;weight+=NdotL;}}}if(weight!=0.0f){color/=weight;}else{color/=float(u_sampleCount);}return color.rgb;}float V_SmithGGXCorrelated(float NoV,float NoL,float roughness){float a2=pow(roughness,4.0);float GGXV=NoL*sqrt(NoV*NoV*(1.0-a2)+a2);float GGXL=NoV*sqrt(NoL*NoL*(1.0-a2)+a2);return 0.5/(GGXV+GGXL);}float V_Ashikhmin(float NdotL,float NdotV){return clamp(1.0/(4.0*(NdotL+NdotV-NdotL*NdotV)),0.0,1.0);}vec3 LUT(float NdotV,float roughness){vec3 V=vec3(sqrt(1.0-NdotV*NdotV),0.0,NdotV);vec3 N=vec3(0.0,0.0,1.0);float A=0.0;float B=0.0;float C=0.0;for(int i=0;i<u_sampleCount;++i){vec4 importanceSample=getImportanceSample(i,N,roughness);vec3 H=importanceSample.xyz;vec3 L=normalize(reflect(-V,H));float NdotL=saturate(L.z);float NdotH=saturate(H.z);float VdotH=saturate(dot(V,H));if(NdotL>0.0){if(u_distribution==cGGX){float V_pdf=V_SmithGGXCorrelated(NdotV,NdotL,roughness)*VdotH*NdotL/NdotH;float Fc=pow(1.0-VdotH,5.0);A+=(1.0-Fc)*V_pdf;B+=Fc*V_pdf;C+=0.0;}if(u_distribution==cCharlie){float sheenDistribution=D_Charlie(roughness,NdotH);float sheenVisibility=V_Ashikhmin(NdotL,NdotV);A+=0.0;B+=0.0;C+=sheenVisibility*sheenDistribution*NdotL*VdotH;}}}return vec3(4.0*A,4.0*B,4.0*2.0*MATH_PI*C)/float(u_sampleCount);}void main(){vec3 color=vec3(0);if(u_isGeneratingLUT==0){vec2 newUV=texCoord;newUV=newUV*2.0-1.0;vec3 scan=uvToXYZ(u_currentFace,newUV);vec3 direction=normalize(scan);direction.y=-direction.y;color=filterColor(direction);}else{color=LUT(texCoord.x,texCoord.y);}float maxV=max(max(color.r,color.g),color.b);if(maxV>1.0){color/=maxV;fragmentColor.a=max(1.0/maxV,1.0/255.0);}else{fragmentColor.a=1.0;}fragmentColor.rgb=color;}"; // eslint-disable-line
 
 var panoramaToCubeMap = "#define MATH_PI 3.1415926535897932384626433832795\n#define MATH_INV_PI (1.0 / MATH_PI)\nprecision highp float;\n#define GLSLIFY 1\nin vec2 texCoord;out vec4 fragmentColor;uniform int u_currentFace;uniform sampler2D u_inputTexture;uniform sampler2D u_panorama;vec3 uvToXYZ(int face,vec2 uv){if(face==0)return vec3(1.f,uv.y,-uv.x);else if(face==1)return vec3(-1.f,uv.y,uv.x);else if(face==2)return vec3(+uv.x,-1.f,+uv.y);else if(face==3)return vec3(+uv.x,1.f,-uv.y);else if(face==4)return vec3(+uv.x,uv.y,1.f);else{return vec3(-uv.x,+uv.y,-1.f);}}vec2 dirToUV(vec3 dir){return vec2(0.5f+0.5f*atan(dir.z,dir.x)/MATH_PI,1.f-acos(dir.y)/MATH_PI);}vec3 panoramaToCubeMap(int face,vec2 texCoord){vec2 texCoordNew=texCoord*2.0-1.0;vec3 scan=uvToXYZ(face,texCoordNew);vec3 direction=normalize(scan);vec2 src=dirToUV(direction);return texture(u_panorama,src).rgb;}void main(void){fragmentColor=vec4(0.0,0.0,0.0,1.0);fragmentColor.rgb=panoramaToCubeMap(u_currentFace,texCoord);}"; // eslint-disable-line
 
@@ -14499,6 +14526,8 @@ class iblSampler
         this.lowestMipLevel = 4;
         this.lutResolution = 1024;
 
+        this.scaleValue = 1.0;
+
         this.mipmapCount = undefined;
 
         this.lambertianTextureID = undefined;
@@ -14512,6 +14541,8 @@ class iblSampler
         this.cubemapTextureID = undefined;
         this.framebuffer = undefined;
 
+        this.supportedFormat = "BYTE";
+
         const shaderSources = new Map();
 
         shaderSources.set("fullscreen.vert", fullscreenShader);
@@ -14522,64 +14553,109 @@ class iblSampler
         this.shaderCache = new ShaderCache(shaderSources, view.renderer.webGl);
     }
 
-    loadTextureHDR(image)
+    
+    prepareTextureData(image)
     {
-        const texture = this.gl.createTexture();
-        this.gl.bindTexture(this.gl.TEXTURE_2D, texture);
+        let texture =  {
+            internalFormat: this.gl.RGB32F,
+            format:this.gl.RGB,
+            type: this.gl.FLOAT,
+            data:undefined 
+        };
 
-        let internalFormat = this.gl.RGB32F;
-        let format = this.gl.RGB;
-        let type = this.gl.FLOAT;
-        let data = undefined;
-
-        if (image.dataFloat instanceof Float32Array && typeof(this.gl.RGB32F) !== 'undefined')
+        if(this.supportedFormat == "BYTE")
         {
-            internalFormat = this.gl.RGB32F;
-            format = this.gl.RGB;
-            type = this.gl.FLOAT;
-            data = image.dataFloat;
-        }
-        else if (image.dataFloat instanceof Float32Array)
-        {
-            // workaround for node-gles not supporting RGB32F
-            internalFormat = this.gl.RGBA32F;
-            format = this.gl.RGBA;
-            type = this.gl.FLOAT;
+            texture.internalFormat = this.internalFormat();
+            texture.format = this.gl.RGBA;
+            texture.type = this.type();
 
             const numPixels = image.dataFloat.length / 3;
-            data = new Float32Array(numPixels * 4);
+
+            let max_r=0.0;
+            let max_g=0.0;
+            let max_b=0.0;
+            for(let i = 0, src = 0, dst = 0; i < numPixels; ++i, src += 3, dst += 4)
+            {
+                max_r=Math.max(image.dataFloat[src+0],max_r);
+                max_g=Math.max(image.dataFloat[src+1],max_g);
+                max_b=Math.max(image.dataFloat[src+2],max_b);
+            }
+
+            let max_value=Math.max(max_r, max_g, max_b);
+            
+            texture.data = new Uint8Array(numPixels * 4);
             for(let i = 0, src = 0, dst = 0; i < numPixels; ++i, src += 3, dst += 4)
             {
                 // copy the pixels and pad the alpha channel
-                data[dst] = image.dataFloat[src];
-                data[dst+1] = image.dataFloat[src+1];
-                data[dst+2] = image.dataFloat[src+2];
-                data[dst+3] = 0;
+                texture.data[dst+0] = (image.dataFloat[src+0]/max_value)*255;
+                texture.data[dst+1] = (image.dataFloat[src+1]/max_value)*255;
+                texture.data[dst+2] = (image.dataFloat[src+2]/max_value)*255;
+                texture.data[dst+3] = 0;
             }
+            this.scaleValue = max_value;
+            return texture;
         }
-        else if (typeof(Image) !== 'undefined' && image instanceof Image)
+
+        if (image.dataFloat instanceof Float32Array && typeof(this.gl.RGB32F) !== 'undefined')
         {
-            internalFormat = this.gl.RGBA;
-            format = this.gl.RGBA;
-            type = this.gl.UNSIGNED_BYTE;
-            data = image;
+            texture.internalFormat = this.gl.RGB32F;
+            texture.format = this.gl.RGB;
+            texture.type = this.gl.FLOAT;
+            texture.data = image.dataFloat;
+            return texture;
         }
-        else
+
+        if (image.dataFloat instanceof Float32Array)
         {
-            console.error("loadTextureHDR failed, unsupported HDR image");
-            return;
+            // workaround for node-gles not supporting RGB32F -> conver to RGBA32F
+            texture.internalFormat = this.gl.RGBA32F;
+            texture.format = this.gl.RGBA;
+            texture.type = this.gl.FLOAT;
+
+            const numPixels = image.dataFloat.length / 3;
+            texture.data = new Float32Array(numPixels * 4);
+            for(let i = 0, src = 0, dst = 0; i < numPixels; ++i, src += 3, dst += 4)
+            {
+                // copy the pixels and pad the alpha channel
+                texture.data[dst] = image.dataFloat[src];
+                texture.data[dst+1] = image.dataFloat[src+1];
+                texture.data[dst+2] = image.dataFloat[src+2];
+                texture.data[dst+3] = 0;
+            }
+            return texture;
         }
+
+        if (typeof(Image) !== 'undefined' && image instanceof Image)
+        {
+            texture.internalFormat = this.gl.RGBA;
+            texture.format = this.gl.RGBA;
+            texture.type = this.gl.UNSIGNED_BYTE;
+            texture.data = image;
+            return texture;
+        }
+
+        console.error("loadTextureHDR failed, unsupported HDR image");
+
+
+    }
+
+    loadTextureHDR(image)
+    {
+        let texture = this.prepareTextureData(image);
+       
+        const textureID = this.gl.createTexture();
+        this.gl.bindTexture(this.gl.TEXTURE_2D, textureID);      
 
         this.gl.texImage2D(
             this.gl.TEXTURE_2D,
             0,
-            internalFormat,
+            texture.internalFormat,
             image.width,
             image.height,
             0,
-            format,
-            type,
-            data
+            texture.format,
+            texture.type,
+            texture.data
         );
 
         this.gl.texParameteri(this.gl.TEXTURE_2D, this.gl.TEXTURE_WRAP_S, this.gl.MIRRORED_REPEAT);
@@ -14587,17 +14663,23 @@ class iblSampler
         this.gl.texParameteri(this.gl.TEXTURE_2D, this.gl.TEXTURE_MIN_FILTER, this.gl.LINEAR);
         this.gl.texParameteri(this.gl.TEXTURE_2D, this.gl.TEXTURE_MAG_FILTER, this.gl.LINEAR);
 
-        return texture;
+        return textureID;
     }
 
     internalFormat()
     {
-        return this.use8bit ? this.gl.RGBA8 : this.gl.RGBA32F;
+        if(this.supportedFormat == "FLOAT") return  this.gl.RGBA32F;
+        if(this.supportedFormat == "HALF_FLOAT") return  this.gl.RGBA16F;
+        if(this.supportedFormat == "BYTE") return  this.gl.RGBA8;
+        return this.gl.RGBA8; // Fallback
     }
 
     type()
     {
-        return this.use8bit ? this.gl.UNSIGNED_BYTE : this.gl.FLOAT;
+        if(this.supportedFormat == "FLOAT") return  this.gl.FLOAT;
+        if(this.supportedFormat == "HALF_FLOAT") return  this.gl.HALF_FLOAT;
+        if(this.supportedFormat == "BYTE") return  this.gl.UNSIGNED_BYTE;
+        return this.gl.UNSIGNED_BYTE; // Fallback
     }
 
     createCubemapTexture(withMipmaps)
@@ -14663,10 +14745,14 @@ class iblSampler
 
     init(panoramaImage)
     {
-        if (!this.gl.getExtension("EXT_color_buffer_float") || !this.gl.getExtension("OES_texture_float_linear"))
+        if (this.gl.getExtension("EXT_color_buffer_float") && this.gl.getExtension("OES_texture_float_linear"))
+        {
+            this.supportedFormat = "FLOAT";  
+        } 
+        else
         {
             console.warn("Floating point textures are not supported");
-            this.use8bit = true;
+            this.supportedFormat = "BYTE";
         }
 
         this.inputTextureID = this.loadTextureHDR(panoramaImage);
@@ -14789,6 +14875,7 @@ class iblSampler
             shader.updateUniform("u_distribution", distribution);
             shader.updateUniform("u_currentFace", i);
             shader.updateUniform("u_isGeneratingLUT", 0);
+            shader.updateUniform("u_intensityScale", this.scaleValue);
 
             //fullscreen triangle
             this.gl.drawArrays(this.gl.TRIANGLES, 0, 3);
@@ -55951,11 +56038,12 @@ const appCreated = vue_cjs.createApp({
             emissiveStrengthEnabled: true,
 
             activeTab: 0,
-            tabsHidden: false,
+            tabContentHidden: true,
             loadingComponent: undefined,
             showDropDownOverlay: false,
             uploadedHDR: undefined,
-            uiVisible: true,
+            uiVisible: false,
+            isMobile: false,
             
 
             // these are handles for certain ui change related things
@@ -55966,6 +56054,16 @@ const appCreated = vue_cjs.createApp({
     watch: {
         selectedAnimations: function (newValue) {
             this.selectedAnimationsChanged.next(newValue);
+        }
+    },
+    beforeMount: function(){
+        // Definition of mobile: https://bulma.io/documentation/start/responsiveness/
+        if(window.innerWidth > 768) { 
+            this.uiVisible = true;
+            this.isMobile = false;
+        } else {
+            this.uiVisible=false;
+            this.isMobile = true;
         }
     },
     mounted: function()
@@ -55983,17 +56081,18 @@ const appCreated = vue_cjs.createApp({
             "if you believe you are seeing this message in error.", 15000);
         }
 
-        // add github logo to navbar
+        // change styling of tab-bar
         this.$nextTick(function () {
             // Code that will run only after the
             // entire view has been rendered
-            var a = document.createElement('a');
-            a.href = "https://github.com/KhronosGroup/glTF-Sample-Viewer";
-            var img = document.createElement('img');
-            img.src ="assets/ui/GitHub-Mark-Light-32px.png";
-            img.style.width = "22px";
-            img.style.height = "22px";
-            let ulElement = document.getElementById("tabsContainer").childNodes[0].childNodes[0];
+
+            let navElement = document.getElementById("tabsContainer").childNodes[0];
+
+            if(!this.isMobile){
+                navElement.style.width = "100px";
+            }
+
+            let ulElement = navElement.childNodes[0];
             while (ulElement) {
                 if (ulElement.nodeName === "UL") {
                     break;
@@ -56001,6 +56100,25 @@ const appCreated = vue_cjs.createApp({
                 ulElement = ulElement.nextElementSibling;
             }
 
+            // Avoid margin on top for mobile devices
+            if(this.isMobile) { 
+                let liElement =ulElement.childNodes[0];
+                while (liElement) {
+                    if (liElement.nodeName === "LI") {
+                        break;
+                    }
+                    liElement = liElement.nextElementSibling;
+                }
+                liElement.style.marginTop = "0px";
+            }
+
+            // add github logo to tab-bar
+            var a = document.createElement('a');
+            a.href = "https://github.com/KhronosGroup/glTF-Sample-Viewer";
+            var img = document.createElement('img');
+            img.src ="assets/ui/GitHub-Mark-Light-32px.png";
+            img.style.width = "22px";
+            img.style.height = "22px";
             ulElement.appendChild(a);
             a.appendChild(img);
         });
@@ -56085,9 +56203,9 @@ const appCreated = vue_cjs.createApp({
         },
         collapseActiveTab : function(event, item) {
             if (item === this.activeTab) {
-                this.tabsHidden = !this.tabsHidden;
+                this.tabContentHidden = !this.tabContentHidden;
                 
-                if(this.tabsHidden) {
+                if(this.tabContentHidden) {
                     // remove is-active class if tabs are hidden
                     event.stopPropagation();
                     
@@ -56103,7 +56221,7 @@ const appCreated = vue_cjs.createApp({
                 return;
             } else {
                 // reset tab visibility
-                this.tabsHidden = false;
+                this.tabContentHidden = false;
             }
             
         },
@@ -56142,11 +56260,9 @@ const appCreated = vue_cjs.createApp({
             const file = e.target.files[0];
             this.addEnvironmentChanged.next(file);
         },
-        hide() {
-            this.uiVisible = false;
-        },
-        show() {
-            this.uiVisible = true;
+
+        toggleUI() {
+            this.uiVisible = !this.uiVisible;
         },
     }
 });
@@ -56191,30 +56307,11 @@ const app = appCreated.mount('#app');
 const canvasUI = vue_cjs.createApp({
     data() {
         return {
-            fullscreen: false,
             timer: null
         };
     },
     methods:
     {
-        toggleFullscreen() {
-            if (this.fullscreen) {
-                app.show();
-            } else {
-                app.hide();
-            }
-            this.fullscreen = !this.fullscreen;
-        },
-        mouseMove() {
-            this.$refs.fullscreenIcon.style.display = "block";
-            this.setFullscreenIconTimer();
-        },
-        setFullscreenIconTimer() {
-            clearTimeout(this.timer);
-            this.timer = window.setTimeout( () => {
-                this.$refs.fullscreenIcon.style.display = "none";
-            }, 1000);
-        }
     }
 
 });
@@ -67167,463 +67264,470 @@ const validateBytes = (data, options) => gltf_validator_dart.validateBytes(data,
  */
 
 var main = async () => {
-  const canvas = document.getElementById("canvas");
-  const context = canvas.getContext("webgl2", {
-    alpha: false,
-    antialias: true,
-  });
-  const view = new GltfView(context);
-  const resourceLoader = view.createResourceLoader();
-  const state = view.createState();
-  state.renderingParameters.useDirectionalLightsWithDisabledIBL = true;
-
-  const pathProvider = new GltfModelPathProvider(
-    "https://raw.githubusercontent.com/KhronosGroup/glTF-Sample-Assets/main"
-  );
-  await pathProvider.initialize();
-  const environmentPaths = fillEnvironmentWithPaths(
-    {
-      Cannon_Exterior: "Cannon Exterior",
-      footprint_court: "Footprint Court",
-      pisa: "Pisa",
-      doge2: "Doge's palace",
-      ennis: "Dining room",
-      field: "Field",
-      helipad: "Helipad Goldenhour",
-      papermill: "Papermill Ruins",
-      neutral: "Studio Neutral",
-      Colorful_Studio: "Colorful Studio",
-      Wide_Street: "Wide Street",
-    },
-    "https://raw.githubusercontent.com/KhronosGroup/glTF-Sample-Environments/low_resolution_hdrs/"
-  );
-
-  const uiModel = new UIModel(app, pathProvider, environmentPaths);
-
-
-  const validation = uiModel.model.pipe(
-    mergeMap((model) => {
-      const func = async(model) => {
-        try {
-          const fileType = typeof model.mainFile;
-          if (fileType == "string"){
-            const externalRefFunction = (uri) => {
-              const parent = model.mainFile.substring(0, model.mainFile.lastIndexOf("/") + 1);
-              return new Promise((resolve, reject) => {
-                fetch(parent + uri).then(response => {
-                  response.arrayBuffer().then(buffer => {
-                    resolve(new Uint8Array(buffer));
-                  }).catch(error => {
-                    reject(error);
-                  });
-                }).catch(error => {
-                  reject(error);
-                });
-              });
-            };
-            const response = await fetch(model.mainFile);
-            const buffer = await response.arrayBuffer();
-            return await validateBytes(new Uint8Array(buffer), {
-              externalResourceFunction: externalRefFunction,
-               uri: model.mainFile
-              });
-          } else if (Array.isArray(model.mainFile)) {
-            const externalRefFunction = (uri) => {
-              uri = "/" + uri;
-              return new Promise((resolve, reject) => {
-                let foundFile = undefined;
-                for (let i = 0; i < model.additionalFiles.length; i++) {
-                  const file = model.additionalFiles[i];
-                  if (file[0] == uri) {
-                    foundFile = file[1];
-                    break;
-                  }
-                }
-                if (foundFile) {
-                  foundFile.arrayBuffer().then((buffer) => {
-                    resolve(new Uint8Array(buffer));
-                  }).catch((error) => {
-                    reject(error);
-                  });
-                } else {
-                  reject("File not found");
-                }
-              });
-            };
-
-            const buffer = await model.mainFile[1].arrayBuffer();
-            return await validateBytes(new Uint8Array(buffer), {
-              externalResourceFunction: externalRefFunction,
-              uri: model.mainFile[0]
-            });
-          }
-        } catch (error) {
-          console.error(error);
-        }
-      };
-      return from(func(model)).pipe(catchError((error) => { console.error(`Validation failed: ${error}`); return EMPTY; }));
-    })
-  );
-
-  // whenever a new model is selected, load it and when complete pass the loaded gltf
-  // into a stream back into the UI
-  const gltfLoaded = uiModel.model.pipe(
-    mergeMap((model) => {
-      uiModel.goToLoadingState();
-
-      // Workaround for errors in ktx lib after loading an asset with ktx2 files for the second time:
-      resourceLoader.initKtxLib();
-
-      return from(
-        resourceLoader
-          .loadGltf(model.mainFile, model.additionalFiles)
-          .then((gltf) => {
-            state.gltf = gltf;
-            const defaultScene = state.gltf.scene;
-            state.sceneIndex = defaultScene === undefined ? 0 : defaultScene;
-            state.cameraIndex = undefined;
-
-            if (state.gltf.scenes.length != 0) {
-              if (state.sceneIndex > state.gltf.scenes.length - 1) {
-                state.sceneIndex = 0;
-              }
-              const scene = state.gltf.scenes[state.sceneIndex];
-              scene.applyTransformHierarchy(state.gltf);
-              state.userCamera.aspectRatio = canvas.width / canvas.height;
-              state.userCamera.fitViewToScene(state.gltf, state.sceneIndex);
-
-              // Try to start as many animations as possible without generating conficts.
-              state.animationIndices = [];
-              for (let i = 0; i < gltf.animations.length; i++) {
-                if (
-                  !gltf
-                    .nonDisjointAnimations(state.animationIndices)
-                    .includes(i)
-                ) {
-                  state.animationIndices.push(i);
-                }
-              }
-              state.animationTimer.start();
-            }
-
-            uiModel.exitLoadingState();
-
-            return state;
-          })
-      );
-    }),
-    catchError((error) => {
-      console.error(error);
-      uiModel.exitLoadingState();
-      return EMPTY;
-    }),
-    share()
-  );
-
-  // Disable all animations which are not disjoint to the current selection of animations.
-  uiModel.disabledAnimations(
-    uiModel.activeAnimations.pipe(
-      map((animationIndices) =>
-        state.gltf.nonDisjointAnimations(animationIndices)
-      )
-    )
-  );
-
-  const sceneChangedObservable = uiModel.scene.pipe(
-    map((sceneIndex) => {
-      state.sceneIndex = sceneIndex;
-      state.cameraIndex = undefined;
-      const scene = state.gltf.scenes[state.sceneIndex];
-      if (scene !== undefined) {
-        scene.applyTransformHierarchy(state.gltf);
-        state.userCamera.fitViewToScene(state.gltf, state.sceneIndex);
-      }
-    }),
-    share()
-  );
-
-  const statisticsUpdateObservable = merge$1(
-    sceneChangedObservable,
-    gltfLoaded
-  ).pipe(map(() => view.gatherStatistics(state)));
-
-  const cameraExportChangedObservable = uiModel.cameraValuesExport.pipe(
-    map(() => {
-      const camera =
-        state.cameraIndex === undefined
-          ? state.userCamera
-          : state.gltf.cameras[state.cameraIndex];
-      return camera.getDescription(state.gltf);
-    })
-  );
-
-  const downloadDataURL = (filename, dataURL) => {
-    const element = document.createElement("a");
-    element.setAttribute("href", dataURL);
-    element.setAttribute("download", filename);
-    element.style.display = "none";
-    document.body.appendChild(element);
-    element.click();
-    document.body.removeChild(element);
-  };
-
-  cameraExportChangedObservable.subscribe((cameraDesc) => {
-    const gltf = JSON.stringify(cameraDesc, undefined, 4);
-    const dataURL = "data:text/plain;charset=utf-8," + encodeURIComponent(gltf);
-    downloadDataURL("camera.gltf", dataURL);
-  });
-
-  uiModel.captureCanvas.subscribe(() => {
-    view.renderFrame(state, canvas.width, canvas.height);
-    const dataURL = canvas.toDataURL();
-    downloadDataURL("capture.png", dataURL);
-  });
-
-  // Only redraw glTF view upon user inputs, or when an animation is playing.
-  let redraw = false;
-  const listenForRedraw = (stream) => stream.subscribe(() => (redraw = true));
-
-  uiModel.scene.subscribe(
-    (scene) => (state.sceneIndex = scene !== -1 ? scene : undefined)
-  );
-  listenForRedraw(uiModel.scene);
-
-  uiModel.camera.subscribe(
-    (camera) => (state.cameraIndex = camera !== -1 ? camera : undefined)
-  );
-  listenForRedraw(uiModel.camera);
-
-  uiModel.variant.subscribe((variant) => (state.variant = variant));
-  listenForRedraw(uiModel.variant);
-
-  uiModel.tonemap.subscribe(
-    (tonemap) => (state.renderingParameters.toneMap = tonemap)
-  );
-  listenForRedraw(uiModel.tonemap);
-
-  uiModel.debugchannel.subscribe(
-    (debugchannel) => (state.renderingParameters.debugOutput = debugchannel)
-  );
-  listenForRedraw(uiModel.debugchannel);
-
-  uiModel.skinningEnabled.subscribe(
-    (skinningEnabled) => (state.renderingParameters.skinning = skinningEnabled)
-  );
-  listenForRedraw(uiModel.skinningEnabled);
-
-  uiModel.exposure.subscribe(
-    (exposure) =>
-      (state.renderingParameters.exposure = 1.0 / Math.pow(2.0, exposure))
-  );
-  listenForRedraw(uiModel.exposure);
-
-  uiModel.morphingEnabled.subscribe(
-    (morphingEnabled) => (state.renderingParameters.morphing = morphingEnabled)
-  );
-  listenForRedraw(uiModel.morphingEnabled);
-
-  uiModel.clearcoatEnabled.subscribe(
-    (clearcoatEnabled) =>
-      (state.renderingParameters.enabledExtensions.KHR_materials_clearcoat =
-        clearcoatEnabled)
-  );
-  listenForRedraw(uiModel.clearcoatEnabled);
-
-  uiModel.sheenEnabled.subscribe(
-    (sheenEnabled) =>
-      (state.renderingParameters.enabledExtensions.KHR_materials_sheen =
-        sheenEnabled)
-  );
-  listenForRedraw(uiModel.sheenEnabled);
-
-  uiModel.transmissionEnabled.subscribe(
-    (transmissionEnabled) =>
-      (state.renderingParameters.enabledExtensions.KHR_materials_transmission =
-        transmissionEnabled)
-  );
-  listenForRedraw(uiModel.transmissionEnabled);
-
-  uiModel.diffuseTransmissionEnabled.subscribe(
-    (diffuseTransmissionEnabled) =>
-      (state.renderingParameters.enabledExtensions.KHR_materials_diffuse_transmission =
-        diffuseTransmissionEnabled)
-  );
-  listenForRedraw(uiModel.diffuseTransmissionEnabled);
-
-  uiModel.volumeEnabled.subscribe(
-    (volumeEnabled) =>
-      (state.renderingParameters.enabledExtensions.KHR_materials_volume =
-        volumeEnabled)
-  );
-  listenForRedraw(uiModel.volumeEnabled);
-
-  uiModel.iorEnabled.subscribe(
-    (iorEnabled) =>
-      (state.renderingParameters.enabledExtensions.KHR_materials_ior =
-        iorEnabled)
-  );
-  listenForRedraw(uiModel.iorEnabled);
-
-  uiModel.iridescenceEnabled.subscribe(
-    (iridescenceEnabled) =>
-      (state.renderingParameters.enabledExtensions.KHR_materials_iridescence =
-        iridescenceEnabled)
-  );
-  listenForRedraw(uiModel.iridescenceEnabled);
-
-  uiModel.anisotropyEnabled.subscribe(
-    (anisotropyEnabled) =>
-      (state.renderingParameters.enabledExtensions.KHR_materials_anisotropy =
-        anisotropyEnabled)
-  );
-  listenForRedraw(uiModel.anisotropyEnabled);
-
-  uiModel.dispersionEnabled.subscribe(
-    (dispersionEnabled) =>
-      (state.renderingParameters.enabledExtensions.KHR_materials_dispersion =
-        dispersionEnabled)
-  );
-  listenForRedraw(uiModel.dispersionEnabled);
-
-  uiModel.specularEnabled.subscribe(
-    (specularEnabled) =>
-      (state.renderingParameters.enabledExtensions.KHR_materials_specular =
-        specularEnabled)
-  );
-  listenForRedraw(uiModel.specularEnabled);
-
-  uiModel.emissiveStrengthEnabled.subscribe(
-    (enabled) =>
-      (state.renderingParameters.enabledExtensions.KHR_materials_emissive_strength =
-        enabled)
-  );
-  listenForRedraw(uiModel.emissiveStrengthEnabled);
-
-  uiModel.iblEnabled.subscribe(
-    (iblEnabled) => (state.renderingParameters.useIBL = iblEnabled)
-  );
-  listenForRedraw(uiModel.iblEnabled);
-
-  uiModel.iblIntensity.subscribe(
-    (iblIntensity) =>
-      (state.renderingParameters.iblIntensity = Math.pow(10, iblIntensity))
-  );
-  listenForRedraw(uiModel.iblIntensity);
-
-  uiModel.renderEnvEnabled.subscribe(
-    (renderEnvEnabled) =>
-      (state.renderingParameters.renderEnvironmentMap = renderEnvEnabled)
-  );
-  listenForRedraw(uiModel.renderEnvEnabled);
-
-  uiModel.blurEnvEnabled.subscribe(
-    (blurEnvEnabled) =>
-      (state.renderingParameters.blurEnvironmentMap = blurEnvEnabled)
-  );
-  listenForRedraw(uiModel.blurEnvEnabled);
-
-  uiModel.punctualLightsEnabled.subscribe(
-    (punctualLightsEnabled) =>
-      (state.renderingParameters.usePunctual = punctualLightsEnabled)
-  );
-  listenForRedraw(uiModel.punctualLightsEnabled);
-
-  uiModel.environmentRotation.subscribe((environmentRotation) => {
-    switch (environmentRotation) {
-      case "+Z":
-        state.renderingParameters.environmentRotation = 90.0;
-        break;
-      case "-X":
-        state.renderingParameters.environmentRotation = 180.0;
-        break;
-      case "-Z":
-        state.renderingParameters.environmentRotation = 270.0;
-        break;
-      case "+X":
-        state.renderingParameters.environmentRotation = 0.0;
-        break;
-    }
-  });
-  listenForRedraw(uiModel.environmentRotation);
-
-  uiModel.clearColor.subscribe(
-    (clearColor) => (state.renderingParameters.clearColor = clearColor)
-  );
-  listenForRedraw(uiModel.clearColor);
-
-  uiModel.animationPlay.subscribe((animationPlay) => {
-    if (animationPlay) {
-      state.animationTimer.unpause();
-    } else {
-      state.animationTimer.pause();
-    }
-  });
-
-  uiModel.activeAnimations.subscribe(
-    (animations) => (state.animationIndices = animations)
-  );
-  listenForRedraw(uiModel.activeAnimations);
-
-  uiModel.hdr.subscribe((hdrFile) => {
-    resourceLoader.loadEnvironment(hdrFile).then((environment) => {
-      state.environment = environment;
-      // We need to wait until the environment is loaded to redraw
-      redraw = true;
+    const canvas = document.getElementById("canvas");
+    const context = canvas.getContext("webgl2", {
+        alpha: false,
+        antialias: true,
     });
-  });
+    const view = new GltfView(context);
+    const resourceLoader = view.createResourceLoader();
+    const state = view.createState();
+    state.renderingParameters.useDirectionalLightsWithDisabledIBL = true;
 
-  uiModel.attachGltfLoaded(gltfLoaded);
-  uiModel.updateValidationReport(validation);
-  uiModel.updateStatistics(statisticsUpdateObservable);
-  const sceneChangedStateObservable = uiModel.scene.pipe(map(() => state));
-  uiModel.attachCameraChangeObservable(sceneChangedStateObservable);
+    const pathProvider = new GltfModelPathProvider(
+        "https://raw.githubusercontent.com/KhronosGroup/glTF-Sample-Assets/main"
+    );
+    await pathProvider.initialize();
+    const environmentPaths = fillEnvironmentWithPaths(
+        {
+            Cannon_Exterior: "Cannon Exterior",
+            footprint_court: "Footprint Court",
+            pisa: "Pisa",
+            doge2: "Doge's palace",
+            ennis: "Dining room",
+            field: "Field",
+            helipad: "Helipad Goldenhour",
+            papermill: "Papermill Ruins",
+            neutral: "Studio Neutral",
+            Colorful_Studio: "Colorful Studio",
+            Wide_Street: "Wide Street",
+        },
+        "https://raw.githubusercontent.com/KhronosGroup/glTF-Sample-Environments/low_resolution_hdrs/"
+    );
 
-  uiModel.orbit.subscribe((orbit) => {
-    if (state.cameraIndex === undefined) {
-      state.userCamera.orbit(orbit.deltaPhi, orbit.deltaTheta);
-    }
-  });
-  listenForRedraw(uiModel.orbit);
+    const uiModel = new UIModel(app, pathProvider, environmentPaths);
 
-  uiModel.pan.subscribe((pan) => {
-    if (state.cameraIndex === undefined) {
-      state.userCamera.pan(pan.deltaX, -pan.deltaY);
-    }
-  });
-  listenForRedraw(uiModel.pan);
 
-  uiModel.zoom.subscribe((zoom) => {
-    if (state.cameraIndex === undefined) {
-      state.userCamera.zoomBy(zoom.deltaZoom);
-    }
-  });
-  listenForRedraw(uiModel.zoom);
+    const validation = uiModel.model.pipe(
+        mergeMap((model) => {
+            const func = async(model) => {
+                try {
+                    const fileType = typeof model.mainFile;
+                    if (fileType == "string"){
+                        const externalRefFunction = (uri) => {
+                            const parent = model.mainFile.substring(0, model.mainFile.lastIndexOf("/") + 1);
+                            return new Promise((resolve, reject) => {
+                                fetch(parent + uri).then(response => {
+                                    response.arrayBuffer().then(buffer => {
+                                        resolve(new Uint8Array(buffer));
+                                    }).catch(error => {
+                                        reject(error);
+                                    });
+                                }).catch(error => {
+                                    reject(error);
+                                });
+                            });
+                        };
+                        const response = await fetch(model.mainFile);
+                        const buffer = await response.arrayBuffer();
+                        return await validateBytes(new Uint8Array(buffer), {
+                            externalResourceFunction: externalRefFunction,
+                            uri: model.mainFile
+                        });
+                    } else if (Array.isArray(model.mainFile)) {
+                        const externalRefFunction = (uri) => {
+                            uri = "/" + uri;
+                            return new Promise((resolve, reject) => {
+                                let foundFile = undefined;
+                                for (let i = 0; i < model.additionalFiles.length; i++) {
+                                    const file = model.additionalFiles[i];
+                                    if (file[0] == uri) {
+                                        foundFile = file[1];
+                                        break;
+                                    }
+                                }
+                                if (foundFile) {
+                                    foundFile.arrayBuffer().then((buffer) => {
+                                        resolve(new Uint8Array(buffer));
+                                    }).catch((error) => {
+                                        reject(error);
+                                    });
+                                } else {
+                                    reject("File not found");
+                                }
+                            });
+                        };
 
-  listenForRedraw(gltfLoaded);
+                        const buffer = await model.mainFile[1].bytes();
+                        return await validateBytes(buffer, {externalResourceFunction: externalRefFunction, uri: model.mainFile[0]});
+                    }
+                } catch (error) {
+                    console.error(error);
+                }
+            };
+            return from(func(model)).pipe(catchError((error) => { console.error(`Validation failed: ${error}`); return EMPTY; }));
+        })
+    );
 
-  // configure the animation loop
-  const past = {};
-  const update = () => {
-    const devicePixelRatio = window.devicePixelRatio || 1;
+    // whenever a new model is selected, load it and when complete pass the loaded gltf
+    // into a stream back into the UI
+    const gltfLoaded = uiModel.model.pipe(
+        mergeMap((model) => {
+            uiModel.goToLoadingState();
 
-    // set the size of the drawingBuffer based on the size it's displayed.
-    canvas.width = Math.floor(canvas.clientWidth * devicePixelRatio);
-    canvas.height = Math.floor(canvas.clientHeight * devicePixelRatio);
-    redraw |= !state.animationTimer.paused && state.animationIndices.length > 0;
-    redraw |= past.width != canvas.width || past.height != canvas.height;
-    past.width = canvas.width;
-    past.height = canvas.height;
+            // Workaround for errors in ktx lib after loading an asset with ktx2 files for the second time:
+            resourceLoader.initKtxLib();
 
-    if (redraw) {
-      view.renderFrame(state, canvas.width, canvas.height);
-      redraw = false;
-    }
+            return from(
+                resourceLoader
+                    .loadGltf(model.mainFile, model.additionalFiles)
+                    .then((gltf) => {
+                        state.gltf = gltf;
+                        const defaultScene = state.gltf.scene;
+                        state.sceneIndex = defaultScene === undefined ? 0 : defaultScene;
+                        state.cameraIndex = undefined;
 
+                        if (state.gltf.scenes.length != 0) {
+                            if (state.sceneIndex > state.gltf.scenes.length - 1) {
+                                state.sceneIndex = 0;
+                            }
+                            const scene = state.gltf.scenes[state.sceneIndex];
+                            scene.applyTransformHierarchy(state.gltf);
+                            state.userCamera.aspectRatio = canvas.width / canvas.height;
+                            state.userCamera.resetView(state.gltf, state.sceneIndex);
+
+                            // Try to start as many animations as possible without generating conficts.
+                            state.animationIndices = [];
+                            for (let i = 0; i < gltf.animations.length; i++) {
+                                if (
+                                    !gltf
+                                        .nonDisjointAnimations(state.animationIndices)
+                                        .includes(i)
+                                ) {
+                                    state.animationIndices.push(i);
+                                }
+                            }
+                            state.animationTimer.start();
+                        }
+
+                        uiModel.exitLoadingState();
+
+                        return state;
+                    })
+            );
+        }),
+        catchError((error) => {
+            console.error(error);
+            uiModel.exitLoadingState();
+            return EMPTY;
+        }),
+        share()
+    );
+
+    // Disable all animations which are not disjoint to the current selection of animations.
+    uiModel.disabledAnimations(
+        uiModel.activeAnimations.pipe(
+            map((animationIndices) =>
+                state.gltf.nonDisjointAnimations(animationIndices)
+            )
+        )
+    );
+
+    const sceneChangedObservable = uiModel.scene.pipe(
+        map((sceneIndex) => {
+            state.sceneIndex = sceneIndex;
+            state.cameraIndex = undefined;
+            const scene = state.gltf.scenes[state.sceneIndex];
+            if (scene !== undefined) {
+                scene.applyTransformHierarchy(state.gltf);
+                state.userCamera.resetView(state.gltf, state.sceneIndex);
+            }
+        }),
+        share()
+    );
+
+    const statisticsUpdateObservable = merge$1(
+        sceneChangedObservable,
+        gltfLoaded
+    ).pipe(map(() => view.gatherStatistics(state)));
+
+    const cameraExportChangedObservable = uiModel.cameraValuesExport.pipe(
+        map(() => {
+            const camera =
+        state.cameraIndex === undefined
+            ? state.userCamera
+            : state.gltf.cameras[state.cameraIndex];
+            return camera.getDescription(state.gltf);
+        })
+    );
+
+    const downloadDataURL = (filename, dataURL) => {
+        const element = document.createElement("a");
+        element.setAttribute("href", dataURL);
+        element.setAttribute("download", filename);
+        element.style.display = "none";
+        document.body.appendChild(element);
+        element.click();
+        document.body.removeChild(element);
+    };
+
+    cameraExportChangedObservable.subscribe((cameraDesc) => {
+        const gltf = JSON.stringify(cameraDesc, undefined, 4);
+        const dataURL = "data:text/plain;charset=utf-8," + encodeURIComponent(gltf);
+        downloadDataURL("camera.gltf", dataURL);
+    });
+
+    uiModel.captureCanvas.subscribe(() => {
+        view.renderFrame(state, canvas.width, canvas.height);
+        const dataURL = canvas.toDataURL();
+        downloadDataURL("capture.png", dataURL);
+    });
+
+    // Only redraw glTF view upon user inputs, or when an animation is playing.
+    let redraw = false;
+    const listenForRedraw = (stream) => stream.subscribe(() => (redraw = true));
+
+    uiModel.scene.subscribe(
+        (scene) => (state.sceneIndex = scene !== -1 ? scene : undefined)
+    );
+    listenForRedraw(uiModel.scene);
+
+    uiModel.camera.subscribe(
+        (camera) => (state.cameraIndex = camera !== -1 ? camera : undefined)
+    );
+    listenForRedraw(uiModel.camera);
+
+    uiModel.variant.subscribe((variant) => (state.variant = variant));
+    listenForRedraw(uiModel.variant);
+
+    uiModel.tonemap.subscribe(
+        (tonemap) => (state.renderingParameters.toneMap = tonemap)
+    );
+    listenForRedraw(uiModel.tonemap);
+
+    uiModel.debugchannel.subscribe(
+        (debugchannel) => (state.renderingParameters.debugOutput = debugchannel)
+    );
+    listenForRedraw(uiModel.debugchannel);
+
+    uiModel.skinningEnabled.subscribe(
+        (skinningEnabled) => (state.renderingParameters.skinning = skinningEnabled)
+    );
+    listenForRedraw(uiModel.skinningEnabled);
+
+    uiModel.exposure.subscribe(
+        (exposure) =>
+            (state.renderingParameters.exposure = 1.0 / Math.pow(2.0, exposure))
+    );
+    listenForRedraw(uiModel.exposure);
+
+    uiModel.morphingEnabled.subscribe(
+        (morphingEnabled) => (state.renderingParameters.morphing = morphingEnabled)
+    );
+    listenForRedraw(uiModel.morphingEnabled);
+
+    uiModel.clearcoatEnabled.subscribe(
+        (clearcoatEnabled) =>
+            (state.renderingParameters.enabledExtensions.KHR_materials_clearcoat =
+        clearcoatEnabled)
+    );
+    listenForRedraw(uiModel.clearcoatEnabled);
+
+    uiModel.sheenEnabled.subscribe(
+        (sheenEnabled) =>
+            (state.renderingParameters.enabledExtensions.KHR_materials_sheen =
+        sheenEnabled)
+    );
+    listenForRedraw(uiModel.sheenEnabled);
+
+    uiModel.transmissionEnabled.subscribe(
+        (transmissionEnabled) =>
+            (state.renderingParameters.enabledExtensions.KHR_materials_transmission =
+        transmissionEnabled)
+    );
+    listenForRedraw(uiModel.transmissionEnabled);
+
+    uiModel.diffuseTransmissionEnabled.subscribe(
+        (diffuseTransmissionEnabled) =>
+            (state.renderingParameters.enabledExtensions.KHR_materials_diffuse_transmission =
+        diffuseTransmissionEnabled)
+    );
+    listenForRedraw(uiModel.diffuseTransmissionEnabled);
+
+    uiModel.volumeEnabled.subscribe(
+        (volumeEnabled) =>
+            (state.renderingParameters.enabledExtensions.KHR_materials_volume =
+        volumeEnabled)
+    );
+    listenForRedraw(uiModel.volumeEnabled);
+
+    uiModel.iorEnabled.subscribe(
+        (iorEnabled) =>
+            (state.renderingParameters.enabledExtensions.KHR_materials_ior =
+        iorEnabled)
+    );
+    listenForRedraw(uiModel.iorEnabled);
+
+    uiModel.iridescenceEnabled.subscribe(
+        (iridescenceEnabled) =>
+            (state.renderingParameters.enabledExtensions.KHR_materials_iridescence =
+        iridescenceEnabled)
+    );
+    listenForRedraw(uiModel.iridescenceEnabled);
+
+    uiModel.anisotropyEnabled.subscribe(
+        (anisotropyEnabled) =>
+            (state.renderingParameters.enabledExtensions.KHR_materials_anisotropy =
+        anisotropyEnabled)
+    );
+    listenForRedraw(uiModel.anisotropyEnabled);
+
+    uiModel.dispersionEnabled.subscribe(
+        (dispersionEnabled) =>
+            (state.renderingParameters.enabledExtensions.KHR_materials_dispersion =
+        dispersionEnabled)
+    );
+    listenForRedraw(uiModel.dispersionEnabled);
+
+    uiModel.specularEnabled.subscribe(
+        (specularEnabled) =>
+            (state.renderingParameters.enabledExtensions.KHR_materials_specular =
+        specularEnabled)
+    );
+    listenForRedraw(uiModel.specularEnabled);
+
+    uiModel.emissiveStrengthEnabled.subscribe(
+        (enabled) =>
+            (state.renderingParameters.enabledExtensions.KHR_materials_emissive_strength =
+        enabled)
+    );
+    listenForRedraw(uiModel.emissiveStrengthEnabled);
+
+    uiModel.iblEnabled.subscribe(
+        (iblEnabled) => (state.renderingParameters.useIBL = iblEnabled)
+    );
+    listenForRedraw(uiModel.iblEnabled);
+
+    uiModel.iblIntensity.subscribe(
+        (iblIntensity) =>
+            (state.renderingParameters.iblIntensity = Math.pow(10, iblIntensity))
+    );
+    listenForRedraw(uiModel.iblIntensity);
+
+    uiModel.renderEnvEnabled.subscribe(
+        (renderEnvEnabled) =>
+            (state.renderingParameters.renderEnvironmentMap = renderEnvEnabled)
+    );
+    listenForRedraw(uiModel.renderEnvEnabled);
+
+    uiModel.blurEnvEnabled.subscribe(
+        (blurEnvEnabled) =>
+            (state.renderingParameters.blurEnvironmentMap = blurEnvEnabled)
+    );
+    listenForRedraw(uiModel.blurEnvEnabled);
+
+    uiModel.punctualLightsEnabled.subscribe(
+        (punctualLightsEnabled) =>
+            (state.renderingParameters.usePunctual = punctualLightsEnabled)
+    );
+    listenForRedraw(uiModel.punctualLightsEnabled);
+
+    uiModel.environmentRotation.subscribe((environmentRotation) => {
+        switch (environmentRotation) {
+        case "+Z":
+            state.renderingParameters.environmentRotation = 90.0;
+            break;
+        case "-X":
+            state.renderingParameters.environmentRotation = 180.0;
+            break;
+        case "-Z":
+            state.renderingParameters.environmentRotation = 270.0;
+            break;
+        case "+X":
+            state.renderingParameters.environmentRotation = 0.0;
+            break;
+        }
+    });
+    listenForRedraw(uiModel.environmentRotation);
+
+    uiModel.clearColor.subscribe(
+        (clearColor) => (state.renderingParameters.clearColor = clearColor)
+    );
+    listenForRedraw(uiModel.clearColor);
+
+    uiModel.animationPlay.subscribe((animationPlay) => {
+        if (animationPlay) {
+            state.animationTimer.unpause();
+        } else {
+            state.animationTimer.pause();
+        }
+    });
+
+    uiModel.activeAnimations.subscribe(
+        (animations) => (state.animationIndices = animations)
+    );
+    listenForRedraw(uiModel.activeAnimations);
+
+    uiModel.hdr.subscribe((hdrFile) => {
+        resourceLoader.loadEnvironment(hdrFile).then((environment) => {
+            state.environment = environment;
+            // We need to wait until the environment is loaded to redraw
+            redraw = true;
+        });
+    });
+
+    uiModel.attachGltfLoaded(gltfLoaded);
+    uiModel.updateValidationReport(validation);
+    uiModel.updateStatistics(statisticsUpdateObservable);
+    const sceneChangedStateObservable = uiModel.scene.pipe(map(() => state));
+    uiModel.attachCameraChangeObservable(sceneChangedStateObservable);
+
+    uiModel.orbit.subscribe((orbit) => {
+        if (state.cameraIndex === undefined) {
+            state.userCamera.orbit(orbit.deltaPhi, orbit.deltaTheta);
+        }
+    });
+    listenForRedraw(uiModel.orbit);
+
+    uiModel.pan.subscribe((pan) => {
+        if (state.cameraIndex === undefined) {
+            state.userCamera.pan(pan.deltaX, -pan.deltaY);
+        }
+    });
+    listenForRedraw(uiModel.pan);
+
+    uiModel.zoom.subscribe((zoom) => {
+        if (state.cameraIndex === undefined) {
+            state.userCamera.zoomBy(zoom.deltaZoom);
+        }
+    });
+    listenForRedraw(uiModel.zoom);
+
+    listenForRedraw(gltfLoaded);
+
+    // configure the animation loop
+    const past = {};
+    const update = () => {
+        const devicePixelRatio = window.devicePixelRatio || 1;
+
+        // set the size of the drawingBuffer based on the size it's displayed.
+        canvas.width = Math.floor(canvas.clientWidth * devicePixelRatio);
+        canvas.height = Math.floor(canvas.clientHeight * devicePixelRatio);
+        redraw |= !state.animationTimer.paused && state.animationIndices.length > 0;
+        redraw |= past.width != canvas.width || past.height != canvas.height;
+
+        // Refit view if canvas changes significantly
+        if((canvas.width/past.width <0.5 || canvas.width/past.width>2.0 )||
+            (canvas.height/past.height <0.5 || canvas.height/past.height>2.0 ))
+        {
+            state.userCamera.aspectRatio = canvas.width / canvas.height;
+            state.userCamera.fitViewToScene(state.gltf, state.sceneIndex);
+        }
+
+
+        past.width = canvas.width;
+        past.height = canvas.height;
+
+        if (redraw) {
+            view.renderFrame(state, canvas.width, canvas.height);
+            redraw = false;
+        }
+
+        window.requestAnimationFrame(update);
+    };
+
+    // After this start executing animation loop.
     window.requestAnimationFrame(update);
-  };
-
-  // After this start executing animation loop.
-  window.requestAnimationFrame(update);
 };
 
 export { main as default };
