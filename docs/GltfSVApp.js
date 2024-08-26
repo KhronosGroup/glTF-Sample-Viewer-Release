@@ -1,6 +1,6 @@
 /**
  * Bundle of gltf-sample-viewer-example
- * Generated: 2024-08-22
+ * Generated: 2024-08-26
  * Version: 1.0.0
  * Dependencies:
  *
@@ -1520,7 +1520,37 @@ var normalize = normalize$1;
   };
 })();
 
+class AnimatableProperty {
+    constructor(value) {
+        this.restValue = value;
+        this.animatedValue = null;
+    }
+
+    restAt(value) {
+        this.restValue = value;
+    }
+
+    animate(value) {
+        this.animatedValue = value;
+    }
+
+    rest() {
+        this.animatedValue = null;
+    }
+
+    value() {
+        return this.animatedValue ?? this.restValue;
+    }
+
+    isDefined() {
+        return this.restValue !== undefined;
+    }
+}
+
 function jsToGl(array) {
+    if (array === undefined) {
+        return undefined;
+    }
     let tensor = new ARRAY_TYPE$1(array.length);
 
     for (let i = 0; i < array.length; ++i) {
@@ -1579,14 +1609,13 @@ function objectFromJson(jsonObject, GltfType) {
 }
 
 function fromKeys(target, jsonObj, ignore = []) {
-    for (let k of Object.keys(target)) {
+    for (let k of Object.keys(jsonObj)) {
         if (ignore && ignore.find(function (elem) { return elem == k; }) !== undefined) {
             continue; // skip
         }
-        if (jsonObj[k] !== undefined) {
-            let normalizedK = k.replace("^@", "");
-            target[normalizedK] = jsonObj[k];
-        }
+
+        let normalizedK = k.replace("^@", "");
+        target[normalizedK] = structuredClone(jsonObj[k]);
     }
 }
 
@@ -1689,7 +1718,22 @@ class GltfObject
     {
         this.extensions = undefined;
         this.extras = undefined;
+        this.animatedPropertyObjects = {};
+        if (this.constructor.animatedProperties === undefined)
+        {
+            throw new Error("animatedProperties is not defined for " + this.constructor.name);
+        }
+        for (const prop of this.constructor.animatedProperties)
+        {
+            this.animatedPropertyObjects[prop] = new AnimatableProperty(undefined);
+            Object.defineProperty(this, prop, {
+                get: function() { return this.animatedPropertyObjects[prop].value(); },
+                set: function(value) { this.animatedPropertyObjects[prop].restAt(value); }
+            });
+        }
     }
+    
+    static animatedProperties = undefined;
 
     fromJson(json)
     {
@@ -1704,27 +1748,31 @@ class GltfObject
 
 class gltfCamera extends GltfObject
 {
-    constructor(
-        type = "perspective",
-        znear = 0.01,
-        zfar = Infinity,
-        yfov = 45.0 * Math.PI / 180.0,
-        aspectRatio = undefined,
-        xmag = 1.0,
-        ymag = 1.0,
-        name = undefined,
-        nodeIndex = undefined)
+    static animatedProperties = [];
+    constructor()
     {
         super();
-        this.type = type;
-        this.znear = znear;
-        this.zfar = zfar;
-        this.yfov = yfov; // radians
-        this.xmag = xmag;
-        this.ymag = ymag;
-        this.aspectRatio = aspectRatio;
-        this.name = name;
-        this.node = nodeIndex;
+        this.name = undefined;
+        this.node = undefined;
+        this.type = "perspective";
+        this.perspective = new PerspectiveCamera();
+        this.orthographic = new OrthographicCamera();
+    }
+
+    fromJson(json)
+    {
+        super.fromJson(json);
+
+        if (json.perspective !== undefined)
+        {
+            this.perspective = new PerspectiveCamera();
+            this.perspective.fromJson(json.perspective);
+        }
+        if (json.orthographic !== undefined)
+        {
+            this.orthographic = new OrthographicCamera();
+            this.orthographic.fromJson(json.orthographic);
+        }
     }
 
     initGl(gltf, webGlContext)
@@ -1751,21 +1799,6 @@ class gltfCamera extends GltfObject
         if(this.node === undefined && cameraIndex !== undefined)
         {
             console.error("Invalid node for camera " + cameraIndex);
-        }
-    }
-
-    fromJson(jsonCamera)
-    {
-        this.name = name;
-        if(jsonCamera.perspective !== undefined)
-        {
-            this.type = "perspective";
-            fromKeys(this, jsonCamera.perspective);
-        }
-        else if(jsonCamera.orthographic !== undefined)
-        {
-            this.type = "orthographic";
-            fromKeys(this, jsonCamera.orthographic);
         }
     }
 
@@ -1797,14 +1830,22 @@ class gltfCamera extends GltfObject
 
         if (this.type === "perspective")
         {
-            perspective(projection, this.yfov, this.aspectRatio, this.znear, this.zfar);
+            perspective(
+                projection,
+                this.perspective.yfov,
+                this.perspective.aspectRatio,
+                this.perspective.znear,
+                this.perspective.zfar
+            );
         }
         else if (this.type === "orthographic")
         {
-            projection[0]  = 1.0 / this.xmag;
-            projection[5]  = 1.0 / this.ymag;
-            projection[10] = 2.0 / (this.znear - this.zfar);
-            projection[14] = (this.zfar + this.znear) / (this.znear - this.zfar);
+            const znear = this.orthographic.znear;
+            const zfar = this.orthographic.zfar;
+            projection[0]  = 1.0 / this.orthographic.xmag;
+            projection[5]  = 1.0 / this.orthographic.ymag;
+            projection[10] = 2.0 / (znear - zfar);
+            projection[14] = (zfar + znear) / (znear - zfar);
         }
 
         return projection;
@@ -1850,20 +1891,6 @@ class gltfCamera extends GltfObject
         return rotation;
     }
 
-    clone()
-    {
-        return new gltfCamera(
-            this.type,
-            this.znear,
-            this.zfar,
-            this.yfov,
-            this.aspectRatio,
-            this.xmag,
-            this.ymag,
-            this.name,
-            this.node);
-    }
-
     getNode(gltf)
     {
         return gltf.nodes[this.node];
@@ -1900,24 +1927,24 @@ class gltfCamera extends GltfObject
         if (this.type === "perspective")
         {
             camera["perspective"] = {};
-            if (this.aspectRatio !== undefined)
+            if (this.perspective.aspectRatio)
             {
-                camera["perspective"]["aspectRatio"] = this.aspectRatio;
+                camera["perspective"]["aspectRatio"] = this.perspective.aspectRatio;
             }
-            camera["perspective"]["yfov"] = this.yfov;
-            if (this.zfar != Infinity)
+            camera["perspective"]["yfov"] = this.perspective.yfov;
+            if (this.perspective.zfar && this.perspective.zfar != Infinity)
             {
-                camera["perspective"]["zfar"] = this.zfar;
+                camera["perspective"]["zfar"] = this.perspective.zfar;
             }
-            camera["perspective"]["znear"] = this.znear;
+            camera["perspective"]["znear"] = this.perspective.znear;
         }
         else if (this.type === "orthographic")
         {
             camera["orthographic"] = {};
-            camera["orthographic"]["xmag"] = this.xmag;
-            camera["orthographic"]["ymag"] = this.ymag;
-            camera["orthographic"]["zfar"] = this.zfar;
-            camera["orthographic"]["znear"] = this.znear;
+            camera["orthographic"]["xmag"] = this.orthographic.xmag;
+            camera["orthographic"]["ymag"] = this.orthographic.ymag;
+            camera["orthographic"]["zfar"] = this.orthographic.zfar;
+            camera["orthographic"]["znear"] = this.orthographic.znear;
         }
 
         const mat = this.getTransformMatrix(gltf);
@@ -1930,9 +1957,9 @@ class gltfCamera extends GltfObject
                 mat[12], mat[13], mat[14], mat[15]]
         };
 
-        if (this.nodeIndex !== undefined && gltf.nodes[this.nodeIndex].name !== undefined)
+        if (this.node !== undefined && gltf.nodes[this.node].name !== undefined)
         {
-            node["name"] = gltf.nodes[this.nodeIndex].name;
+            node["name"] = gltf.nodes[this.node].name;
         }
 
         return {
@@ -1940,6 +1967,40 @@ class gltfCamera extends GltfObject
             "cameras": [camera],
             "nodes": [node]
         };
+    }
+}
+
+class PerspectiveCamera extends GltfObject
+{
+    static animatedProperties = [
+        "yfov",
+        "aspectRatio",
+        "znear",
+        "zfar"
+    ];
+    constructor() {
+        super();
+        this.yfov = 45 * Math.PI / 180;
+        this.aspectRatio = undefined;
+        this.znear = 0.01;
+        this.zfar = Infinity;
+    }
+}
+
+class OrthographicCamera extends GltfObject
+{
+    static animatedProperties = [
+        "xmag",
+        "ymag",
+        "znear",
+        "zfar"
+    ];
+    constructor() {
+        super();
+        this.xmag = 1;
+        this.ymag = 1;
+        this.znear = 0.01;
+        this.zfar = Infinity;
     }
 }
 
@@ -2225,6 +2286,7 @@ class gltfWebGl
 
 class gltfAccessor extends GltfObject
 {
+    static animatedProperties = [];
     constructor()
     {
         super();
@@ -2734,7 +2796,7 @@ class UserCamera extends gltfCamera
      */
     setVerticalFoV(yfov)
     {
-        this.yfov = yfov;
+        this.perspective.yfov = yfov;
     }
 
     /**
@@ -2984,8 +3046,8 @@ class UserCamera extends gltfCamera
     fitDistanceToExtents(min, max)
     {
         const maxAxisLength = Math.max(max[0] - min[0], max[1] - min[1]);
-        const yfov = this.yfov;
-        const xfov = this.yfov * this.aspectRatio;
+        const yfov = this.perspective.yfov;
+        const xfov = this.perspective.yfov * (this.perspective.aspectRatio ?? 1);
 
         const yZoom = maxAxisLength / 2 / Math.tan(yfov / 2);
         const xZoom = maxAxisLength / 2 / Math.tan(xfov / 2);
@@ -3017,8 +3079,8 @@ class UserCamera extends gltfCamera
         // minimum near plane value needs to depend on far plane value to avoid z fighting or too large near planes
         zNear = Math.max(zNear, zFar / MaxNearFarRatio);
 
-        this.znear = zNear;
-        this.zfar = zFar;
+        this.perspective.znear = zNear;
+        this.perspective.zfar = zFar;
     }
 }
 
@@ -3312,6 +3374,9 @@ class gltfShader
 
     updateUniform(objectName, object, log = false)
     {
+        if (object === undefined) {
+            return;
+        }
         if (object instanceof UniformStruct)
         {
             this.updateUniformStruct(objectName, object, log);
@@ -3655,40 +3720,28 @@ var cubemapFragShader = "precision highp float;\n#define GLSLIFY 1\n#include <to
 
 class gltfLight extends GltfObject
 {
-    constructor(
-        type = "directional",
-        color = [1, 1, 1],
-        intensity = 1,
-        innerConeAngle = 0,
-        outerConeAngle = Math.PI / 4,
-        range = -1,
-        name = undefined)
+    static animatedProperties = ["color", "intensity", "range"];
+    constructor()
     {
         super();
-        this.type = type;
-        this.color = color;
-        this.intensity = intensity;
-        this.innerConeAngle = innerConeAngle;
-        this.outerConeAngle = outerConeAngle;
-        this.range = range;
-        this.name = name;
+        this.name = undefined;
+        this.type = "directional";
+        this.color = [1, 1, 1];
+        this.intensity = 1;
+        this.range = -1;
+        this.spot = new gltfLightSpot();
 
-        //Can be used to overwrite direction from node
+        // Used to override direction from node
         this.direction = undefined;
     }
 
-    initGl(gltf, webGlContext)
+    fromJson(json)
     {
-        super.initGl(gltf, webGlContext);
-    }
-
-    fromJson(jsonLight)
-    {
-        super.fromJson(jsonLight);
-
-        if(jsonLight.spot !== undefined)
+        super.fromJson(json);
+        if (json.spot !== undefined)
         {
-            fromKeys(this, jsonLight.spot);
+            this.spot = new gltfLightSpot();
+            this.spot.fromJson(json.spot);
         }
     }
 
@@ -3728,8 +3781,8 @@ class gltfLight extends GltfObject
         uLight.color = jsToGl(this.color);
         uLight.intensity = this.intensity;
 
-        uLight.innerConeCos = Math.cos(this.innerConeAngle);
-        uLight.outerConeCos = Math.cos(this.outerConeAngle);
+        uLight.innerConeCos = Math.cos(this.spot.innerConeAngle);
+        uLight.outerConeCos = Math.cos(this.spot.outerConeAngle);
 
         switch(this.type)
         {
@@ -3771,6 +3824,17 @@ class UniformLight extends UniformStruct
 
         this.outerConeCos = Math.PI / 4;
         this.type = Type_Directional;
+    }
+}
+
+class gltfLightSpot extends GltfObject
+{
+    static animatedProperties = ["innerConeAngle", "outerConeAngle"];
+    constructor()
+    {
+        super();
+        this.innerConeAngle = 0;
+        this.outerConeAngle = Math.PI / 4;
     }
 }
 
@@ -3997,17 +4061,39 @@ class gltfRenderer
         if (state.cameraIndex === undefined)
         {
             currentCamera = state.userCamera;
+            currentCamera.perspective.aspectRatio = this.currentWidth / this.currentHeight;
         }
         else
         {
-            currentCamera = state.gltf.cameras[state.cameraIndex].clone();
+            currentCamera = state.gltf.cameras[state.cameraIndex];
         }
 
-        currentCamera.aspectRatio = this.currentWidth / this.currentHeight;
-        if(currentCamera.aspectRatio > 1.0) {
-            currentCamera.xmag = currentCamera.ymag * currentCamera.aspectRatio; 
+        let aspectHeight = this.currentHeight;
+        let aspectWidth = this.currentWidth;
+        let aspectOffsetX = 0;
+        let aspectOffsetY = 0;
+        const currentAspectRatio = aspectWidth / aspectHeight;
+        if (currentCamera.type === "perspective") {
+            if (currentCamera.perspective.aspectRatio) {
+                if (currentCamera.perspective.aspectRatio > currentAspectRatio) {
+                    aspectHeight = aspectWidth * 1 / currentCamera.perspective.aspectRatio;
+                } else {
+                    aspectWidth = aspectHeight * currentCamera.perspective.aspectRatio;
+                }
+            }
         } else {
-            currentCamera.ymag = currentCamera.xmag / currentCamera.aspectRatio; 
+            const orthoAspect = currentCamera.orthographic.xmag / currentCamera.orthographic.ymag;
+            if (orthoAspect > currentAspectRatio) {
+                aspectHeight = aspectWidth * 1 / orthoAspect;
+            } else {
+                aspectWidth = aspectHeight * orthoAspect;
+            }
+        }
+        if (aspectHeight < this.currentHeight) {
+            aspectOffsetY = (this.currentHeight - aspectHeight) / 2;
+        }
+        if (aspectWidth < this.currentWidth) {
+            aspectOffsetX = (this.currentWidth - aspectWidth) / 2;
         }
 
         this.projMatrix = currentCamera.getProjectionMatrix();
@@ -4070,7 +4156,7 @@ class gltfRenderer
 
         // Render to canvas
         this.webGl.context.bindFramebuffer(this.webGl.context.FRAMEBUFFER, null);
-        this.webGl.context.viewport(0, 0,  this.currentWidth, this.currentHeight);
+        this.webGl.context.viewport(aspectOffsetX, aspectOffsetY,  aspectWidth, aspectHeight);
 
         // Render environment
         const fragDefines = [];
@@ -4131,17 +4217,17 @@ class gltfRenderer
 
         let vertDefines = [];
         this.pushVertParameterDefines(vertDefines, state.renderingParameters, state.gltf, node, primitive);
-        vertDefines = primitive.getDefines().concat(vertDefines);
+        vertDefines = primitive.defines.concat(vertDefines);
 
         let fragDefines = material.getDefines(state.renderingParameters).concat(vertDefines);
-        if(renderpassConfiguration.linearOutput === true)
+        if (renderpassConfiguration.linearOutput)
         {
             fragDefines.push("LINEAR_OUTPUT 1");
         }
         this.pushFragParameterDefines(fragDefines, state);
         
-        const fragmentHash = this.shaderCache.selectShader(material.getShaderIdentifier(), fragDefines);
-        const vertexHash = this.shaderCache.selectShader(primitive.getShaderIdentifier(), vertDefines);
+        const fragmentHash = this.shaderCache.selectShader("pbr.frag", fragDefines);
+        const vertexHash = this.shaderCache.selectShader("primitive.vert", vertDefines);
 
         if (fragmentHash && vertexHash)
         {
@@ -4224,10 +4310,83 @@ class gltfRenderer
             }
         }
 
-        for (let [uniform, val] of material.getProperties().entries())
-        {
-            this.shader.updateUniform(uniform, val, false);
-        }
+        // Update material uniforms
+
+        material.updateTextureTransforms(this.shader);
+
+        this.shader.updateUniform("u_EmissiveFactor", jsToGl(material.emissiveFactor));
+        this.shader.updateUniform("u_AlphaCutoff", material.alphaCutoff);
+
+        this.shader.updateUniform("u_NormalScale", material.normalTexture?.scale);
+        this.shader.updateUniform("u_NormalUVSet", material.normalTexture?.texCoord);
+
+        this.shader.updateUniform("u_OcclusionStrength", material.occlusionTexture?.strength);
+        this.shader.updateUniform("u_OcclusionUVSet", material.occlusionTexture?.texCoord);
+
+        this.shader.updateUniform("u_EmissiveUVSet", material.emissiveTexture?.texCoord);
+
+        this.shader.updateUniform("u_BaseColorUVSet", material.pbrMetallicRoughness?.baseColorTexture?.texCoord);
+        
+        this.shader.updateUniform("u_MetallicRoughnessUVSet", material.pbrMetallicRoughness?.metallicRoughnessTexture?.texCoord);
+        this.shader.updateUniform("u_MetallicFactor", material.pbrMetallicRoughness?.metallicFactor);
+        this.shader.updateUniform("u_RoughnessFactor", material.pbrMetallicRoughness?.roughnessFactor);
+        this.shader.updateUniform("u_BaseColorFactor", jsToGl(material.pbrMetallicRoughness?.baseColorFactor));
+
+        this.shader.updateUniform("u_AnisotropyUVSet", material.extensions?.KHR_materials_anisotropy?.anisotropyTexture?.texCoord);
+
+        const factor = material.extensions?.KHR_materials_anisotropy?.anisotropyStrength;
+        const rotation = material.extensions?.KHR_materials_anisotropy?.anisotropyRotation;
+        const anisotropy =  fromValues$2(Math.cos(rotation ?? 0), Math.sin(rotation ?? 0), factor ?? 0.0);
+        this.shader.updateUniform("u_Anisotropy", anisotropy);
+
+        this.shader.updateUniform("u_ClearcoatFactor", material.extensions?.KHR_materials_clearcoat?.clearcoatFactor);
+        this.shader.updateUniform("u_ClearcoatRoughnessFactor", material.extensions?.KHR_materials_clearcoat?.clearcoatRoughnessFactor);
+        this.shader.updateUniform("u_ClearcoatUVSet", material.extensions?.KHR_materials_clearcoat?.clearcoatTexture?.texCoord);
+        this.shader.updateUniform("u_ClearcoatRoughnessUVSet", material.extensions?.KHR_materials_clearcoat?.clearcoatRoughnessTexture?.texCoord);
+        this.shader.updateUniform("u_ClearcoatNormalUVSet", material.extensions?.KHR_materials_clearcoat?.clearcoatNormalTexture?.texCoord);
+        this.shader.updateUniform("u_ClearcoatNormalScale", material.extensions?.KHR_materials_clearcoat?.clearcoatNormalTexture?.scale);
+
+        this.shader.updateUniform("u_Dispersion", material.extensions?.KHR_materials_dispersion?.dispersion);
+
+        this.shader.updateUniform("u_EmissiveStrength", material.extensions?.KHR_materials_emissive_strength?.emissiveStrength);
+
+        this.shader.updateUniform("u_Ior", material.extensions?.KHR_materials_ior?.ior);
+
+        this.shader.updateUniform("u_IridescenceFactor", material.extensions?.KHR_materials_iridescence?.iridescenceFactor);
+        this.shader.updateUniform("u_IridescenceIor", material.extensions?.KHR_materials_iridescence?.iridescenceIor);
+        this.shader.updateUniform("u_IridescenceThicknessMaximum", material.extensions?.KHR_materials_iridescence?.iridescenceThicknessMaximum);
+        this.shader.updateUniform("u_IridescenceUVSet", material.extensions?.KHR_materials_iridescence?.iridescenceTexture?.texCoord);
+        this.shader.updateUniform("u_IridescenceThicknessUVSet", material.extensions?.KHR_materials_iridescence?.iridescenceThicknessTexture?.texCoord);
+        this.shader.updateUniform("u_IridescenceThicknessMinimum", material.extensions?.KHR_materials_iridescence?.iridescenceThicknessMinimum);
+
+        this.shader.updateUniform("u_SheenRoughnessFactor", material.extensions?.KHR_materials_sheen?.sheenRoughnessFactor);
+        this.shader.updateUniform("u_SheenColorFactor", jsToGl(material.extensions?.KHR_materials_sheen?.sheenColorFactor));
+        this.shader.updateUniform("u_SheenRoughnessUVSet", material.extensions?.KHR_materials_sheen?.sheenRoughnessTexture?.texCoord);
+        this.shader.updateUniform("u_SheenColorUVSet", material.extensions?.KHR_materials_sheen?.sheenColorTexture?.texCoord);
+        
+        this.shader.updateUniform("u_KHR_materials_specular_specularColorFactor", jsToGl(material.extensions?.KHR_materials_specular?.specularColorFactor));
+        this.shader.updateUniform("u_KHR_materials_specular_specularFactor", material.extensions?.KHR_materials_specular?.specularFactor);
+        this.shader.updateUniform("u_SpecularUVSet", material.extensions?.KHR_materials_specular?.specularTexture?.texCoord);
+        this.shader.updateUniform("u_SpecularColorUVSet", material.extensions?.KHR_materials_specular?.specularColorTexture?.texCoord);
+
+        this.shader.updateUniform("u_TransmissionFactor", material.extensions?.KHR_materials_transmission?.transmissionFactor);
+        this.shader.updateUniform("u_TransmissionUVSet", material.extensions?.KHR_materials_transmission?.transmissionTexture?.texCoord);
+
+        this.shader.updateUniform("u_AttenuationColor", jsToGl(material.extensions?.KHR_materials_volume?.attenuationColor));
+        this.shader.updateUniform("u_AttenuationDistance", material.extensions?.KHR_materials_volume?.attenuationDistance);
+        this.shader.updateUniform("u_ThicknessFactor", material.extensions?.KHR_materials_volume?.thicknessFactor);
+        this.shader.updateUniform("u_ThicknessUVSet", material.extensions?.KHR_materials_volume?.thicknessTexture?.texCoord);
+
+        this.shader.updateUniform("u_DiffuseTransmissionFactor", material.extensions?.KHR_materials_diffuse_transmission?.diffuseTransmissionFactor);
+        this.shader.updateUniform("u_DiffuseTransmissionColorFactor", jsToGl(material.extensions?.KHR_materials_diffuse_transmission?.diffuseTransmissionColorFactor));
+        this.shader.updateUniform("u_DiffuseTransmissionUVSet", material.extensions?.KHR_materials_diffuse_transmission?.diffuseTransmissionTexture?.texCoord);
+        this.shader.updateUniform("u_DiffuseTransmissionColorUVSet", material.extensions?.KHR_materials_diffuse_transmission?.diffuseTransmissionColorTexture?.texCoord);
+
+        this.shader.updateUniform("u_DiffuseFactor", jsToGl(material.extensions?.KHR_materials_pbrSpecularGlossiness?.diffuseFactor));
+        this.shader.updateUniform("u_SpecularFactor", jsToGl(material.extensions?.KHR_materials_pbrSpecularGlossiness?.specularFactor));
+        this.shader.updateUniform("u_GlossinessFactor", material.extensions?.KHR_materials_pbrSpecularGlossiness?.glossinessFactor);
+        this.shader.updateUniform("u_SpecularGlossinessUVSet", material.extensions?.KHR_materials_pbrSpecularGlossiness?.specularGlossinessTexture?.texCoord);
+        this.shader.updateUniform("u_DiffuseUVSet", material.extensions?.KHR_materials_pbrSpecularGlossiness?.diffuseTexture?.texCoord);
 
         let textureIndex = 0;
         for (; textureIndex < material.textures.length; ++textureIndex)
@@ -4347,11 +4506,11 @@ class gltfRenderer
         // morphing
         if (parameters.morphing && node.mesh !== undefined && primitive.targets.length > 0)
         {
-            const mesh = gltf.meshes[node.mesh];
-            if (mesh.getWeightsAnimated() !== undefined && mesh.getWeightsAnimated().length > 0)
+            const weights = node.getWeights(gltf);
+            if (weights !== undefined && weights.length > 0)
             {
                 vertDefines.push("USE_MORPHING 1");
-                vertDefines.push("WEIGHT_COUNT " + mesh.getWeightsAnimated().length);
+                vertDefines.push("WEIGHT_COUNT " + weights.length);
             }
         }
     }
@@ -4360,11 +4519,10 @@ class gltfRenderer
     {
         if (state.renderingParameters.morphing && node.mesh !== undefined && primitive.targets.length > 0)
         {
-            const mesh = state.gltf.meshes[node.mesh];
-            const weightsAnimated = mesh.getWeightsAnimated();
-            if (weightsAnimated !== undefined && weightsAnimated.length > 0)
+            const weights = node.getWeights(state.gltf);
+            if (weights !== undefined && weights.length > 0)
             {
-                this.shader.updateUniformArray("u_morphWeights", weightsAnimated);
+                this.shader.updateUniformArray("u_morphWeights", weights);
             }
         }
     }
@@ -4508,6 +4666,7 @@ class gltfRenderer
 
 class gltfBuffer extends GltfObject
 {
+    static animatedProperties = [];
     constructor()
     {
         super();
@@ -4584,6 +4743,7 @@ class gltfBuffer extends GltfObject
 
 class gltfBufferView extends GltfObject
 {
+    static animatedProperties = [];
     constructor()
     {
         super();
@@ -11023,6 +11183,7 @@ function decodePng(data, options) {
 
 class gltfImage extends GltfObject
 {
+    static animatedProperties = [];
     constructor(
         uri = undefined,
         type = GL.TEXTURE_2D,
@@ -11264,6 +11425,7 @@ class gltfImage extends GltfObject
 
 class ImageBasedLight extends GltfObject
 {
+    static animatedProperties = [];
     constructor()
     {
         super();
@@ -11330,6 +11492,7 @@ class ImageBasedLight extends GltfObject
 
 class gltfTexture extends GltfObject
 {
+    static animatedProperties = [];
     constructor(sampler = undefined, source = undefined, type = GL.TEXTURE_2D)
     {
         super();
@@ -11382,10 +11545,12 @@ class gltfTexture extends GltfObject
     }
 }
 
-class gltfTextureInfo
+class gltfTextureInfo extends GltfObject
 {
+    static animatedProperties = ["strength", "scale"];
     constructor(index = undefined, texCoord = 0, linear = true, samplerName = "", generateMips = true) // linear by default
     {
+        super();
         this.index = index; // reference to gltfTexture
         this.texCoord = texCoord; // which UV set to use
         this.linear = linear;
@@ -11405,16 +11570,33 @@ class gltfTextureInfo
     fromJson(jsonTextureInfo)
     {
         fromKeys(this, jsonTextureInfo);
+
+        if (jsonTextureInfo?.extensions?.KHR_texture_transform !== undefined)
+        {
+            this.extensions.KHR_texture_transform = new KHR_texture_transform();
+            this.extensions.KHR_texture_transform.fromJson(jsonTextureInfo.extensions.KHR_texture_transform);
+        }
+    }
+}
+
+class KHR_texture_transform extends GltfObject {
+    static animatedProperties = ["offset", "scale", "rotation"];
+    constructor() {
+        super();
+        this.offset = [0, 0];
+        this.scale = [1, 1];
+        this.rotation = 0;
     }
 }
 
 class gltfMaterial extends GltfObject
 {
+    static animatedProperties = ["alphaCutoff", "emissiveFactor"];
     constructor()
     {
         super();
         this.name = undefined;
-        this.pbrMetallicRoughness = undefined;
+        this.pbrMetallicRoughness = new PbrMetallicRoughness();
         this.normalTexture = undefined;
         this.occlusionTexture = undefined;
         this.emissiveTexture = undefined;
@@ -11438,7 +11620,7 @@ class gltfMaterial extends GltfObject
         // non gltf properties
         this.type = "unlit";
         this.textures = [];
-        this.properties = new Map();
+        this.textureTransforms = [];
         this.defines = [];
     }
 
@@ -11448,25 +11630,8 @@ class gltfMaterial extends GltfObject
         defaultMaterial.type = "MR";
         defaultMaterial.name = "Default Material";
         defaultMaterial.defines.push("MATERIAL_METALLICROUGHNESS 1");
-        const baseColorFactor = fromValues$1(1, 1, 1, 1);
-        const metallicFactor = 1;
-        const roughnessFactor = 1;
-        defaultMaterial.properties.set("u_BaseColorFactor", baseColorFactor);
-        defaultMaterial.properties.set("u_MetallicFactor", metallicFactor);
-        defaultMaterial.properties.set("u_RoughnessFactor", roughnessFactor);
 
         return defaultMaterial;
-    }
-
-    getShaderIdentifier()
-    {
-        switch (this.type)
-        {
-        default:
-        case "SG": // fall through till we sparate shaders
-        case "MR": return "pbr.frag";
-            //case "SG": return "specular-glossiness.frag" ;
-        }
     }
 
     getDefines(renderingParameters)
@@ -11521,73 +11686,68 @@ class gltfMaterial extends GltfObject
         return defines;
     }
 
-    getProperties()
+    updateTextureTransforms(shader)
     {
-        return this.properties;
-    }
-
-    getTextures()
-    {
-        return this.textures;
-    }
-
-    parseTextureInfoExtensions(textureInfo, textureKey)
-    {
-        if(textureInfo.extensions === undefined)
-        {
-            return;
-        }
-
-        if(textureInfo.extensions.KHR_texture_transform !== undefined)
-        {
-            const uvTransform = textureInfo.extensions.KHR_texture_transform;
-
-            // override uvset
-            if(uvTransform.texCoord !== undefined)
-            {
-                textureInfo.texCoord = uvTransform.texCoord;
-            }
-
+        for (const { key, uv } of this.textureTransforms) {
             let rotation = create$4();
             let scale = create$4();
             let translation = create$4();
 
-            if(uvTransform.rotation !== undefined)
+            if (uv.rotation !== undefined)
             {
-                const s =  Math.sin(uvTransform.rotation);
-                const c =  Math.cos(uvTransform.rotation);
-
+                const s =  Math.sin(uv.rotation);
+                const c =  Math.cos(uv.rotation);
                 rotation = jsToGl([
                     c, -s, 0.0,
                     s, c, 0.0,
                     0.0, 0.0, 1.0]);
             }
 
-            if(uvTransform.scale !== undefined)
+            if (uv.scale !== undefined)
             {
                 scale = jsToGl([
-                    uvTransform.scale[0], 0, 0, 
-                    0, uvTransform.scale[1], 0, 
+                    uv.scale[0], 0, 0, 
+                    0, uv.scale[1], 0, 
                     0, 0, 1
                 ]);
             }
 
-            if(uvTransform.offset !== undefined)
+            if (uv.offset !== undefined)
             {
                 translation = jsToGl([
                     1, 0, 0, 
                     0, 1, 0, 
-                    uvTransform.offset[0], uvTransform.offset[1], 1
+                    uv.offset[0], uv.offset[1], 1
                 ]);
             }
 
             let uvMatrix = create$4();
             multiply$1(uvMatrix, translation, rotation);
             multiply$1(uvMatrix, uvMatrix, scale);
-
-            this.defines.push("HAS_" + textureKey.toUpperCase() + "_UV_TRANSFORM 1");
-            this.properties.set("u_" + textureKey + "UVTransform", uvMatrix);
+            shader.updateUniform("u_" + key + "UVTransform", jsToGl(uvMatrix));
         }
+    }
+
+    parseTextureInfoExtensions(textureInfo, textureKey)
+    {
+        if (textureInfo.extensions?.KHR_texture_transform === undefined)
+        {
+            return;
+        }
+
+        const uv = textureInfo.extensions.KHR_texture_transform;
+
+        this.textureTransforms.push({
+            key: textureKey,
+            uv: uv
+        });
+
+        if(uv.texCoord !== undefined)
+        {
+            textureInfo.texCoord = uv.texCoord;
+        }
+
+        this.defines.push("HAS_" + textureKey.toUpperCase() + "_UV_TRANSFORM 1");
     }
 
     initGl(gltf, webGlContext)
@@ -11598,8 +11758,6 @@ class gltfMaterial extends GltfObject
             this.parseTextureInfoExtensions(this.normalTexture, "Normal");
             this.textures.push(this.normalTexture);
             this.defines.push("HAS_NORMAL_MAP 1");
-            this.properties.set("u_NormalScale", this.normalTexture.scale);
-            this.properties.set("u_NormalUVSet", this.normalTexture.texCoord);
         }
 
         if (this.occlusionTexture !== undefined)
@@ -11608,54 +11766,48 @@ class gltfMaterial extends GltfObject
             this.parseTextureInfoExtensions(this.occlusionTexture, "Occlusion");
             this.textures.push(this.occlusionTexture);
             this.defines.push("HAS_OCCLUSION_MAP 1");
-            this.properties.set("u_OcclusionStrength", this.occlusionTexture.strength);
-            this.properties.set("u_OcclusionUVSet", this.occlusionTexture.texCoord);
         }
 
-        this.properties.set("u_EmissiveFactor", this.emissiveFactor);
         if (this.emissiveTexture !== undefined)
         {
             this.emissiveTexture.samplerName = "u_EmissiveSampler";
             this.parseTextureInfoExtensions(this.emissiveTexture, "Emissive");
             this.textures.push(this.emissiveTexture);
             this.defines.push("HAS_EMISSIVE_MAP 1");
-            this.properties.set("u_EmissiveUVSet", this.emissiveTexture.texCoord);
         }
 
-        if (this.baseColorTexture !== undefined)
+        if (this.pbrMetallicRoughness.baseColorTexture !== undefined)
         {
-            this.baseColorTexture.samplerName = "u_BaseColorSampler";
-            this.parseTextureInfoExtensions(this.baseColorTexture, "BaseColor");
-            this.textures.push(this.baseColorTexture);
+            this.pbrMetallicRoughness.baseColorTexture.samplerName = "u_BaseColorSampler";
+            this.parseTextureInfoExtensions(this.pbrMetallicRoughness.baseColorTexture, "BaseColor");
+            this.textures.push(this.pbrMetallicRoughness.baseColorTexture);
             this.defines.push("HAS_BASE_COLOR_MAP 1");
-            this.properties.set("u_BaseColorUVSet", this.baseColorTexture.texCoord);
         }
 
-        if (this.metallicRoughnessTexture !== undefined)
+        if (this.pbrMetallicRoughness.metallicRoughnessTexture !== undefined)
         {
-            this.metallicRoughnessTexture.samplerName = "u_MetallicRoughnessSampler";
-            this.parseTextureInfoExtensions(this.metallicRoughnessTexture, "MetallicRoughness");
-            this.textures.push(this.metallicRoughnessTexture);
+            this.pbrMetallicRoughness.metallicRoughnessTexture.samplerName = "u_MetallicRoughnessSampler";
+            this.parseTextureInfoExtensions(this.pbrMetallicRoughness.metallicRoughnessTexture, "MetallicRoughness");
+            this.textures.push(this.pbrMetallicRoughness.metallicRoughnessTexture);
             this.defines.push("HAS_METALLIC_ROUGHNESS_MAP 1");
-            this.properties.set("u_MetallicRoughnessUVSet", this.metallicRoughnessTexture.texCoord);
         }
 
-        if (this.diffuseTexture !== undefined)
+        if (this.extensions?.KHR_materials_pbrSpecularGlossiness?.diffuseTexture !== undefined)
         {
-            this.diffuseTexture.samplerName = "u_DiffuseSampler";
-            this.parseTextureInfoExtensions(this.diffuseTexture, "Diffuse");
-            this.textures.push(this.diffuseTexture);
+            const diffuseTexture = this.extensions.KHR_materials_pbrSpecularGlossiness.diffuseTexture;
+            diffuseTexture.samplerName = "u_DiffuseSampler";
+            this.parseTextureInfoExtensions(diffuseTexture, "Diffuse");
+            this.textures.push(diffuseTexture);
             this.defines.push("HAS_DIFFUSE_MAP 1");
-            this.properties.set("u_DiffuseUVSet", this.diffuseTexture.texCoord);
         }
 
-        if (this.specularGlossinessTexture !== undefined)
+        if (this.extensions?.KHR_materials_pbrSpecularGlossiness?.specularGlossinessTexture !== undefined)
         {
-            this.specularGlossinessTexture.samplerName = "u_SpecularGlossinessSampler";
-            this.parseTextureInfoExtensions(this.specularGlossinessTexture, "SpecularGlossiness");
-            this.textures.push(this.specularGlossinessTexture);
+            const specularGlossinessTexture = this.extensions.KHR_materials_pbrSpecularGlossiness.specularGlossinessTexture;
+            specularGlossinessTexture.samplerName = "u_SpecularGlossinessSampler";
+            this.parseTextureInfoExtensions(specularGlossinessTexture, "SpecularGlossiness");
+            this.textures.push(specularGlossinessTexture);
             this.defines.push("HAS_SPECULAR_GLOSSINESS_MAP 1");
-            this.properties.set("u_SpecularGlossinessUVSet", this.specularGlossinessTexture.texCoord);
         }
 
         this.defines.push("ALPHAMODE_OPAQUE 0");
@@ -11664,7 +11816,6 @@ class gltfMaterial extends GltfObject
         if(this.alphaMode === 'MASK') // only set cutoff value for mask material
         {
             this.defines.push("ALPHAMODE ALPHAMODE_MASK");
-            this.properties.set("u_AlphaCutoff", this.alphaCutoff);
         }
         else if (this.alphaMode === 'OPAQUE')
         {
@@ -11676,34 +11827,9 @@ class gltfMaterial extends GltfObject
         }
 
         // if we have SG, we prefer SG (best practice) but if we have neither objects we use MR default values
-        if(this.type !== "SG" )
+        if (this.type !== "SG")
         {
             this.defines.push("MATERIAL_METALLICROUGHNESS 1");
-            this.properties.set("u_BaseColorFactor", fromValues$1(1, 1, 1, 1));
-            this.properties.set("u_MetallicFactor", 1);
-            this.properties.set("u_RoughnessFactor", 1);
-        }
-
-        if (this.pbrMetallicRoughness !== undefined && this.type !== "SG")
-        {
-            if (this.pbrMetallicRoughness.baseColorFactor !== undefined)
-            {
-                let baseColorFactor = jsToGl(this.pbrMetallicRoughness.baseColorFactor);
-                this.properties.set("u_BaseColorFactor", baseColorFactor);
-            }
-
-            if (this.pbrMetallicRoughness.metallicFactor !== undefined)
-            {
-                let metallicFactor = this.pbrMetallicRoughness.metallicFactor;
-                this.properties.set("u_MetallicFactor", metallicFactor);
-            }
-
-            if (this.pbrMetallicRoughness.roughnessFactor !== undefined)
-            {
-                let roughnessFactor = this.pbrMetallicRoughness.roughnessFactor;
-                this.properties.set("u_RoughnessFactor", roughnessFactor);
-            }
-
         }
 
         if (this.extensions !== undefined)
@@ -11716,115 +11842,64 @@ class gltfMaterial extends GltfObject
             if (this.extensions.KHR_materials_pbrSpecularGlossiness !== undefined)
             {
                 this.defines.push("MATERIAL_SPECULARGLOSSINESS 1");
-
-                let diffuseFactor = fromValues$1(1, 1, 1, 1);
-                let specularFactor = fromValues$2(1, 1, 1);
-                let glossinessFactor = 1;
-
-                if (this.extensions.KHR_materials_pbrSpecularGlossiness.diffuseFactor !== undefined)
-                {
-                    diffuseFactor = jsToGl(this.extensions.KHR_materials_pbrSpecularGlossiness.diffuseFactor);
-                }
-
-                if (this.extensions.KHR_materials_pbrSpecularGlossiness.specularFactor !== undefined)
-                {
-                    specularFactor = jsToGl(this.extensions.KHR_materials_pbrSpecularGlossiness.specularFactor);
-                }
-
-                if (this.extensions.KHR_materials_pbrSpecularGlossiness.glossinessFactor !== undefined)
-                {
-                    glossinessFactor = this.extensions.KHR_materials_pbrSpecularGlossiness.glossinessFactor;
-                }
-
-                this.properties.set("u_DiffuseFactor", diffuseFactor);
-                this.properties.set("u_SpecularFactor", specularFactor);
-                this.properties.set("u_GlossinessFactor", glossinessFactor);
             }
 
             // Clearcoat is part of the default metallic-roughness shader
             if(this.extensions.KHR_materials_clearcoat !== undefined)
             {
-                let clearcoatFactor = 0.0;
-                let clearcoatRoughnessFactor = 0.0;
-
                 this.hasClearcoat = true;
 
-                if(this.extensions.KHR_materials_clearcoat.clearcoatFactor !== undefined)
+                const clearcoatTexture = this.extensions.KHR_materials_clearcoat.clearcoatTexture;
+                if (clearcoatTexture !== undefined)
                 {
-                    clearcoatFactor = this.extensions.KHR_materials_clearcoat.clearcoatFactor;
-                }
-                if(this.extensions.KHR_materials_clearcoat.clearcoatRoughnessFactor !== undefined)
-                {
-                    clearcoatRoughnessFactor = this.extensions.KHR_materials_clearcoat.clearcoatRoughnessFactor;
-                }
-
-                if (this.clearcoatTexture !== undefined)
-                {
-                    this.clearcoatTexture.samplerName = "u_ClearcoatSampler";
-                    this.parseTextureInfoExtensions(this.clearcoatTexture, "Clearcoat");
-                    this.textures.push(this.clearcoatTexture);
+                    clearcoatTexture.samplerName = "u_ClearcoatSampler";
+                    this.parseTextureInfoExtensions(clearcoatTexture, "Clearcoat");
+                    this.textures.push(clearcoatTexture);
                     this.defines.push("HAS_CLEARCOAT_MAP 1");
-                    this.properties.set("u_ClearcoatUVSet", this.clearcoatTexture.texCoord);
                 }
-                if (this.clearcoatRoughnessTexture !== undefined)
-                {
-                    this.clearcoatRoughnessTexture.samplerName = "u_ClearcoatRoughnessSampler";
-                    this.parseTextureInfoExtensions(this.clearcoatRoughnessTexture, "ClearcoatRoughness");
-                    this.textures.push(this.clearcoatRoughnessTexture);
-                    this.defines.push("HAS_CLEARCOAT_ROUGHNESS_MAP 1");
-                    this.properties.set("u_ClearcoatRoughnessUVSet", this.clearcoatRoughnessTexture.texCoord);
-                }
-                if (this.clearcoatNormalTexture !== undefined)
-                {
-                    this.clearcoatNormalTexture.samplerName = "u_ClearcoatNormalSampler";
-                    this.parseTextureInfoExtensions(this.clearcoatNormalTexture, "ClearcoatNormal");
-                    this.textures.push(this.clearcoatNormalTexture);
-                    this.defines.push("HAS_CLEARCOAT_NORMAL_MAP 1");
-                    this.properties.set("u_ClearcoatNormalUVSet", this.clearcoatNormalTexture.texCoord);
-                    this.properties.set("u_ClearcoatNormalScale", this.clearcoatNormalTexture.scale);
 
+                const clearcoatRoughnessTexture = this.extensions.KHR_materials_clearcoat.clearcoatRoughnessTexture;
+                if (clearcoatRoughnessTexture !== undefined)
+                {
+                    clearcoatRoughnessTexture.samplerName = "u_ClearcoatRoughnessSampler";
+                    this.parseTextureInfoExtensions(clearcoatRoughnessTexture, "ClearcoatRoughness");
+                    this.textures.push(clearcoatRoughnessTexture);
+                    this.defines.push("HAS_CLEARCOAT_ROUGHNESS_MAP 1");
                 }
-                this.properties.set("u_ClearcoatFactor", clearcoatFactor);
-                this.properties.set("u_ClearcoatRoughnessFactor", clearcoatRoughnessFactor);
+
+                const clearcoatNormalTexture = this.extensions.KHR_materials_clearcoat.clearcoatNormalTexture;
+                if (clearcoatNormalTexture !== undefined)
+                {
+                    clearcoatNormalTexture.samplerName = "u_ClearcoatNormalSampler";
+                    this.parseTextureInfoExtensions(clearcoatNormalTexture, "ClearcoatNormal");
+                    this.textures.push(clearcoatNormalTexture);
+                    this.defines.push("HAS_CLEARCOAT_NORMAL_MAP 1");
+                }
             }
 
             // Sheen material extension
             // https://github.com/sebavan/glTF/tree/KHR_materials_sheen/extensions/2.0/Khronos/KHR_materials_sheen
             if(this.extensions.KHR_materials_sheen !== undefined)
             {
-                let sheenRoughnessFactor = 0.0;
-                let sheenColorFactor =  fromValues$2(1.0, 1.0, 1.0);
-
                 this.hasSheen = true;
-
-                if(this.extensions.KHR_materials_sheen.sheenRoughnessFactor !== undefined)
+     
+                if (this.extensions.KHR_materials_sheen.sheenRoughnessTexture !== undefined)
                 {
-                    sheenRoughnessFactor = this.extensions.KHR_materials_sheen.sheenRoughnessFactor;
-                }
-                if(this.extensions.KHR_materials_sheen.sheenColorFactor !== undefined)
-                {
-                    sheenColorFactor = jsToGl(this.extensions.KHR_materials_sheen.sheenColorFactor);
-                }
-                if (this.sheenRoughnessTexture !== undefined)
-                {
-                    this.sheenRoughnessTexture.samplerName = "u_SheenRoughnessSampler";
-                    this.parseTextureInfoExtensions(this.sheenRoughnessTexture, "SheenRoughness");
-                    this.textures.push(this.sheenRoughnessTexture);
+                    this.extensions.KHR_materials_sheen.sheenRoughnessTexture.samplerName = "u_SheenRoughnessSampler";
+                    this.parseTextureInfoExtensions(this.extensions.KHR_materials_sheen.sheenRoughnessTexture, "SheenRoughness");
+                    this.textures.push(this.extensions.KHR_materials_sheen.sheenRoughnessTexture);
                     this.defines.push("HAS_SHEEN_ROUGHNESS_MAP 1");
-                    this.properties.set("u_SheenRoughnessUVSet", this.sheenRoughnessTexture.texCoord);
                 }
-                if (this.sheenColorTexture !== undefined)
+                
+                const sheenColorTexture = this.extensions.KHR_materials_sheen.sheenColorTexture;
+                if (sheenColorTexture !== undefined)
                 {
-                    this.sheenColorTexture.samplerName = "u_SheenColorSampler";
-                    this.parseTextureInfoExtensions(this.sheenColorTexture, "SheenColor");
-                    this.sheenColorTexture.linear = false;
-                    this.textures.push(this.sheenColorTexture);
+                    sheenColorTexture.samplerName = "u_SheenColorSampler";
+                    this.parseTextureInfoExtensions(sheenColorTexture, "SheenColor");
+                    sheenColorTexture.linear = false;
+                    this.textures.push(sheenColorTexture);
                     this.defines.push("HAS_SHEEN_COLOR_MAP 1");
-                    this.properties.set("u_SheenColorUVSet", this.sheenColorTexture.texCoord);
                 }
-
-                this.properties.set("u_SheenRoughnessFactor", sheenRoughnessFactor);
-                this.properties.set("u_SheenColorFactor", sheenColorFactor);
             }
 
             // KHR Extension: Specular
@@ -11832,63 +11907,42 @@ class gltfMaterial extends GltfObject
             {
                 this.hasSpecular = true;
 
-                if (this.specularTexture !== undefined)
+                if (this.extensions.KHR_materials_specular?.specularTexture !== undefined)
                 {
-                    this.specularTexture.samplerName = "u_SpecularSampler";
-                    this.parseTextureInfoExtensions(this.specularTexture, "Specular");
-                    this.textures.push(this.specularTexture);
+                    this.extensions.KHR_materials_specular.specularTexture.samplerName = "u_SpecularSampler";
+                    this.parseTextureInfoExtensions(this.extensions?.KHR_materials_specular?.specularTexture, "Specular");
+                    this.textures.push(this.extensions?.KHR_materials_specular?.specularTexture);
                     this.defines.push("HAS_SPECULAR_MAP 1");
-                    this.properties.set("u_SpecularUVSet", this.specularTexture.texCoord);
                 }
 
-                if (this.specularColorTexture !== undefined)
+                if (this.extensions.KHR_materials_specular?.specularColorTexture !== undefined)
                 {
-                    this.specularColorTexture.samplerName = "u_SpecularColorSampler";
-                    this.parseTextureInfoExtensions(this.specularColorTexture, "SpecularColor");
-                    this.specularColorTexture.linear = false;
-                    this.textures.push(this.specularColorTexture);
+                    this.extensions.KHR_materials_specular.specularColorTexture.samplerName = "u_SpecularColorSampler";
+                    this.parseTextureInfoExtensions(this.extensions?.KHR_materials_specular.specularColorTexture, "SpecularColor");
+                    this.extensions.KHR_materials_specular.specularColorTexture.linear = false;
+                    this.textures.push(this.extensions.KHR_materials_specular.specularColorTexture);
                     this.defines.push("HAS_SPECULAR_COLOR_MAP 1");
-                    this.properties.set("u_SpecularColorUVSet", this.specularColorTexture.texCoord);
                 }
-
-                let specularColorFactor = jsToGl(this.extensions.KHR_materials_specular.specularColorFactor ?? [1.0, 1.0, 1.0]);
-                let specularFactor = this.extensions.KHR_materials_specular.specularFactor ?? 1.0;
-
-                this.properties.set("u_KHR_materials_specular_specularColorFactor", specularColorFactor);
-                this.properties.set("u_KHR_materials_specular_specularFactor", specularFactor);
             }
 
             // KHR Extension: Emissive strength
             if (this.extensions.KHR_materials_emissive_strength !== undefined)
             {
                 this.hasEmissiveStrength = true;
-
-                let emissiveStrength = this.extensions.KHR_materials_emissive_strength.emissiveStrength ?? 1.0;
-
-                this.properties.set("u_EmissiveStrength", emissiveStrength);
             }
 
             // KHR Extension: Transmission
             if (this.extensions.KHR_materials_transmission !== undefined)
             {
-                let transmissionFactor = 0.0;
-
                 this.hasTransmission = true;
 
-                if (transmissionFactor !== undefined)
+                if (this.extensions?.KHR_materials_transmission?.transmissionTexture !== undefined)
                 {
-                    transmissionFactor = this.extensions.KHR_materials_transmission.transmissionFactor;
-                }
-                if (this.transmissionTexture !== undefined)
-                {
-                    this.transmissionTexture.samplerName = "u_TransmissionSampler";
-                    this.parseTextureInfoExtensions(this.transmissionTexture, "Transmission");
-                    this.textures.push(this.transmissionTexture);
+                    this.extensions.KHR_materials_transmission.transmissionTexture.samplerName = "u_TransmissionSampler";
+                    this.parseTextureInfoExtensions(this.extensions?.KHR_materials_transmission?.transmissionTexture, "Transmission");
+                    this.textures.push(this.extensions?.KHR_materials_transmission?.transmissionTexture);
                     this.defines.push("HAS_TRANSMISSION_MAP 1");
-                    this.properties.set("u_TransmissionUVSet", this.transmissionTexture.texCoord);
                 }
-
-                this.properties.set("u_TransmissionFactor", transmissionFactor);
             }
 
             // KHR Extension: Diffuse Transmission
@@ -11898,26 +11952,20 @@ class gltfMaterial extends GltfObject
 
                 this.hasDiffuseTransmission = true;
 
-                let diffuseTransmissionColorFactor = jsToGl(extension.diffuseTransmissionColorFactor ?? [1.0, 1.0, 1.0]);
-                this.properties.set("u_DiffuseTransmissionFactor", extension.diffuseTransmissionFactor);
-                this.properties.set("u_DiffuseTransmissionColorFactor", diffuseTransmissionColorFactor);
-
-                if (this.diffuseTransmissionTexture !== undefined)
+                if (extension.diffuseTransmissionTexture !== undefined)
                 {
-                    this.diffuseTransmissionTexture.samplerName = "u_DiffuseTransmissionSampler";
-                    this.parseTextureInfoExtensions(this.diffuseTransmissionTexture, "DiffuseTransmission");
-                    this.textures.push(this.diffuseTransmissionTexture);
+                    extension.diffuseTransmissionTexture.samplerName = "u_DiffuseTransmissionSampler";
+                    this.parseTextureInfoExtensions(extension.diffuseTransmissionTexture, "DiffuseTransmission");
+                    this.textures.push(extension.diffuseTransmissionTexture);
                     this.defines.push("HAS_DIFFUSE_TRANSMISSION_MAP 1");
-                    this.properties.set("u_DiffuseTransmissionUVSet", this.diffuseTransmissionTexture.texCoord);
                 }
 
-                if (this.diffuseTransmissionColorTexture !== undefined)
+                if (extension.diffuseTransmissionColorTexture !== undefined)
                 {
-                    this.diffuseTransmissionColorTexture.samplerName = "u_DiffuseTransmissionColorSampler";
-                    this.parseTextureInfoExtensions(this.diffuseTransmissionColorTexture, "DiffuseTransmissionColor");
-                    this.textures.push(this.diffuseTransmissionColorTexture);
+                    extension.diffuseTransmissionColorTexture.samplerName = "u_DiffuseTransmissionColorSampler";
+                    this.parseTextureInfoExtensions(extension.diffuseTransmissionColorTexture, "DiffuseTransmissionColor");
+                    this.textures.push(extension.diffuseTransmissionColorTexture);
                     this.defines.push("HAS_DIFFUSE_TRANSMISSION_COLOR_MAP 1");
-                    this.properties.set("u_DiffuseTransmissionColorUVSet", this.diffuseTransmissionColorTexture.texCoord);
                 }
             }
 
@@ -11925,16 +11973,7 @@ class gltfMaterial extends GltfObject
             //https://github.com/DassaultSystemes-Technology/glTF/tree/KHR_materials_ior/extensions/2.0/Khronos/KHR_materials_ior
             if (this.extensions.KHR_materials_ior !== undefined)
             {
-                let ior = 1.5;
-
                 this.hasIOR = true;
-                
-                if(this.extensions.KHR_materials_ior.ior !== undefined)
-                {
-                    ior = this.extensions.KHR_materials_ior.ior;
-                }
-
-                this.properties.set("u_Ior", ior);
             }
 
             // KHR Extension: Volume
@@ -11942,22 +11981,13 @@ class gltfMaterial extends GltfObject
             {
                 this.hasVolume = true;
 
-                if (this.thicknessTexture !== undefined)
+                if (this.extensions?.KHR_materials_volume?.thicknessTexture !== undefined)
                 {
-                    this.thicknessTexture.samplerName = "u_ThicknessSampler";
-                    this.parseTextureInfoExtensions(this.thicknessTexture, "Thickness");
-                    this.textures.push(this.thicknessTexture);
+                    this.extensions.KHR_materials_volume.thicknessTexture.samplerName = "u_ThicknessSampler";
+                    this.parseTextureInfoExtensions(this.extensions.KHR_materials_volume.thicknessTexture, "Thickness");
+                    this.textures.push(this.extensions.KHR_materials_volume.thicknessTexture);
                     this.defines.push("HAS_THICKNESS_MAP 1");
-                    this.properties.set("u_ThicknessUVSet", this.thicknessTexture.texCoord);
                 }
-
-                let attenuationColor = jsToGl(this.extensions.KHR_materials_volume.attenuationColor ?? [1.0, 1.0, 1.0]);
-                let attenuationDistance = this.extensions.KHR_materials_volume.attenuationDistance ?? 0.0;
-                let thicknessFactor = this.extensions.KHR_materials_volume.thicknessFactor ?? 0.0;
-
-                this.properties.set("u_AttenuationColor", attenuationColor);
-                this.properties.set("u_AttenuationDistance", attenuationDistance);
-                this.properties.set("u_ThicknessFactor", thicknessFactor);
             }
 
             // KHR Extension: Iridescence
@@ -11966,54 +11996,23 @@ class gltfMaterial extends GltfObject
             {
                 this.hasIridescence = true;
 
-                let factor = this.extensions.KHR_materials_iridescence.iridescenceFactor;
-                let iridescenceIor = this.extensions.KHR_materials_iridescence.iridescenceIor;
-                let thicknessMinimum = this.extensions.KHR_materials_iridescence.iridescenceThicknessMinimum;
-                let thicknessMaximum = this.extensions.KHR_materials_iridescence.iridescenceThicknessMaximum;
+                const extension = this.extensions.KHR_materials_iridescence;
 
-                if (factor === undefined)
+                if (extension.iridescenceTexture !== undefined)
                 {
-                    factor = 0.0;
-                }
-                if (iridescenceIor === undefined)
-                {
-                    iridescenceIor = 1.3;
-                }
-                if (thicknessMinimum === undefined)
-                {
-                    thicknessMinimum = 100.0;
-                }
-                if (thicknessMaximum === undefined)
-                {
-                    thicknessMaximum = 400.0;
-                }
-
-                if (this.iridescenceTexture !== undefined)
-                {
-                    this.iridescenceTexture.samplerName = "u_IridescenceSampler";
-                    this.parseTextureInfoExtensions(this.iridescenceTexture, "Iridescence");
-                    this.textures.push(this.iridescenceTexture);
+                    extension.iridescenceTexture.samplerName = "u_IridescenceSampler";
+                    this.parseTextureInfoExtensions(extension.iridescenceTexture, "Iridescence");
+                    this.textures.push(extension.iridescenceTexture);
                     this.defines.push("HAS_IRIDESCENCE_MAP 1");
-                    this.properties.set("u_IridescenceUVSet", this.iridescenceTexture.texCoord);
                 }
 
-                if (this.iridescenceThicknessTexture !== undefined)
+                if (extension.iridescenceThicknessTexture !== undefined)
                 {
-                    this.iridescenceThicknessTexture.samplerName = "u_IridescenceThicknessSampler";
-                    this.parseTextureInfoExtensions(this.iridescenceThicknessTexture, "IridescenceThickness");
-                    this.textures.push(this.iridescenceThicknessTexture);
+                    extension.iridescenceThicknessTexture.samplerName = "u_IridescenceThicknessSampler";
+                    this.parseTextureInfoExtensions(extension.iridescenceThicknessTexture, "IridescenceThickness");
+                    this.textures.push(extension.iridescenceThicknessTexture);
                     this.defines.push("HAS_IRIDESCENCE_THICKNESS_MAP 1");
-                    this.properties.set("u_IridescenceThicknessUVSet", this.iridescenceThicknessTexture.texCoord);
-
-                    // The thickness minimum is only required when there is a thickness texture present.
-                    // Because 1.0 is the default value for the thickness, no texture implies that only the
-                    // maximum thickness is ever read in the shader.
-                    this.properties.set("u_IridescenceThicknessMinimum", thicknessMinimum);
                 }
-
-                this.properties.set("u_IridescenceFactor", factor);
-                this.properties.set("u_IridescenceIor", iridescenceIor);
-                this.properties.set("u_IridescenceThicknessMaximum", thicknessMaximum);
             }
 
             // KHR Extension: Anisotropy
@@ -12022,45 +12021,22 @@ class gltfMaterial extends GltfObject
             {
                 this.hasAnisotropy = true;
 
-                let factor = this.extensions.KHR_materials_anisotropy.anisotropyStrength;
-                let rotation = this.extensions.KHR_materials_anisotropy.anisotropyRotation;
+                const anisotropyTexture = this.extensions.KHR_materials_anisotropy.anisotropyTexture;
 
-                if (factor === undefined)
+                if (anisotropyTexture !== undefined)
                 {
-                    factor = 0.0;
-                }
-                if (rotation === undefined)
-                {
-                    rotation = 0;
-                }
-
-                if (this.anisotropyTexture !== undefined)
-                {
-                    this.anisotropyTexture.samplerName = "u_AnisotropySampler";
-                    this.parseTextureInfoExtensions(this.anisotropyTexture, "Anisotropy");
-                    this.textures.push(this.anisotropyTexture);
+                    anisotropyTexture.samplerName = "u_AnisotropySampler";
+                    this.parseTextureInfoExtensions(anisotropyTexture, "Anisotropy");
+                    this.textures.push(anisotropyTexture);
                     this.defines.push("HAS_ANISOTROPY_MAP 1");
-                    this.properties.set("u_AnisotropyUVSet", this.anisotropyTexture.texCoord);
                 }
-
-                let anisotropy =  fromValues$2(Math.cos(rotation), Math.sin(rotation), factor);
-                this.properties.set("u_Anisotropy", anisotropy);
             }
 
             // KHR Extension: Dispersion
             // See https://github.com/KhronosGroup/glTF/tree/main/extensions/2.0/Khronos/KHR_materials_dispersion
             if (this.extensions.KHR_materials_dispersion !== undefined)
             {
-                let dispersion = 0.0;
-
                 this.hasDispersion = true;
-
-                if(this.extensions.KHR_materials_dispersion.dispersion !== undefined)
-                {
-                    dispersion = this.extensions.KHR_materials_dispersion.dispersion;
-                }
-
-                this.properties.set("u_Dispersion", dispersion);
             }
         }
 
@@ -12070,11 +12046,6 @@ class gltfMaterial extends GltfObject
     fromJson(jsonMaterial)
     {
         super.fromJson(jsonMaterial);
-
-        if (jsonMaterial.emissiveFactor !== undefined)
-        {
-            this.emissiveFactor = jsToGl(jsonMaterial.emissiveFactor);
-        }
 
         if (jsonMaterial.normalTexture !== undefined)
         {
@@ -12101,11 +12072,11 @@ class gltfMaterial extends GltfObject
         {
             this.fromJsonMaterialExtensions(jsonMaterial.extensions);
         }
-
+        this.pbrMetallicRoughness = new PbrMetallicRoughness();
         if (jsonMaterial.pbrMetallicRoughness !== undefined && this.type !== "SG")
         {
             this.type = "MR";
-            this.fromJsonMetallicRoughness(jsonMaterial.pbrMetallicRoughness);
+            this.pbrMetallicRoughness.fromJson(jsonMaterial.pbrMetallicRoughness);
         }
     }
 
@@ -12114,7 +12085,8 @@ class gltfMaterial extends GltfObject
         if (jsonExtensions.KHR_materials_pbrSpecularGlossiness !== undefined)
         {
             this.type = "SG";
-            this.fromJsonSpecularGlossiness(jsonExtensions.KHR_materials_pbrSpecularGlossiness);
+            this.extensions.KHR_materials_pbrSpecularGlossiness = new KHR_materials_pbrSpecularGlossiness();
+            this.extensions.KHR_materials_pbrSpecularGlossiness.fromJson(jsonExtensions.KHR_materials_pbrSpecularGlossiness);
         }
 
         if(jsonExtensions.KHR_materials_unlit !== undefined)
@@ -12124,81 +12096,135 @@ class gltfMaterial extends GltfObject
 
         if(jsonExtensions.KHR_materials_clearcoat !== undefined)
         {
-            this.fromJsonClearcoat(jsonExtensions.KHR_materials_clearcoat);
+            this.extensions.KHR_materials_clearcoat = new KHR_materials_clearcoat();
+            this.extensions.KHR_materials_clearcoat.fromJson(jsonExtensions.KHR_materials_clearcoat);
         }
 
         if(jsonExtensions.KHR_materials_sheen !== undefined)
         {
-            this.fromJsonSheen(jsonExtensions.KHR_materials_sheen);
+            this.extensions.KHR_materials_sheen = new KHR_materials_sheen();
+            this.extensions.KHR_materials_sheen.fromJson(jsonExtensions.KHR_materials_sheen);
         }
 
         if(jsonExtensions.KHR_materials_transmission !== undefined)
         {
-            this.fromJsonTransmission(jsonExtensions.KHR_materials_transmission);
+            this.extensions.KHR_materials_transmission = new KHR_materials_transmission();
+            this.extensions.KHR_materials_transmission.fromJson(jsonExtensions.KHR_materials_transmission);
         }
 
         if(jsonExtensions.KHR_materials_diffuse_transmission !== undefined)
         {
-            this.fromJsonDiffuseTransmission(jsonExtensions.KHR_materials_diffuse_transmission);
+            this.extensions.KHR_materials_diffuse_transmission = new KHR_materials_diffuse_transmission();
+            this.extensions.KHR_materials_diffuse_transmission.fromJson(jsonExtensions.KHR_materials_diffuse_transmission);
         }
 
         if(jsonExtensions.KHR_materials_specular !== undefined)
         {
-            this.fromJsonSpecular(jsonExtensions.KHR_materials_specular);
+            this.extensions.KHR_materials_specular = new KHR_materials_specular();
+            this.extensions.KHR_materials_specular.fromJson(jsonExtensions.KHR_materials_specular);
         }
 
         if(jsonExtensions.KHR_materials_volume !== undefined)
         {
-            this.fromJsonVolume(jsonExtensions.KHR_materials_volume);
+            this.extensions.KHR_materials_volume = new KHR_materials_volume();
+            this.extensions.KHR_materials_volume.fromJson(jsonExtensions.KHR_materials_volume);
         }
 
         if(jsonExtensions.KHR_materials_iridescence !== undefined)
         {
-            this.fromJsonIridescence(jsonExtensions.KHR_materials_iridescence);
+            this.extensions.KHR_materials_iridescence = new KHR_materials_iridescence();
+            this.extensions.KHR_materials_iridescence.fromJson(jsonExtensions.KHR_materials_iridescence);
         }
 
         if(jsonExtensions.KHR_materials_anisotropy !== undefined)
         {
-            this.fromJsonAnisotropy(jsonExtensions.KHR_materials_anisotropy);
+            this.extensions.KHR_materials_anisotropy = new KHR_materials_anisotropy();
+            this.extensions.KHR_materials_anisotropy.fromJson(jsonExtensions.KHR_materials_anisotropy);
+        }
+        
+        if(jsonExtensions.KHR_materials_emissive_strength !== undefined)
+        {
+            this.extensions.KHR_materials_emissive_strength = new KHR_materials_emissive_strength();
+            this.extensions.KHR_materials_emissive_strength.fromJson(jsonExtensions.KHR_materials_emissive_strength);
+        }
+
+        if(jsonExtensions.KHR_materials_dispersion !== undefined) {
+            this.extensions.KHR_materials_dispersion = new KHR_materials_dispersion();
+            this.extensions.KHR_materials_dispersion.fromJson(jsonExtensions.KHR_materials_dispersion);
+        }
+
+        if(jsonExtensions.KHR_materials_ior !== undefined) {
+            this.extensions.KHR_materials_ior = new KHR_materials_ior();
+            this.extensions.KHR_materials_ior.fromJson(jsonExtensions.KHR_materials_ior);
         }
     }
+}
 
-    fromJsonMetallicRoughness(jsonMetallicRoughness)
+class PbrMetallicRoughness extends GltfObject {
+    static animatedProperties = ["baseColorFactor", "metallicFactor", "roughnessFactor"];
+    constructor()
     {
-        if (jsonMetallicRoughness.baseColorTexture !== undefined)
+        super();
+        this.baseColorFactor = fromValues$1(1, 1, 1, 1);
+        this.baseColorTexture = undefined;
+        this.metallicFactor = 1;
+        this.roughnessFactor = 1;
+        this.metallicRoughnessTexture = undefined;
+    }
+
+    fromJson(json) {
+        super.fromJson(json);
+        if (json.baseColorTexture !== undefined)
         {
             const baseColorTexture = new gltfTextureInfo(undefined, 0, false);
-            baseColorTexture.fromJson(jsonMetallicRoughness.baseColorTexture);
+            baseColorTexture.fromJson(json.baseColorTexture);
             this.baseColorTexture = baseColorTexture;
         }
 
-        if (jsonMetallicRoughness.metallicRoughnessTexture !== undefined)
+        if (json.metallicRoughnessTexture !== undefined)
         {
             const metallicRoughnessTexture = new gltfTextureInfo();
-            metallicRoughnessTexture.fromJson(jsonMetallicRoughness.metallicRoughnessTexture);
+            metallicRoughnessTexture.fromJson(json.metallicRoughnessTexture);
             this.metallicRoughnessTexture = metallicRoughnessTexture;
         }
     }
+}
 
-    fromJsonSpecularGlossiness(jsonSpecularGlossiness)
+class KHR_materials_anisotropy extends GltfObject {
+    static animatedProperties = ["anisotropyStrength", "anisotropyRotation"];
+    constructor()
     {
-        if (jsonSpecularGlossiness.diffuseTexture !== undefined)
-        {
-            const diffuseTexture = new gltfTextureInfo(undefined, 0, false);
-            diffuseTexture.fromJson(jsonSpecularGlossiness.diffuseTexture);
-            this.diffuseTexture = diffuseTexture;
-        }
-
-        if (jsonSpecularGlossiness.specularGlossinessTexture !== undefined)
-        {
-            const specularGlossinessTexture = new gltfTextureInfo(undefined, 0, false);
-            specularGlossinessTexture.fromJson(jsonSpecularGlossiness.specularGlossinessTexture);
-            this.specularGlossinessTexture = specularGlossinessTexture;
-        }
+        super();
+        this.anisotropyStrength = 0;
+        this.anisotropyRotation = 0;
+        this.anisotropyTexture = undefined;
     }
 
-    fromJsonClearcoat(jsonClearcoat)
+    fromJson(json) {
+        super.fromJson(json);
+        if (json.anisotropyTexture !== undefined)
+        {
+            const anisotropyTexture = new gltfTextureInfo();
+            anisotropyTexture.fromJson(json.anisotropyTexture);
+            this.anisotropyTexture = anisotropyTexture;
+        }
+    }
+}
+
+class KHR_materials_clearcoat extends GltfObject {
+    static animatedProperties = ["clearcoatFactor", "clearcoatRoughnessFactor"];
+    constructor()
     {
+        super();
+        this.clearcoatFactor = 0;
+        this.clearcoatTexture = undefined;
+        this.clearcoatRoughnessFactor = 0;
+        this.clearcoatRoughnessTexture = undefined;
+        this.clearcoatNormalTexture = undefined;
+    }
+
+    fromJson(jsonClearcoat) {
+        super.fromJson(jsonClearcoat);
         if(jsonClearcoat.clearcoatTexture !== undefined)
         {
             const clearcoatTexture = new gltfTextureInfo();
@@ -12220,79 +12246,50 @@ class gltfMaterial extends GltfObject
             this.clearcoatNormalTexture = clearcoatNormalTexture;
         }
     }
+}
 
-    fromJsonSheen(jsonSheen)
+class KHR_materials_dispersion extends GltfObject {
+    static animatedProperties = ["dispersion"];
+    constructor()
     {
-        if(jsonSheen.sheenColorTexture !== undefined)
-        {
-            const sheenColorTexture = new gltfTextureInfo(undefined, 0, false);
-            sheenColorTexture.fromJson(jsonSheen.sheenColorTexture);
-            this.sheenColorTexture = sheenColorTexture;
-        }
-        if(jsonSheen.sheenRoughnessTexture !== undefined)
-        {
-            const sheenRoughnessTexture = new gltfTextureInfo();
-            sheenRoughnessTexture.fromJson(jsonSheen.sheenRoughnessTexture);
-            this.sheenRoughnessTexture = sheenRoughnessTexture;
-        }
+        super();
+        this.dispersion = 0;
+    }
+}
+
+class KHR_materials_emissive_strength extends GltfObject {
+    static animatedProperties = ["emissiveStrength"];
+    constructor()
+    {
+        super();
+        this.emissiveStrength = 1.0;
+    }
+}
+
+class KHR_materials_ior extends GltfObject {
+    static animatedProperties = ["ior"];
+    constructor()
+    {
+        super();
+        this.ior = 1.5;
+    }
+}
+
+class KHR_materials_iridescence extends GltfObject {
+    static animatedProperties = ["iridescenceFactor", "iridescenceIor", "iridescenceThicknessMinimum", "iridescenceThicknessMaximum"];
+    constructor()
+    {
+        super();
+        this.iridescenceFactor = 0;
+        this.iridescenceIor = 1.3;
+        this.iridescenceThicknessMinimum = 100;
+        this.iridescenceThicknessMaximum = 400;
+        this.iridescenceTexture = undefined;
+        this.iridescenceThicknessTexture = undefined;
     }
 
-    fromJsonTransmission(jsonTransmission)
-    {
-        if(jsonTransmission.transmissionTexture !== undefined)
-        {
-            const transmissionTexture = new gltfTextureInfo();
-            transmissionTexture.fromJson(jsonTransmission.transmissionTexture);
-            this.transmissionTexture = transmissionTexture;
-        }
-    }
-
-    fromJsonDiffuseTransmission(json)
-    {
-        if(json.diffuseTransmissionTexture !== undefined)
-        {
-            const texture = new gltfTextureInfo();
-            texture.fromJson(json.diffuseTransmissionTexture);
-            this.diffuseTransmissionTexture = texture;
-        }
-
-        if(json.diffuseTransmissionColorTexture !== undefined)
-        {
-            const texture = new gltfTextureInfo();
-            texture.fromJson(json.diffuseTransmissionColorTexture);
-            this.diffuseTransmissionColorTexture = texture;
-        }
-    }
-
-    fromJsonSpecular(jsonSpecular)
-    {
-        if(jsonSpecular.specularTexture !== undefined)
-        {
-            const specularTexture = new gltfTextureInfo();
-            specularTexture.fromJson(jsonSpecular.specularTexture);
-            this.specularTexture = specularTexture;
-        }
-
-        if(jsonSpecular.specularColorTexture !== undefined)
-        {
-            const specularColorTexture = new gltfTextureInfo();
-            specularColorTexture.fromJson(jsonSpecular.specularColorTexture);
-            this.specularColorTexture = specularColorTexture;
-        }
-    }
-
-    fromJsonVolume(jsonVolume)
-    {
-        if(jsonVolume.thicknessTexture !== undefined)
-        {
-            const thicknessTexture = new gltfTextureInfo();
-            thicknessTexture.fromJson(jsonVolume.thicknessTexture);
-            this.thicknessTexture = thicknessTexture;
-        }
-    }
-
-    fromJsonIridescence(jsonIridescence)
-    {
+    fromJson(jsonIridescence) {
+        super.fromJson(jsonIridescence);
         if(jsonIridescence.iridescenceTexture !== undefined)
         {
             const iridescenceTexture = new gltfTextureInfo();
@@ -12307,20 +12304,172 @@ class gltfMaterial extends GltfObject
             this.iridescenceThicknessTexture = iridescenceThicknessTexture;
         }
     }
+}
 
-    fromJsonAnisotropy(jsonAnisotropy)
+class KHR_materials_sheen extends GltfObject {
+    static animatedProperties = ["sheenRoughnessFactor", "sheenColorFactor"];
+    constructor()
     {
-        if(jsonAnisotropy.anisotropyTexture !== undefined)
+        super();
+        this.sheenRoughnessFactor = 0;
+        this.sheenColorFactor = fromValues$2(0, 0, 0);
+        this.sheenColorTexture = undefined;
+        this.sheenRoughnessTexture = undefined;
+    }
+
+    fromJson(jsonSheen) {
+        super.fromJson(jsonSheen);
+        if(jsonSheen.sheenColorTexture !== undefined)
         {
-            const anisotropyTexture = new gltfTextureInfo();
-            anisotropyTexture.fromJson(jsonAnisotropy.anisotropyTexture);
-            this.anisotropyTexture = anisotropyTexture;
+            const sheenColorTexture = new gltfTextureInfo();
+            sheenColorTexture.fromJson(jsonSheen.sheenColorTexture);
+            this.sheenColorTexture = sheenColorTexture;
+        }
+
+        if(jsonSheen.sheenRoughnessTexture !== undefined)
+        {
+            const sheenRoughnessTexture = new gltfTextureInfo();
+            sheenRoughnessTexture.fromJson(jsonSheen.sheenRoughnessTexture);
+            this.sheenRoughnessTexture = sheenRoughnessTexture;
+        }
+    }
+}
+
+class KHR_materials_specular extends GltfObject {
+    static animatedProperties = ["specularFactor", "specularColorFactor"];
+    constructor()
+    {
+        super();
+        this.specularFactor = 1;
+        this.specularColorFactor = fromValues$2(1, 1, 1);
+        this.specularTexture = undefined;
+        this.specularColorTexture = undefined;
+    }
+
+    fromJson(jsonSpecular) {
+        super.fromJson(jsonSpecular);
+        if(jsonSpecular.specularTexture !== undefined)
+        {
+            const specularTexture = new gltfTextureInfo();
+            specularTexture.fromJson(jsonSpecular.specularTexture);
+            this.specularTexture = specularTexture;
+        }
+
+        if(jsonSpecular.specularColorTexture !== undefined)
+        {
+            const specularColorTexture = new gltfTextureInfo();
+            specularColorTexture.fromJson(jsonSpecular.specularColorTexture);
+            this.specularColorTexture = specularColorTexture;
+        }
+    }
+}
+
+class KHR_materials_transmission extends GltfObject {
+    static animatedProperties = ["transmissionFactor"];
+    constructor()
+    {
+        super();
+        this.transmissionFactor = 0;
+        this.transmissionTexture = undefined;
+    }
+
+    fromJson(jsonTransmission) {
+        super.fromJson(jsonTransmission);
+        if(jsonTransmission.transmissionTexture !== undefined)
+        {
+            const transmissionTexture = new gltfTextureInfo();
+            transmissionTexture.fromJson(jsonTransmission.transmissionTexture);
+            this.transmissionTexture = transmissionTexture;
+        }
+    }
+}
+
+class KHR_materials_volume extends GltfObject {
+    static animatedProperties = ["thicknessFactor", "attenuationDistance", "attenuationColor"];
+    constructor()
+    {
+        super();
+        this.thicknessFactor = 0;
+        this.thicknessTexture = undefined;
+        this.attenuationDistance = 0; // 0 means infinite distance
+        this.attenuationColor = fromValues$2(1, 1, 1);
+    }
+
+    fromJson(jsonVolume) {
+        super.fromJson(jsonVolume);
+        if(jsonVolume.thicknessTexture !== undefined)
+        {
+            const thicknessTexture = new gltfTextureInfo();
+            thicknessTexture.fromJson(jsonVolume.thicknessTexture);
+            this.thicknessTexture = thicknessTexture;
+        }
+    }
+}
+
+class KHR_materials_diffuse_transmission extends GltfObject {
+
+    //TODO: define animated properties
+    static animatedProperties = [];
+    constructor()
+    {
+        super();
+        this.diffuseTransmissionFactor = 0;
+        this.diffuseTransmissionColorFactor = fromValues$2(1, 1, 1);
+        this.diffuseTransmissionTexture = undefined;
+        this.diffuseTransmissionColorTexture = undefined;
+    }
+
+    fromJson(jsonDiffuseTransmission) {
+        super.fromJson(jsonDiffuseTransmission);
+        if(jsonDiffuseTransmission.diffuseTransmissionTexture !== undefined)
+        {
+            const diffuseTransmissionTexture = new gltfTextureInfo();
+            diffuseTransmissionTexture.fromJson(jsonDiffuseTransmission.diffuseTransmissionTexture);
+            this.diffuseTransmissionTexture = diffuseTransmissionTexture;
+        }
+
+        if(jsonDiffuseTransmission.diffuseTransmissionColorTexture !== undefined)
+        {
+            const diffuseTransmissionColorTexture = new gltfTextureInfo();
+            diffuseTransmissionColorTexture.fromJson(jsonDiffuseTransmission.diffuseTransmissionColorTexture);
+            this.diffuseTransmissionColorTexture = diffuseTransmissionColorTexture;
+        }
+    }
+}
+
+class KHR_materials_pbrSpecularGlossiness extends GltfObject {
+    static animatedProperties = [];
+    constructor()
+    {
+        super();
+        this.diffuseFactor = fromValues$1(1, 1, 1, 1);
+        this.diffuseTexture = undefined;
+        this.specularFactor = fromValues$2(1, 1, 1);
+        this.specularGlossinessTexture = undefined;
+        this.glossinessFactor = 1;
+    }
+
+    fromJson(jsonSpecularGlossiness) {
+        super.fromJson(jsonSpecularGlossiness);
+        if(jsonSpecularGlossiness.diffuseTexture !== undefined)
+        {
+            const diffuseTexture = new gltfTextureInfo();
+            diffuseTexture.fromJson(jsonSpecularGlossiness.diffuseTexture);
+            this.diffuseTexture = diffuseTexture;
+        }
+
+        if(jsonSpecularGlossiness.specularGlossinessTexture !== undefined)
+        {
+            const specularGlossinessTexture = new gltfTextureInfo();
+            specularGlossinessTexture.fromJson(jsonSpecularGlossiness.specularGlossinessTexture);
+            this.specularGlossinessTexture = specularGlossinessTexture;
         }
     }
 }
 
 class gltfSampler extends GltfObject
 {
+    static animatedProperties = [];
     constructor(
         magFilter = GL.LINEAR,
         minFilter = GL.LINEAR_MIPMAP_LINEAR,
@@ -12545,6 +12694,7 @@ async function init(input) {
 
 class gltfPrimitive extends GltfObject
 {
+    static animatedProperties = [];
     constructor()
     {
         super();
@@ -12866,16 +13016,6 @@ class gltfPrimitive extends GltfObject
 
             this.centroid = centroid;
         }
-    }
-
-    getShaderIdentifier()
-    {
-        return "primitive.vert";
-    }
-
-    getDefines()
-    {
-        return this.defines;
     }
 
     fromJson(jsonPrimitive)
@@ -13384,15 +13524,13 @@ class gltfPrimitive extends GltfObject
 
 class gltfMesh extends GltfObject
 {
+    static animatedProperties = ["weights"];
     constructor()
     {
         super();
         this.primitives = [];
         this.name = undefined;
-        this.weights = [];
-
-        // non gltf
-        this.weightsAnimated = undefined;
+        this.weights = undefined;
     }
 
     fromJson(jsonMesh)
@@ -13405,16 +13543,6 @@ class gltfMesh extends GltfObject
         }
 
         this.primitives = objectsFromJsons(jsonMesh.primitives, gltfPrimitive);
-
-        if(jsonMesh.weights !== undefined)
-        {
-            this.weights = jsonMesh.weights;
-        }
-    }
-
-    getWeightsAnimated()
-    {
-        return this.weightsAnimated !== undefined ? this.weightsAnimated : this.weights;
     }
 }
 
@@ -13424,6 +13552,12 @@ class gltfMesh extends GltfObject
 
 class gltfNode extends GltfObject
 {
+    static animatedProperties = [
+        "rotation",
+        "scale",
+        "translation",
+        "weights"
+    ];
     constructor()
     {
         super();
@@ -13436,43 +13570,30 @@ class gltfNode extends GltfObject
         this.name = undefined;
         this.mesh = undefined;
         this.skin = undefined;
+        this.weights = undefined;
 
         // non gltf
         this.worldTransform = create$3();
         this.inverseWorldTransform = create$3();
         this.normalMatrix = create$3();
         this.light = undefined;
-        this.changed = true;
-
-        this.animationRotation = undefined;
-        this.animationTranslation = undefined;
-        this.animationScale = undefined;
     }
 
-    initGl()
+    fromJson(jsonNode) {
+        super.fromJson(jsonNode);
+        if (jsonNode.matrix !== undefined) {
+            this.applyMatrix(jsonNode.matrix);
+        }
+    }
+
+    getWeights(gltf)
     {
-        if (this.matrix !== undefined)
-        {
-            this.applyMatrix(this.matrix);
+        if (this.weights !== undefined && this.weights.length > 0) {
+            return this.weights;
         }
-        else
-        {
-            if (this.scale !== undefined)
-            {
-                this.scale = jsToGl(this.scale);
-            }
-
-            if (this.rotation !== undefined)
-            {
-                this.rotation = jsToGl(this.rotation);
-            }
-
-            if (this.translation !== undefined)
-            {
-                this.translation = jsToGl(this.translation);
-            }
+        else {
+            return gltf.meshes[this.mesh].weights;
         }
-        this.changed = true;
     }
 
     applyMatrix(matrixData)
@@ -13493,62 +13614,22 @@ class gltfNode extends GltfObject
         normalize(this.rotation, this.rotation);
 
         getTranslation(this.translation, this.matrix);
-
-        this.changed = true;
-    }
-
-    // vec3
-    applyTranslationAnimation(translation)
-    {
-        this.animationTranslation = translation;
-        this.changed = true;
-    }
-
-    // quat
-    applyRotationAnimation(rotation)
-    {
-        this.animationRotation = rotation;
-        this.changed = true;
-    }
-
-    // vec3
-    applyScaleAnimation(scale)
-    {
-        this.animationScale = scale;
-        this.changed = true;
-    }
-
-    resetTransform()
-    {
-        this.rotation = jsToGl([0, 0, 0, 1]);
-        this.scale = jsToGl([1, 1, 1]);
-        this.translation = jsToGl([0, 0, 0]);
-        this.changed = true;
     }
 
     getLocalTransform()
     {
-        if(this.transform === undefined || this.changed)
-        {
-            // if no animation is applied and the transform matrix is present use it directly
-            if(this.animationTranslation === undefined && this.animationRotation === undefined && this.animationScale === undefined && this.matrix !== undefined) {
-                this.transform = clone$1(this.matrix);
-            } else {
-                this.transform = create$3();
-                const translation = this.animationTranslation !== undefined ? this.animationTranslation : this.translation;
-                const rotation = this.animationRotation !== undefined ? this.animationRotation : this.rotation;
-                const scale = this.animationScale !== undefined ? this.animationScale : this.scale;
-                fromRotationTranslationScale(this.transform, rotation, translation, scale);
-            }
-            this.changed = false;
-        }
-
-        return clone$1(this.transform);
+        return fromRotationTranslationScale(
+            create$3(),
+            this.rotation,
+            this.translation,
+            this.scale
+        );
     }
 }
 
 class gltfScene extends GltfObject
 {
+    static animatedProperties = [];
     constructor(nodes = [], name = undefined)
     {
         super();
@@ -13636,6 +13717,7 @@ class gltfScene extends GltfObject
 
 class gltfAsset extends GltfObject
 {
+    static animatedProperties = [];
     constructor()
     {
         super();
@@ -13648,11 +13730,29 @@ class gltfAsset extends GltfObject
 
 class gltfAnimationChannel extends GltfObject
 {
+    static animatedProperties = [];
     constructor()
     {
         super();
-        this.target = {node: undefined, path: undefined};
+        this.target = undefined;
         this.sampler = undefined;
+    }
+
+    fromJson(jsonChannel)
+    {
+        super.fromJson(jsonChannel);
+        this.target = objectFromJson(jsonChannel.target, gltfAnimationTarget);
+    }
+}
+
+class gltfAnimationTarget extends GltfObject
+{
+    static animatedProperties = [];
+    constructor()
+    {
+        super();
+        this.node = undefined;
+        this.path = undefined;
     }
 }
 
@@ -13661,11 +13761,13 @@ const InterpolationPath =
     TRANSLATION: "translation",
     ROTATION: "rotation",
     SCALE: "scale",
-    WEIGHTS: "weights"
+    WEIGHTS: "weights",
+    POINTER: "pointer",
 };
 
 class gltfAnimationSampler extends GltfObject
 {
+    static animatedProperties = [];
     constructor()
     {
         super();
@@ -13853,8 +13955,899 @@ class gltfInterpolator
     }
 }
 
+function replace(source, find, repl) {
+    let res = '';
+    let rem = source;
+    let beg = 0;
+    let end = -1;
+    while ((end = rem.indexOf(find)) > -1) {
+        res += source.substring(beg, beg + end) + repl;
+        rem = rem.substring(end + find.length, rem.length);
+        beg += end + find.length;
+    }
+    if (rem.length > 0) {
+        res += source.substring(source.length - rem.length, source.length);
+    }
+    return res;
+}
+function decodeFragmentSegments(segments) {
+    let i = -1;
+    const len = segments.length;
+    const res = new Array(len);
+    while (++i < len) {
+        if (typeof segments[i] === 'string') {
+            res[i] = replace(replace(decodeURIComponent(segments[i]), '~1', '/'), '~0', '~');
+        }
+        else {
+            res[i] = segments[i];
+        }
+    }
+    return res;
+}
+function encodeFragmentSegments(segments) {
+    let i = -1;
+    const len = segments.length;
+    const res = new Array(len);
+    while (++i < len) {
+        if (typeof segments[i] === 'string') {
+            res[i] = encodeURIComponent(replace(replace(segments[i], '~', '~0'), '/', '~1'));
+        }
+        else {
+            res[i] = segments[i];
+        }
+    }
+    return res;
+}
+function decodePointerSegments(segments) {
+    let i = -1;
+    const len = segments.length;
+    const res = new Array(len);
+    while (++i < len) {
+        if (typeof segments[i] === 'string') {
+            res[i] = replace(replace(segments[i], '~1', '/'), '~0', '~');
+        }
+        else {
+            res[i] = segments[i];
+        }
+    }
+    return res;
+}
+function encodePointerSegments(segments) {
+    let i = -1;
+    const len = segments.length;
+    const res = new Array(len);
+    while (++i < len) {
+        if (typeof segments[i] === 'string') {
+            res[i] = replace(replace(segments[i], '~', '~0'), '/', '~1');
+        }
+        else {
+            res[i] = segments[i];
+        }
+    }
+    return res;
+}
+function decodePointer(ptr) {
+    if (typeof ptr !== 'string') {
+        throw new TypeError('Invalid type: JSON Pointers are represented as strings.');
+    }
+    if (ptr.length === 0) {
+        return [];
+    }
+    if (ptr[0] !== '/') {
+        throw new ReferenceError('Invalid JSON Pointer syntax. Non-empty pointer must begin with a solidus `/`.');
+    }
+    return decodePointerSegments(ptr.substring(1).split('/'));
+}
+function encodePointer(path) {
+    if (!path || (path && !Array.isArray(path))) {
+        throw new TypeError('Invalid type: path must be an array of segments.');
+    }
+    if (path.length === 0) {
+        return '';
+    }
+    return '/'.concat(encodePointerSegments(path).join('/'));
+}
+function decodeUriFragmentIdentifier(ptr) {
+    if (typeof ptr !== 'string') {
+        throw new TypeError('Invalid type: JSON Pointers are represented as strings.');
+    }
+    if (ptr.length === 0 || ptr[0] !== '#') {
+        throw new ReferenceError('Invalid JSON Pointer syntax; URI fragment identifiers must begin with a hash.');
+    }
+    if (ptr.length === 1) {
+        return [];
+    }
+    if (ptr[1] !== '/') {
+        throw new ReferenceError('Invalid JSON Pointer syntax.');
+    }
+    return decodeFragmentSegments(ptr.substring(2).split('/'));
+}
+function encodeUriFragmentIdentifier(path) {
+    if (!path || (path && !Array.isArray(path))) {
+        throw new TypeError('Invalid type: path must be an array of segments.');
+    }
+    if (path.length === 0) {
+        return '#';
+    }
+    return '#/'.concat(encodeFragmentSegments(path).join('/'));
+}
+const InvalidRelativePointerError = 'Invalid Relative JSON Pointer syntax. Relative pointer must begin with a non-negative integer, followed by either the number sign (#), or a JSON Pointer.';
+function decodeRelativePointer(ptr) {
+    if (typeof ptr !== 'string') {
+        throw new TypeError('Invalid type: Relative JSON Pointers are represented as strings.');
+    }
+    if (ptr.length === 0) {
+        // https://tools.ietf.org/id/draft-handrews-relative-json-pointer-00.html#rfc.section.3
+        throw new ReferenceError(InvalidRelativePointerError);
+    }
+    const segments = ptr.split('/');
+    let first = segments[0];
+    // It is a name reference; strip the hash.
+    if (first[first.length - 1] == '#') {
+        if (segments.length > 1) {
+            throw new ReferenceError(InvalidRelativePointerError);
+        }
+        first = first.substr(0, first.length - 1);
+    }
+    let i = -1;
+    const len = first.length;
+    while (++i < len) {
+        if (first[i] < '0' || first[i] > '9') {
+            throw new ReferenceError(InvalidRelativePointerError);
+        }
+    }
+    const path = decodePointerSegments(segments.slice(1));
+    path.unshift(segments[0]);
+    return path;
+}
+function toArrayIndexReference(arr, idx) {
+    if (typeof idx === 'number')
+        return idx;
+    const len = idx.length;
+    if (!len)
+        return -1;
+    let cursor = 0;
+    if (len === 1 && idx[0] === '-') {
+        if (!Array.isArray(arr)) {
+            return 0;
+        }
+        return arr.length;
+    }
+    while (++cursor < len) {
+        if (idx[cursor] < '0' || idx[cursor] > '9') {
+            return -1;
+        }
+    }
+    return parseInt(idx, 10);
+}
+function compilePointerDereference(path) {
+    let body = "if (typeof(it) !== 'undefined'";
+    if (path.length === 0) {
+        return (it) => it;
+    }
+    body = path.reduce((body, _, i) => {
+        return (body +
+            "\n\t&& it !== null && typeof((it = it['" +
+            replace(replace(path[i] + '', '\\', '\\\\'), "'", "\\'") +
+            "'])) !== 'undefined'");
+    }, "if (typeof(it) !== 'undefined'");
+    body = body + ') {\n\treturn it;\n }';
+    // eslint-disable-next-line no-new-func
+    return new Function('it', body);
+}
+function setValueAtPath(target, val, path, force = false) {
+    if (path.length === 0) {
+        throw new Error('Cannot set the root object; assign it directly.');
+    }
+    if (typeof target === 'undefined') {
+        throw new TypeError('Cannot set values on undefined');
+    }
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    let it = target;
+    const len = path.length;
+    const end = path.length - 1;
+    let step;
+    let cursor = -1;
+    let rem;
+    let p;
+    while (++cursor < len) {
+        step = path[cursor];
+        if (typeof step !== 'string' && typeof step !== 'number') {
+            throw new TypeError('PathSegments must be a string or a number.');
+        }
+        if (
+        // Reconsider this strategy. It disallows legitimate structures on
+        // non - objects, or more precisely, on objects not derived from a class
+        // or constructor function.
+        step === '__proto__' ||
+            step === 'constructor' ||
+            step === 'prototype') {
+            throw new Error('Attempted prototype pollution disallowed.');
+        }
+        if (Array.isArray(it)) {
+            if (step === '-' && cursor === end) {
+                it.push(val);
+                return undefined;
+            }
+            p = toArrayIndexReference(it, step);
+            if (it.length > p) {
+                if (cursor === end) {
+                    rem = it[p];
+                    it[p] = val;
+                    break;
+                }
+                it = it[p];
+            }
+            else if (cursor === end && p === it.length) {
+                if (force) {
+                    it.push(val);
+                    return undefined;
+                }
+            }
+            else if (force) {
+                it = it[p] = cursor === end ? val : {};
+            }
+        }
+        else {
+            if (typeof it[step] === 'undefined') {
+                if (force) {
+                    if (cursor === end) {
+                        it[step] = val;
+                        return undefined;
+                    }
+                    // if the next step is an array index, this step should be an array.
+                    const n = Number(path[cursor + 1]);
+                    if (Number.isInteger(n) &&
+                        toArrayIndexReference(it[step], n) !== -1) {
+                        it = it[step] = [];
+                        continue;
+                    }
+                    it = it[step] = {};
+                    continue;
+                }
+                return undefined;
+            }
+            if (cursor === end) {
+                rem = it[step];
+                it[step] = val;
+                break;
+            }
+            it = it[step];
+        }
+    }
+    return rem;
+}
+function unsetValueAtPath(target, path) {
+    if (path.length === 0) {
+        throw new Error('Cannot unset the root object; assign it directly.');
+    }
+    if (typeof target === 'undefined') {
+        throw new TypeError('Cannot unset values on undefined');
+    }
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    let it = target;
+    const len = path.length;
+    const end = path.length - 1;
+    let step;
+    let cursor = -1;
+    let rem;
+    let p;
+    while (++cursor < len) {
+        step = path[cursor];
+        if (typeof step !== 'string' && typeof step !== 'number') {
+            throw new TypeError('PathSegments must be a string or a number.');
+        }
+        if (step === '__proto__' ||
+            step === 'constructor' ||
+            step === 'prototype') {
+            throw new Error('Attempted prototype pollution disallowed.');
+        }
+        if (Array.isArray(it)) {
+            p = toArrayIndexReference(it, step);
+            if (p >= it.length)
+                return undefined;
+            if (cursor === end) {
+                rem = it[p];
+                delete it[p];
+                break;
+            }
+            it = it[p];
+        }
+        else {
+            if (typeof it[step] === 'undefined') {
+                return undefined;
+            }
+            if (cursor === end) {
+                rem = it[step];
+                delete it[step];
+                break;
+            }
+            it = it[step];
+        }
+    }
+    return rem;
+}
+function looksLikeFragment(ptr) {
+    return typeof ptr === 'string' && ptr.length > 0 && ptr[0] === '#';
+}
+function pickDecoder(ptr) {
+    return looksLikeFragment(ptr) ? decodeUriFragmentIdentifier : decodePointer;
+}
+function decodePtrInit(ptr) {
+    return Array.isArray(ptr)
+        ? ptr.slice(0)
+        : pickDecoder(ptr)(ptr);
+}
+
+/**
+ * Determines if the value is an object (not null)
+ * @param value the value
+ * @returns true if the value is a non-null object; otherwise false.
+ *
+ * @hidden
+ */
+function isObject$3(value) {
+    return typeof value === 'object' && value !== null;
+}
+/** @hidden */
+function shouldDescend(obj) {
+    return isObject$3(obj) && !JsonReference.isReference(obj);
+}
+/** @hidden */
+function descendingVisit(target, visitor, encoder) {
+    const distinctObjects = new Map();
+    const q = [{ obj: target, path: [] }];
+    while (q.length) {
+        const { obj, path } = q.shift();
+        visitor(encoder(path), obj);
+        if (shouldDescend(obj)) {
+            distinctObjects.set(obj, new JsonPointer(encodeUriFragmentIdentifier(path)));
+            if (!Array.isArray(obj)) {
+                const keys = Object.keys(obj);
+                const len = keys.length;
+                let i = -1;
+                while (++i < len) {
+                    const it = obj[keys[i]];
+                    if (isObject$3(it) && distinctObjects.has(it)) {
+                        q.push({
+                            obj: new JsonReference(distinctObjects.get(it)),
+                            path: path.concat(keys[i]),
+                        });
+                    }
+                    else {
+                        q.push({
+                            obj: it,
+                            path: path.concat(keys[i]),
+                        });
+                    }
+                }
+            }
+            else {
+                // handleArray
+                let j = -1;
+                const len = obj.length;
+                while (++j < len) {
+                    const it = obj[j];
+                    if (isObject$3(it) && distinctObjects.has(it)) {
+                        q.push({
+                            obj: new JsonReference(distinctObjects.get(it)),
+                            path: path.concat([j + '']),
+                        });
+                    }
+                    else {
+                        q.push({
+                            obj: it,
+                            path: path.concat([j + '']),
+                        });
+                    }
+                }
+            }
+        }
+    }
+}
+/** @hidden */
+const $ptr = Symbol('pointer');
+/** @hidden */
+const $frg = Symbol('fragmentId');
+/** @hidden */
+const $get = Symbol('getter');
+/**
+ * Represents a JSON Pointer, capable of getting and setting the value on target
+ * objects at the pointer's location.
+ *
+ * While there are static variants for most operations, our recommendation is
+ * to use the instance level methods, which enables you avoid repeated
+ * compiling/emitting transient accessors. Take a look at the speed comparisons
+ * for our justification.
+ *
+ * In most cases, you should create and reuse instances of JsonPointer within
+ * scope that makes sense for your app. We often create constants for frequently
+ * used pointers, but your use case may vary.
+ *
+ * The following is a contrived example showing a function that uses pointers to
+ * deal with changes in the structure of data (a version independent function):
+ *
+ * ```ts
+ * import { JsonPointer } from 'json-ptr';
+ *
+ * export type SupportedVersion = '1.0' | '1.1';
+ *
+ * interface PrimaryGuestNamePointers {
+ *   name: JsonPointer;
+ *   surname: JsonPointer;
+ *   honorific: JsonPointer;
+ * }
+ * const versions: Record<SupportedVersion, PrimaryGuestNamePointers> = {
+ *   '1.0': {
+ *     name: JsonPointer.create('/guests/0/name'),
+ *     surname: JsonPointer.create('/guests/0/surname'),
+ *     honorific: JsonPointer.create('/guests/0/honorific'),
+ *   },
+ *   '1.1': {
+ *     name: JsonPointer.create('/primary/primaryGuest/name'),
+ *     surname: JsonPointer.create('/primary/primaryGuest/surname'),
+ *     honorific: JsonPointer.create('/primary/primaryGuest/honorific'),
+ *   }
+ * };
+ *
+ * interface Reservation extends Record<string, unknown> {
+ *   version?: SupportedVersion;
+ * }
+ *
+ * function primaryGuestName(reservation: Reservation): string {
+ *   const pointers = versions[reservation.version || '1.0'];
+ *   const name = pointers.name.get(reservation) as string;
+ *   const surname = pointers.surname.get(reservation) as string;
+ *   const honorific = pointers.honorific.get(reservation) as string;
+ *   const names: string[] = [];
+ *   if (honorific) names.push(honorific);
+ *   if (name) names.push(name);
+ *   if (surname) names.push(surname);
+ *   return names.join(' ');
+ * }
+ *
+ * // The original layout of a reservation (only the parts relevant to our example)
+ * const reservationV1: Reservation = {
+ *   guests: [{
+ *     name: 'Wilbur',
+ *     surname: 'Finkle',
+ *     honorific: 'Mr.'
+ *   }, {
+ *     name: 'Wanda',
+ *     surname: 'Finkle',
+ *     honorific: 'Mrs.'
+ *   }, {
+ *     name: 'Wilma',
+ *     surname: 'Finkle',
+ *     honorific: 'Miss',
+ *     child: true,
+ *     age: 12
+ *   }]
+ *   // ...
+ * };
+ *
+ * // The new layout of a reservation (only the parts relevant to our example)
+ * const reservationV1_1: Reservation = {
+ *   version: '1.1',
+ *   primary: {
+ *     primaryGuest: {
+ *       name: 'Wilbur',
+ *       surname: 'Finkle',
+ *       honorific: 'Mr.'
+ *     },
+ *     additionalGuests: [{
+ *       name: 'Wanda',
+ *       surname: 'Finkle',
+ *       honorific: 'Mrs.'
+ *     }, {
+ *       name: 'Wilma',
+ *       surname: 'Finkle',
+ *       honorific: 'Miss',
+ *       child: true,
+ *       age: 12
+ *     }]
+ *     // ...
+ *   }
+ *   // ...
+ * };
+ *
+ * console.log(primaryGuestName(reservationV1));
+ * console.log(primaryGuestName(reservationV1_1));
+ *
+ * ```
+ *
+ * There are many uses for pointers.
+ */
+class JsonPointer {
+    /**
+     * Creates a new instance.
+     * @param ptr a string representation of a JSON Pointer, or a decoded array of path segments.
+     */
+    constructor(ptr) {
+        this.path = decodePtrInit(ptr);
+    }
+    /**
+     * Factory function that creates a JsonPointer instance.
+     *
+     * ```ts
+     * const ptr = JsonPointer.create('/deeply/nested/data/0/here');
+     * ```
+     * _or_
+     * ```ts
+     * const ptr = JsonPointer.create(['deeply', 'nested', 'data', 0, 'here']);
+     * ```
+     * @param pointer the pointer or path.
+     */
+    static create(pointer) {
+        return new JsonPointer(pointer);
+    }
+    /**
+     * Determines if the specified `target`'s object graph has a value at the `pointer`'s location.
+     *
+     * ```ts
+     * const target = {
+     *   first: 'second',
+     *   third: ['fourth', 'fifth', { sixth: 'seventh' }],
+     *   eighth: 'ninth'
+     * };
+     *
+     * console.log(JsonPointer.has(target, '/third/0'));
+     * // true
+     * console.log(JsonPointer.has(target, '/tenth'));
+     * // false
+     * ```
+     *
+     * @param target the target of the operation
+     * @param pointer the pointer or path
+     */
+    static has(target, pointer) {
+        if (typeof pointer === 'string' || Array.isArray(pointer)) {
+            pointer = new JsonPointer(pointer);
+        }
+        return pointer.has(target);
+    }
+    /**
+     * Gets the `target` object's value at the `pointer`'s location.
+     *
+     * ```ts
+     * const target = {
+     *   first: 'second',
+     *   third: ['fourth', 'fifth', { sixth: 'seventh' }],
+     *   eighth: 'ninth'
+     * };
+     *
+     * console.log(JsonPointer.get(target, '/third/2/sixth'));
+     * // seventh
+     * console.log(JsonPointer.get(target, '/tenth'));
+     * // undefined
+     * ```
+     *
+     * @param target the target of the operation
+     * @param pointer the pointer or path.
+     */
+    static get(target, pointer) {
+        if (typeof pointer === 'string' || Array.isArray(pointer)) {
+            pointer = new JsonPointer(pointer);
+        }
+        return pointer.get(target);
+    }
+    /**
+     * Sets the `target` object's value, as specified, at the `pointer`'s location.
+     *
+     * ```ts
+     * const target = {
+     *   first: 'second',
+     *   third: ['fourth', 'fifth', { sixth: 'seventh' }],
+     *   eighth: 'ninth'
+     * };
+     *
+     * console.log(JsonPointer.set(target, '/third/2/sixth', 'tenth'));
+     * // seventh
+     * console.log(JsonPointer.set(target, '/tenth', 'eleventh', true));
+     * // undefined
+     * console.log(JSON.stringify(target, null, ' '));
+     * // {
+     * // "first": "second",
+     * // "third": [
+     * //  "fourth",
+     * //  "fifth",
+     * //  {
+     * //   "sixth": "tenth"
+     * //  }
+     * // ],
+     * // "eighth": "ninth",
+     * // "tenth": "eleventh"
+     * // }
+     * ```
+     *
+     * @param target the target of the operation
+     * @param pointer the pointer or path
+     * @param val a value to write into the object graph at the specified pointer location
+     * @param force indications whether the operation should force the pointer's location into existence in the object graph.
+     *
+     * @returns the prior value at the pointer's location in the object graph.
+     */
+    static set(target, pointer, val, force = false) {
+        if (typeof pointer === 'string' || Array.isArray(pointer)) {
+            pointer = new JsonPointer(pointer);
+        }
+        return pointer.set(target, val, force);
+    }
+    /**
+     * Removes the `target` object's value at the `pointer`'s location.
+     *
+     * ```ts
+     * const target = {
+     *   first: 'second',
+     *   third: ['fourth', 'fifth', { sixth: 'seventh' }],
+     *   eighth: 'ninth'
+     * };
+     *
+     * console.log(JsonPointer.unset(target, '/third/2/sixth'));
+     * // seventh
+     * console.log(JsonPointer.unset(target, '/tenth'));
+     * // undefined
+     * console.log(JSON.stringify(target, null, ' '));
+     * // {
+     * // "first": "second",
+     * // "third": [
+     * //  "fourth",
+     * //  "fifth",
+     * //  {}
+     * // ],
+     * // "eighth": "ninth",
+     * // }
+     * ```
+     * @param target the target of the operation
+     * @param pointer the pointer or path
+     *
+     * @returns the value that was removed from the object graph.
+     */
+    static unset(target, pointer) {
+        if (typeof pointer === 'string' || Array.isArray(pointer)) {
+            pointer = new JsonPointer(pointer);
+        }
+        return pointer.unset(target);
+    }
+    /**
+     * Decodes the specified pointer into path segments.
+     * @param pointer a string representation of a JSON Pointer
+     */
+    static decode(pointer) {
+        return pickDecoder(pointer)(pointer);
+    }
+    /**
+     * Evaluates the target's object graph, calling the specified visitor for every unique pointer location discovered while walking the graph.
+     * @param target the target of the operation
+     * @param visitor a callback function invoked for each unique pointer location in the object graph
+     * @param fragmentId indicates whether the visitor should receive fragment identifiers or regular pointers
+     */
+    static visit(target, visitor, fragmentId = false) {
+        descendingVisit(target, visitor, fragmentId ? encodeUriFragmentIdentifier : encodePointer);
+    }
+    /**
+     * Evaluates the target's object graph, returning a [[JsonStringPointerListItem]] for each location in the graph.
+     * @param target the target of the operation
+     */
+    static listPointers(target) {
+        const res = [];
+        descendingVisit(target, (pointer, value) => {
+            res.push({ pointer, value });
+        }, encodePointer);
+        return res;
+    }
+    /**
+     * Evaluates the target's object graph, returning a [[UriFragmentIdentifierPointerListItem]] for each location in the graph.
+     * @param target the target of the operation
+     */
+    static listFragmentIds(target) {
+        const res = [];
+        descendingVisit(target, (fragmentId, value) => {
+            res.push({ fragmentId, value });
+        }, encodeUriFragmentIdentifier);
+        return res;
+    }
+    /**
+     * Evaluates the target's object graph, returning a Record&lt;Pointer, unknown> populated with pointers and the corresponding values from the graph.
+     * @param target the target of the operation
+     * @param fragmentId indicates whether the results are populated with fragment identifiers rather than regular pointers
+     */
+    static flatten(target, fragmentId = false) {
+        const res = {};
+        descendingVisit(target, (p, v) => {
+            res[p] = v;
+        }, fragmentId ? encodeUriFragmentIdentifier : encodePointer);
+        return res;
+    }
+    /**
+     * Evaluates the target's object graph, returning a Map&lt;Pointer,unknown>  populated with pointers and the corresponding values form the graph.
+     * @param target the target of the operation
+     * @param fragmentId indicates whether the results are populated with fragment identifiers rather than regular pointers
+     */
+    static map(target, fragmentId = false) {
+        const res = new Map();
+        descendingVisit(target, res.set.bind(res), fragmentId ? encodeUriFragmentIdentifier : encodePointer);
+        return res;
+    }
+    /**
+     * Gets the target object's value at the pointer's location.
+     * @param target the target of the operation
+     */
+    get(target) {
+        if (!this[$get]) {
+            this[$get] = compilePointerDereference(this.path);
+        }
+        return this[$get](target);
+    }
+    /**
+     * Sets the target object's value, as specified, at the pointer's location.
+     *
+     * If any part of the pointer's path does not exist, the operation aborts
+     * without modification, unless the caller indicates that pointer's location
+     * should be created.
+     *
+     * @param target the target of the operation
+     * @param value the value to set
+     * @param force indicates whether the pointer's location should be created if it doesn't already exist.
+     */
+    set(target, value, force = false) {
+        return setValueAtPath(target, value, this.path, force);
+    }
+    /**
+     * Removes the target object's value at the pointer's location.
+     * @param target the target of the operation
+     *
+     * @returns the value that was removed from the object graph.
+     */
+    unset(target) {
+        return unsetValueAtPath(target, this.path);
+    }
+    /**
+     * Determines if the specified target's object graph has a value at the pointer's location.
+     * @param target the target of the operation
+     */
+    has(target) {
+        return typeof this.get(target) !== 'undefined';
+    }
+    /**
+     * Gets the value in the object graph that is the parent of the pointer location.
+     * @param target the target of the operation
+     */
+    parent(target) {
+        const p = this.path;
+        if (p.length == 1)
+            return undefined;
+        const parent = new JsonPointer(p.slice(0, p.length - 1));
+        return parent.get(target);
+    }
+    /**
+     * Creates a new JsonPointer instance, pointing to the specified relative location in the object graph.
+     * @param ptr the relative pointer (relative to this)
+     * @returns A new instance that points to the relative location.
+     */
+    relative(ptr) {
+        const p = this.path;
+        const decoded = decodeRelativePointer(ptr);
+        const n = parseInt(decoded[0]);
+        if (n > p.length)
+            throw new Error('Relative location does not exist.');
+        const r = p.slice(0, p.length - n).concat(decoded.slice(1));
+        if (decoded[0][decoded[0].length - 1] == '#') {
+            // It references the path segment/name, not the value
+            const name = r[r.length - 1];
+            throw new Error(`We won't compile a pointer that will always return '${name}'. Use JsonPointer.rel(target, ptr) instead.`);
+        }
+        return new JsonPointer(r);
+    }
+    /**
+     * Resolves the specified relative pointer path against the specified target object, and gets the target object's value at the relative pointer's location.
+     * @param target the target of the operation
+     * @param ptr the relative pointer (relative to this)
+     * @returns the value at the relative pointer's resolved path; otherwise undefined.
+     */
+    rel(target, ptr) {
+        const p = this.path;
+        const decoded = decodeRelativePointer(ptr);
+        const n = parseInt(decoded[0]);
+        if (n > p.length) {
+            // out of bounds
+            return undefined;
+        }
+        const r = p.slice(0, p.length - n).concat(decoded.slice(1));
+        const other = new JsonPointer(r);
+        if (decoded[0][decoded[0].length - 1] == '#') {
+            // It references the path segment/name, not the value
+            const name = r[r.length - 1];
+            const parent = other.parent(target);
+            return Array.isArray(parent) ? parseInt(name, 10) : name;
+        }
+        return other.get(target);
+    }
+    /**
+     * Creates a new instance by concatenating the specified pointer's path onto this pointer's path.
+     * @param ptr the string representation of a pointer, it's decoded path, or an instance of JsonPointer indicating the additional path to concatenate onto the pointer.
+     */
+    concat(ptr) {
+        return new JsonPointer(this.path.concat(ptr instanceof JsonPointer ? ptr.path : decodePtrInit(ptr)));
+    }
+    /**
+     * This pointer's JSON Pointer encoded string representation.
+     */
+    get pointer() {
+        if (this[$ptr] === undefined) {
+            this[$ptr] = encodePointer(this.path);
+        }
+        return this[$ptr];
+    }
+    /**
+     * This pointer's URI fragment identifier encoded string representation.
+     */
+    get uriFragmentIdentifier() {
+        if (!this[$frg]) {
+            this[$frg] = encodeUriFragmentIdentifier(this.path);
+        }
+        return this[$frg];
+    }
+    /**
+     * Emits the JSON Pointer encoded string representation.
+     */
+    toString() {
+        return this.pointer;
+    }
+}
+/** @hidden */
+const $pointer = Symbol('pointer');
+/**
+ * A reference to a location in an object graph.
+ *
+ * This type is used by this module to break cycles in an object graph and to
+ * reference locations that have already been visited when enumerating pointers.
+ */
+class JsonReference {
+    /**
+     * Creates a new instance.
+     * @param pointer a JSON Pointer for the reference.
+     */
+    constructor(pointer) {
+        this[$pointer] =
+            pointer instanceof JsonPointer ? pointer : new JsonPointer(pointer);
+        this.$ref = this[$pointer].uriFragmentIdentifier;
+    }
+    /**
+     * Determines if the specified `candidate` is a JsonReference.
+     * @param candidate the candidate
+     */
+    static isReference(candidate) {
+        if (!candidate)
+            return false;
+        const ref = candidate;
+        return typeof ref.$ref === 'string' && typeof ref.resolve === 'function';
+    }
+    /**
+     * Resolves the reference against the `target` object, returning the value at
+     * the referenced pointer's location.
+     * @param target the target object
+     */
+    resolve(target) {
+        return this[$pointer].get(target);
+    }
+    /**
+     * Gets the reference's pointer.
+     */
+    pointer() {
+        return this[$pointer];
+    }
+    /**
+     * Gets the reference pointer's string representation (a URI fragment identifier).
+     */
+    toString() {
+        return this.$ref;
+    }
+}
+
 class gltfAnimation extends GltfObject
 {
+    static animatedProperties = [];
     constructor()
     {
         super();
@@ -13866,6 +14859,8 @@ class gltfAnimation extends GltfObject
         this.interpolators = [];
         this.maxTime = 0;
         this.disjointAnimations = [];
+
+        this.errors = [];
     }
 
     fromJson(jsonAnimation)
@@ -13917,25 +14912,91 @@ class gltfAnimation extends GltfObject
             const sampler = this.samplers[channel.sampler];
             const interpolator = this.interpolators[i];
 
-            const node = gltf.nodes[channel.target.node];
-
+            let property = null;
             switch(channel.target.path)
             {
             case InterpolationPath.TRANSLATION:
-                node.applyTranslationAnimation(interpolator.interpolate(gltf, channel, sampler, totalTime, 3, this.maxTime));
+                property = `/nodes/${channel.target.node}/translation`;
                 break;
             case InterpolationPath.ROTATION:
-                node.applyRotationAnimation(interpolator.interpolate(gltf, channel, sampler, totalTime, 4, this.maxTime));
+                property = `/nodes/${channel.target.node}/rotation`;
                 break;
             case InterpolationPath.SCALE:
-                node.applyScaleAnimation(interpolator.interpolate(gltf, channel, sampler, totalTime, 3, this.maxTime));
+                property = `/nodes/${channel.target.node}/scale`;
                 break;
             case InterpolationPath.WEIGHTS:
-            {
-                const mesh = gltf.meshes[node.mesh];
-                mesh.weightsAnimated = interpolator.interpolate(gltf, channel, sampler, totalTime, mesh.weights.length, this.maxTime);
+                if (gltf.nodes[channel.target.node].weights !== undefined) {
+                    property = `/nodes/${channel.target.node}/weights`;
+                } else {
+                    property = `/meshes/${gltf.nodes[channel.target.node].mesh}/weights`;
+                }
+                break;
+            case InterpolationPath.POINTER:
+                property = channel.target.extensions.KHR_animation_pointer.pointer;
                 break;
             }
+
+            if (property != null) {
+                if (property.startsWith("/extensions/KHR_lights_punctual/")) {
+                    const suffix = property.substring("/extensions/KHR_lights_punctual/".length);
+                    property = "/" + suffix;
+                }
+                let jsonPointer = JsonPointer.create(property);
+                let parentObject = jsonPointer.parent(gltf);
+                let back = jsonPointer.path.at(-1);
+                let animatedArrayElement = undefined;
+                if (Array.isArray(parentObject)) {
+                    animatedArrayElement = Number(back);
+                    jsonPointer = JsonPointer.create(jsonPointer.path.slice(0, -1));
+                    parentObject = jsonPointer.parent(gltf);
+                    back = jsonPointer.path.at(-1);
+                }
+                let animatedProperty = undefined;
+                if (parentObject.animatedPropertyObjects && back in parentObject.animatedPropertyObjects) {
+                    animatedProperty = parentObject.animatedPropertyObjects[back];
+                }
+                if (animatedProperty === undefined || !(animatedProperty instanceof AnimatableProperty)) {
+                    if (!this.errors.includes(property)) {
+                        console.warn(`Cannot animate ${property}`);
+                        this.errors.push(property);
+                    }
+                    continue;
+                }
+                if (animatedProperty.restValue === undefined) {
+                    continue;
+                }
+
+                let stride = animatedProperty.restValue?.length ?? 1;
+                if (animatedArrayElement !== undefined) {
+                    stride = animatedProperty.restValue[animatedArrayElement]?.length ?? 1;
+                }
+                
+                const interpolant = interpolator.interpolate(gltf, channel, sampler, totalTime, stride, this.maxTime);
+                if (interpolant === undefined) {
+                    animatedProperty.rest();
+                    continue;
+                }
+                // The interpolator will always return a `Float32Array`, even if the animated value is a scalar.
+                // For the renderer it's not a problem because uploading a single-element array is the same as uploading a scalar to a uniform.
+                // However, it becomes a problem if we use the animated value for further computation and assume is stays a scalar.
+                // Thus we explicitly convert the animated value back to a scalar if the interpolant is a single-element array.
+                if (animatedArrayElement !== undefined) {
+                    const array = animatedProperty.value();
+                    if (interpolant.length == 1) {
+                        array[animatedArrayElement] = interpolant[0];
+                    }
+                    else {
+                        array[animatedArrayElement] = interpolant;
+                    }
+                    animatedProperty.animate(array);
+                } else {
+                    if (interpolant.length == 1) {
+                        animatedProperty.animate(interpolant[0]);
+                    }
+                    else {
+                        animatedProperty.animate(interpolant);
+                    }
+                }
             }
         }
     }
@@ -13943,6 +15004,7 @@ class gltfAnimation extends GltfObject
 
 class gltfSkin extends GltfObject
 {
+    static animatedProperties = [];
     constructor()
     {
         super();
@@ -14055,6 +15117,7 @@ class gltfSkin extends GltfObject
 
 class gltfVariant extends GltfObject
 {
+    static animatedProperties = [];
     constructor()
     {
         super();
@@ -14095,6 +15158,7 @@ const allowedExtensions = [
 
 class glTF extends GltfObject
 {
+    static animatedProperties = [];
     constructor(file)
     {
         super();
@@ -14185,13 +15249,40 @@ class glTF extends GltfObject
                 }
 
                 let isDisjoint = true;
-
                 for (const iChannel of this.animations[i].channels)
                 {
+                    const getAnimationProperty = function (channel){ 
+                     
+                        let property = null;
+                        switch(channel.target.path)
+                        {
+                        case "translation":
+                            property = `/nodes/${channel.target.node}/translation`;
+                            break;
+                        case "rotation":
+                            property = `/nodes/${channel.target.node}/rotation`;
+                            break;
+                        case "scale":
+                            property = `/nodes/${channel.target.node}/scale`;
+                            break;
+                        case "weights":
+                            if (this.nodes[channel.target.node].weights !== undefined) {
+                                property = `/nodes/${channel.target.node}/weights`;
+                            } else {
+                                property = `/meshes/${this.nodes[channel.target.node].mesh}/weights`;
+                            }
+                            break;
+                        case "pointer":
+                            property = channel.target.extensions.KHR_animation_pointer.pointer;
+                            break;
+                        }
+                        return property;
+                    };
+                    const iProperty = getAnimationProperty(iChannel);
                     for (const kChannel of this.animations[k].channels)
                     {
-                        if (iChannel.target.node === kChannel.target.node
-                            && iChannel.target.path === kChannel.target.path)
+                        const kProperty = getAnimationProperty(kChannel);
+                        if (iProperty === kProperty)
                         {
                             isDisjoint = false;
                             break;
