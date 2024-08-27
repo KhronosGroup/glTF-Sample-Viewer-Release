@@ -1,6 +1,6 @@
 /**
  * Bundle of gltf-sample-viewer-example
- * Generated: 2024-08-26
+ * Generated: 2024-08-27
  * Version: 1.0.0
  * Dependencies:
  *
@@ -68474,7 +68474,7 @@ var main = async () => {
                             }
                             const scene = state.gltf.scenes[state.sceneIndex];
                             scene.applyTransformHierarchy(state.gltf);
-                            state.userCamera.aspectRatio = canvas.width / canvas.height;
+                            state.userCamera.perspective.aspectRatio = canvas.width / canvas.height;
                             state.userCamera.resetView(state.gltf, state.sceneIndex);
 
                             // Try to start as many animations as possible without generating conficts.
@@ -68801,7 +68801,7 @@ var main = async () => {
         if((canvas.width/past.width <0.5 || canvas.width/past.width>2.0 )||
             (canvas.height/past.height <0.5 || canvas.height/past.height>2.0 ))
         {
-            state.userCamera.aspectRatio = canvas.width / canvas.height;
+            state.userCamera.perspective.aspectRatio = canvas.width / canvas.height;
             state.userCamera.fitViewToScene(state.gltf, state.sceneIndex);
         }
 
