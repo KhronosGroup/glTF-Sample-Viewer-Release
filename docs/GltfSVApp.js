@@ -1,6 +1,6 @@
 /**
  * Bundle of gltf-sample-viewer-example
- * Generated: 2024-08-28
+ * Generated: 2024-08-29
  * Version: 1.0.0
  * Dependencies:
  *
@@ -68468,8 +68468,9 @@ var main = async () => {
                             });
                         };
 
-                        const buffer = await model.mainFile[1].bytes();
-                        return await validateBytes(buffer, {externalResourceFunction: externalRefFunction, uri: model.mainFile[0]});
+                        const buffer = await model.mainFile[1].arrayBuffer();
+                        return await validateBytes(new Uint8Array(buffer),
+                            {externalResourceFunction: externalRefFunction, uri: model.mainFile[0]});
                     }
                 } catch (error) {
                     console.error(error);
