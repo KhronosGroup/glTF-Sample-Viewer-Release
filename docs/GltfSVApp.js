@@ -1,6 +1,6 @@
 /**
  * Bundle of gltf-sample-viewer-example
- * Generated: 2024-08-29
+ * Generated: 2024-09-03
  * Version: 1.0.0
  * Dependencies:
  *
@@ -19322,7 +19322,11 @@ class UIModel
             filter(value => value !== null),
             map(value => {
                 app.flavours = modelPathProvider.getModelFlavours(value);
-                app.selectedFlavour = "glTF";
+                if (app.flavours.includes("glTF")){
+                    app.selectedFlavour = "glTF";
+                } else {
+                    app.selectedFlavour = app.flavours[0];
+                }
                 return modelPathProvider.resolve(value, app.selectedFlavour);
             }),
             map(value => ({mainFile: value})),
