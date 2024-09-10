@@ -1,6 +1,6 @@
 /**
  * Bundle of gltf-sample-viewer-example
- * Generated: 2024-09-04
+ * Generated: 2024-09-10
  * Version: 1.0.0
  * Dependencies:
  *
@@ -1824,7 +1824,7 @@ class gltfCamera extends GltfObject
             .sort((a, b) => a.depth - b.depth);
     }
 
-    getProjectionMatrix()
+    getProjectionMatrix(aspectRatio)
     {
         const projection = create$3();
 
@@ -1833,7 +1833,7 @@ class gltfCamera extends GltfObject
             perspective(
                 projection,
                 this.perspective.yfov,
-                this.perspective.aspectRatio,
+                this.perspective.aspectRatio ?? aspectRatio,
                 this.perspective.znear,
                 this.perspective.zfar
             );
@@ -4101,7 +4101,7 @@ class gltfRenderer
             aspectOffsetX = (this.currentWidth - aspectWidth) / 2;
         }
 
-        this.projMatrix = currentCamera.getProjectionMatrix();
+        this.projMatrix = currentCamera.getProjectionMatrix(currentAspectRatio);
         this.viewMatrix = currentCamera.getViewMatrix(state.gltf);
         this.currentCameraPosition = currentCamera.getPosition(state.gltf);
 
