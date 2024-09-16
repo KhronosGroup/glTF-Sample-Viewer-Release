@@ -1,6 +1,6 @@
 /**
  * Bundle of gltf-sample-viewer-example
- * Generated: 2024-09-13
+ * Generated: 2024-09-16
  * Version: 1.0.0
  * License: Apache-2.0
  * Dependencies:
@@ -1087,6 +1087,145 @@
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
+ */
+
+/**
+ * Bundle of @khronosgroup/gltf-viewer
+ * Generated: 2024-09-16
+ * Version: 1.0.11
+ * License: Apache-2.0
+ * Dependencies:
+ *
+ * gl-matrix -- 3.4.3 -- MIT
+ * Copyright (c) 2015-2021, Brandon Jones, Colin MacKenzie IV.
+ *
+ * Permission is hereby granted, free of charge, to any person obtaining a copy
+ * of this software and associated documentation files (the "Software"), to deal
+ * in the Software without restriction, including without limitation the rights
+ * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+ * copies of the Software, and to permit persons to whom the Software is
+ * furnished to do so, subject to the following conditions:
+ *
+ * The above copyright notice and this permission notice shall be included in
+ * all copies or substantial portions of the Software.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+ * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+ * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+ * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+ * THE SOFTWARE.
+ *
+ * jpeg-js -- 0.4.4 -- BSD-3-Clause
+ * Copyright (c) 2014, Eugene Ware
+ * All rights reserved.
+ * 
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted provided that the following conditions are met:
+ *
+ * 1. Redistributions of source code must retain the above copyright
+ * notice, this list of conditions and the following disclaimer.
+ * 2. Redistributions in binary form must reproduce the above copyright
+ * notice, this list of conditions and the following disclaimer in the
+ * documentation and/or other materials provided with the distribution.
+ * 3. Neither the name of Eugene Ware nor the names of its contributors
+ * may be used to endorse or promote products derived from this software
+ * without specific prior written permission.
+ * 
+ * THIS SOFTWARE IS PROVIDED BY EUGENE WARE ''AS IS'' AND ANY
+ * EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
+ * WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+ * DISCLAIMED. IN NO EVENT SHALL EUGENE WARE BE LIABLE FOR ANY
+ * DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES
+ * (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
+ * LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND
+ * ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+ * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
+ * SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ *
+ *
+ * iobuffer -- 5.3.2 -- MIT
+ * The MIT License (MIT)
+ *
+ * Copyright (c) 2015 Michaël Zasso
+ *
+ * Permission is hereby granted, free of charge, to any person obtaining a copy
+ * of this software and associated documentation files (the "Software"), to deal
+ * in the Software without restriction, including without limitation the rights
+ * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+ * copies of the Software, and to permit persons to whom the Software is
+ * furnished to do so, subject to the following conditions:
+ *
+ * The above copyright notice and this permission notice shall be included in all
+ * copies or substantial portions of the Software.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+ * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+ * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+ * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+ * SOFTWARE.
+ *
+ *
+ *
+ * pako -- 2.1.0 -- (MIT AND Zlib)
+ * (The MIT License)
+ *
+ * Copyright (C) 2014-2017 by Vitaly Puzrin and Andrei Tuputcyn
+ *
+ * Permission is hereby granted, free of charge, to any person obtaining a copy
+ * of this software and associated documentation files (the "Software"), to deal
+ * in the Software without restriction, including without limitation the rights
+ * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+ * copies of the Software, and to permit persons to whom the Software is
+ * furnished to do so, subject to the following conditions:
+ *
+ * The above copyright notice and this permission notice shall be included in
+ * all copies or substantial portions of the Software.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+ * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+ * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+ * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+ * THE SOFTWARE.
+ *
+ *
+ * fast-png -- 6.2.0 -- MIT
+ * MIT License
+ *
+ * Copyright (c) 2015 Michaël Zasso
+ *
+ * Permission is hereby granted, free of charge, to any person obtaining a copy
+ * of this software and associated documentation files (the "Software"), to deal
+ * in the Software without restriction, including without limitation the rights
+ * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+ * copies of the Software, and to permit persons to whom the Software is
+ * furnished to do so, subject to the following conditions:
+ *
+ * The above copyright notice and this permission notice shall be included in all
+ * copies or substantial portions of the Software.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+ * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+ * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+ * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+ * SOFTWARE.
+ *
+ *
+ * json-ptr -- 3.1.1 -- MIT
+ * Copyright (c) 2011-2021 Phillip Clark
+ *
+ * Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the "Software"), to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions:
+ *
+ * The above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
 
 /**
@@ -5769,8 +5908,8 @@ class gltfBuffer extends GltfObject
         {
             return false;
         }
-
-        fetch(getContainingFolder(gltf.path) + this.uri)
+        const parentPath = this.uri.startsWith("data:") ? "" : getContainingFolder(gltf.path);
+        fetch(parentPath + this.uri)
             .then(response => response.arrayBuffer())
             .then(buffer => {
                 this.buffer = buffer;
@@ -12272,6 +12411,9 @@ class gltfImage extends GltfObject
     resolveRelativePath(basePath)
     {
         if (typeof this.uri === 'string' || this.uri instanceof String) {
+            if (this.uri.startsWith('data:')) {
+                return;
+            }
             if (this.uri.startsWith('./')) {
                 this.uri = this.uri.substring(2);
             }
@@ -12292,7 +12434,8 @@ class gltfImage extends GltfObject
 
         if (!await this.setImageFromBufferView(gltf) &&
             !await this.setImageFromFiles(gltf, additionalFiles) &&
-            !await this.setImageFromUri(gltf))
+            !await this.setImageFromUri(gltf) &&
+            !await this.setImageFromBase64(gltf))
         {
             return;
         }
@@ -12340,9 +12483,79 @@ class gltfImage extends GltfObject
 
     }
 
+    async setImageFromBytes(gltf, array)
+    {
+        if (this.mimeType === ImageMimeType.KTX2)
+        {
+            if (gltf.ktxDecoder !== undefined)
+            {
+                this.image = await gltf.ktxDecoder.loadKtxFromBuffer(array);
+            }
+            else
+            {
+                console.warn('Loading of ktx images failed: KtxDecoder not initalized');
+            }
+        }
+        else if(typeof(Image) !== 'undefined' && (this.mimeType === ImageMimeType.JPEG || this.mimeType === ImageMimeType.PNG || this.mimeType === ImageMimeType.WEBP))
+        {
+            const blob = new Blob([array], { "type": this.mimeType });
+            const objectURL = URL.createObjectURL(blob);
+            this.image = await gltfImage.loadHTMLImage(objectURL).catch( () => {
+                console.error("Could not load image from buffer view");
+            });
+        }
+        else if(this.mimeType === ImageMimeType.JPEG)
+        {
+            this.image = jpegJs.decode(array, {useTArray: true});
+        }
+        else if(this.mimeType === ImageMimeType.PNG)
+        {
+            this.image = decodePng(array);
+        }
+        else
+        {
+            console.error("Unsupported image type " + this.mimeType);
+            return false;
+        }
+
+        return true;
+    }
+
+    async setImageFromBase64(gltf)
+    {
+        if (this.uri === undefined || !this.uri.startsWith('data:'))
+        {
+            return false;
+        }
+        const parts = this.uri.split(",");
+        if (this.mimeType === undefined)
+        {
+            switch (parts[0]) {
+            case "data:image/jpeg;base64":
+                this.mimeType = ImageMimeType.JPEG;
+                break;
+            case "data:image/png;base64":
+                this.mimeType = ImageMimeType.PNG;
+                break;
+            case "data:image/webp;base64":
+                this.mimeType = ImageMimeType.WEBP;
+                break;
+            case "data:image/ktx2;base64":
+                this.mimeType = ImageMimeType.KTX2;
+                break;
+            default:
+                console.warn(`Data URI ${parts[0]} not supported`);
+                return false;
+            }
+        }
+        const res = await fetch(this.uri);
+        const buffer = await res.arrayBuffer();
+        return await this.setImageFromBytes(gltf, new Uint8Array(buffer));
+    }
+
     async setImageFromUri(gltf)
     {
-        if (this.uri === undefined)
+        if (this.uri === undefined || this.uri.startsWith('data:'))
         {
             return false;
         }
@@ -12395,40 +12608,7 @@ class gltfImage extends GltfObject
 
         const buffer = gltf.buffers[view.buffer].buffer;
         const array = new Uint8Array(buffer, view.byteOffset, view.byteLength);
-        if (this.mimeType === ImageMimeType.KTX2)
-        {
-            if (gltf.ktxDecoder !== undefined)
-            {
-                this.image = await gltf.ktxDecoder.loadKtxFromBuffer(array);
-            }
-            else
-            {
-                console.warn('Loading of ktx images failed: KtxDecoder not initalized');
-            }
-        }
-        else if(typeof(Image) !== 'undefined' && (this.mimeType === ImageMimeType.JPEG || this.mimeType === ImageMimeType.PNG || this.mimeType === ImageMimeType.WEBP))
-        {
-            const blob = new Blob([array], { "type": this.mimeType });
-            const objectURL = URL.createObjectURL(blob);
-            this.image = await gltfImage.loadHTMLImage(objectURL).catch( () => {
-                console.error("Could not load image from buffer view");
-            });
-        }
-        else if(this.mimeType === ImageMimeType.JPEG)
-        {
-            this.image = jpegJs.decode(array, {useTArray: true});
-        }
-        else if(this.mimeType === ImageMimeType.PNG)
-        {
-            this.image = decodePng(array);
-        }
-        else
-        {
-            console.error("Unsupported image type " + this.mimeType);
-            return false;
-        }
-
-        return true;
+        return await this.setImageFromBytes(gltf, array);
     }
 
     async setImageFromFiles(gltf, files)
@@ -16200,26 +16380,28 @@ class gltfVariant extends GltfObject
 }
 
 const allowedExtensions = [
+    "KHR_animation_pointer",
     "KHR_draco_mesh_compression",
-    "KHR_texture_basisu",
-    "KHR_texture_transform",
-    "EXT_texture_webp",
-    "KHR_lights_punctual",
     "KHR_lights_image_based",
-    "KHR_materials_variants",
-    "KHR_materials_unlit",
+    "KHR_lights_punctual",
+    "KHR_materials_anisotropy",
     "KHR_materials_clearcoat",
-    "KHR_materials_sheen",
-    "KHR_materials_transmission",
-    "KHR_materials_volume",
+    "KHR_materials_dispersion",
+    "KHR_materials_emissive_strength",
     "KHR_materials_ior",
     "KHR_materials_iridescence",
-    "KHR_materials_anisotropy",
-    "KHR_materials_dispersion",
-    "KHR_materials_specular",
-    "KHR_materials_emissive_strength",
-    "KHR_materials_xmp_json_ld",
     "KHR_materials_pbrSpecularGlossiness",
+    "KHR_materials_sheen",
+    "KHR_materials_specular",
+    "KHR_materials_transmission",
+    "KHR_materials_unlit",
+    "KHR_materials_variants",
+    "KHR_materials_volume",
+    "KHR_mesh_quantization",
+    "KHR_texture_basisu",
+    "KHR_texture_transform",
+    "KHR_xmp_json_ld",
+    "EXT_texture_webp",
 ];
 
 class glTF extends GltfObject
