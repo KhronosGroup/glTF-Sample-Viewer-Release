@@ -58713,7 +58713,7 @@ canvasUI.mount('#canvasUI');
 
 class GltfModelPathProvider
 {
-    constructor(url, ignoredVariants = ["glTF-Embedded"])
+    constructor(url, ignoredVariants = [])
     {
         this.url = url;
         this.ignoredVariants = ignoredVariants;
