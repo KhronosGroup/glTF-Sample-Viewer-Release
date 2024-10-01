@@ -5,7 +5,7 @@
  * License: Apache-2.0
  * Dependencies:
  *
- * @khronosgroup/gltf-viewer -- 1.0.11 -- Apache-2.0
+ * @khronosgroup/gltf-viewer -- 1.1.0 -- Apache-2.0
  * 
  * Apache License
  * Version 2.0, January 2004
@@ -1092,7 +1092,7 @@
 /**
  * Bundle of @khronosgroup/gltf-viewer
  * Generated: 2024-10-01
- * Version: 1.0.11
+ * Version: 1.1.0
  * License: Apache-2.0
  * Dependencies:
  *
