@@ -1,6 +1,6 @@
 /**
  * Bundle of gltf-sample-viewer-example
- * Generated: 2024-09-19
+ * Generated: 2024-10-01
  * Version: 1.0.0
  * License: Apache-2.0
  * Dependencies:
@@ -1091,7 +1091,7 @@
 
 /**
  * Bundle of @khronosgroup/gltf-viewer
- * Generated: 2024-09-19
+ * Generated: 2024-10-01
  * Version: 1.0.11
  * License: Apache-2.0
  * Dependencies:
@@ -17657,8 +17657,12 @@ class ResourceLoader
             }
         }
         else
-        {
-            console.error("Passed invalid type to loadGltf " + typeof (gltfFile));
+        {   
+            // Load empty glTF
+            data = "{\"asset\":{\"version\": \"2.0\"}}";
+            filename = "empty";
+            isGlb = false;
+            json = JSON.parse(data);
         }
 
         if (isGlb)
@@ -69793,6 +69797,19 @@ var main = async () => {
 
                         uiModel.exitLoadingState();
 
+                        return state;
+                    }).catch((error) => {
+                        console.error("Loading failed: "+ error);
+                        resourceLoader
+                            .loadGltf(undefined, undefined)
+                            .then((gltf) => {
+                                state.gltf = gltf;
+                                state.sceneIndex = 0;
+                                state.cameraIndex = undefined;
+
+                                uiModel.exitLoadingState();
+                                redraw = true;
+                            }); 
                         return state;
                     })
             );
