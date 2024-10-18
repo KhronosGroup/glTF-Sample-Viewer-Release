@@ -1,6 +1,6 @@
 /**
  * Bundle of gltf-sample-viewer-example
- * Generated: 2024-10-01
+ * Generated: 2024-10-18
  * Version: 1.0.0
  * License: Apache-2.0
  * Dependencies:
@@ -1091,7 +1091,7 @@
 
 /**
  * Bundle of @khronosgroup/gltf-viewer
- * Generated: 2024-10-01
+ * Generated: 2024-10-18
  * Version: 1.1.0
  * License: Apache-2.0
  * Dependencies:
@@ -20525,6 +20525,11 @@ class UIModel
         const queryString = window.location.search;
         const urlParams = new URLSearchParams(queryString);
         const modelURL = urlParams.get("model");
+        const noUI = urlParams.get("noUI");
+        if (noUI !== null) {
+            this.app.uiVisible = false;
+            this.app.noUI = true;
+        }
 
         this.scene = app.sceneChanged.pipe();
         this.camera = app.cameraChanged.pipe();
@@ -70881,6 +70886,16 @@ var main = async () => {
                             scene.applyTransformHierarchy(state.gltf);
                             state.userCamera.perspective.aspectRatio = canvas.width / canvas.height;
                             state.userCamera.resetView(state.gltf, state.sceneIndex);
+
+                            const queryString = window.location.search;
+                            const urlParams = new URLSearchParams(queryString);
+                            let yaw = urlParams.get("yaw") ?? 0;
+                            yaw = yaw * (Math.PI / 180) / state.userCamera.orbitSpeed;
+                            let pitch = urlParams.get("pitch") ?? 0;
+                            pitch = pitch * (Math.PI / 180) / state.userCamera.orbitSpeed;
+                            const distance = urlParams.get("distance") ?? 0;
+                            state.userCamera.orbit(yaw, pitch);
+                            state.userCamera.zoomBy(distance);
 
                             // Try to start as many animations as possible without generating conficts.
                             state.animationIndices = [];
