@@ -1,6 +1,6 @@
 /**
  * Bundle of gltf-sample-viewer-example
- * Generated: 2024-10-18
+ * Generated: 2024-10-28
  * Version: 1.0.0
  * License: Apache-2.0
  * Dependencies:
@@ -1091,7 +1091,7 @@
 
 /**
  * Bundle of @khronosgroup/gltf-viewer
- * Generated: 2024-10-18
+ * Generated: 2024-10-28
  * Version: 1.1.0
  * License: Apache-2.0
  * Dependencies:
@@ -20536,7 +20536,7 @@ class UIModel
         this.environmentRotation = app.environmentRotationChanged.pipe();
         this.app.environments = environments;
         const selectedEnvironment = app.selectedEnvironmentChanged.pipe(
-            map(environmentName => this.app.environments[environmentName].hdr_path)
+            map(environmentName => this.app.environments[environmentName])
         );
         const initialEnvironment = "Cannon_Exterior";
         this.app.selectedEnvironment = initialEnvironment;
@@ -20618,12 +20618,40 @@ class UIModel
         );
 
         this.model = merge$1(dropdownGltfChanged, dropdownFlavourChanged, inputObservables.droppedGltf);
+
         this.hdr = merge$1(selectedEnvironment, this.addEnvironment, inputObservables.droppedHdr).pipe(
-            startWith(environments[initialEnvironment].hdr_path)
+            startWith(environments[initialEnvironment])
         );
 
+        this.hdr.subscribe(async hdr => {
+            if (hdr.license_path !== undefined) {
+                try {
+                    const response = await fetch(hdr.license_path);
+                    if (!response.ok) {
+                        throw new Error("License file not found");
+                    }
+                    let text = await response.text();
+                    const license = text.split("SPDX-License-Identifier: ")[1];
+                    console.log(license);
+                    text = text.replace("SPDX-FileCopyrightText: ", "");
+                    text = text.replace(/SPDX-License-Identifier:(.)*/g, `, <a href="${hdr.hdr_path}">Source</a>, License: `);
+                    text += `<a href="${hdr.base_path}/LICENSES/${license}.txt">${license}</a>`;
+                    text = "(c) " + text;
+                    text = text.replaceAll("\n","");
+                    text = text.replaceAll(" ,", ",");
+                    this.app.environmentLicense = text;
+                } catch (error) {
+                    this.app.environmentLicense = "N/A";
+                }
+                
+            } else {
+                this.app.environmentLicense = "N/A";
+            }
+        });
+
         merge$1(this.addEnvironment, inputObservables.droppedHdr)
-            .subscribe(hdrPath => {
+            .subscribe(hdr => {
+                const hdrPath = hdr.hdr_path;
                 this.app.environments[hdrPath.name] = {
                     title: hdrPath.name,
                     hdr_path: hdrPath,
@@ -20792,7 +20820,8 @@ const getInputObservables = (inputElement, app) => {
     observables.droppedHdr = droppedFiles.pipe(
         map(files => files.find(([path]) => path.endsWith(".hdr"))),
         filter(file => file !== undefined),
-        pluck("1")
+        pluck("1"),
+        map(file => ({hdr_path: file}))
     );
 
     const mouseMove = fromEvent(document, 'mousemove');
@@ -59758,7 +59787,7 @@ const appCreated = vue_cjs.createApp({
         },
         onFileChange(e) {
             const file = e.target.files[0];
-            this.addEnvironmentChanged.next(file);
+            this.addEnvironmentChanged.next({hdr_path: file});
         },
 
         toggleUI() {
@@ -59915,7 +59944,9 @@ function fillEnvironmentWithPaths(environmentNames, environmentsBasePath)
             index: index,
             title: title,
             hdr_path: environmentsBasePath + name + ".hdr",
-            jpg_path: environmentsBasePath + name + ".jpg"
+            jpg_path: environmentsBasePath + name + ".jpg",
+            license_path: environmentsBasePath + name + ".hdr.license",
+            base_path: environmentsBasePath
         };
     });
     return environmentNames;
@@ -71182,8 +71213,8 @@ var main = async () => {
     );
     listenForRedraw(uiModel.activeAnimations);
 
-    uiModel.hdr.subscribe((hdrFile) => {
-        resourceLoader.loadEnvironment(hdrFile).then((environment) => {
+    uiModel.hdr.subscribe((hdr) => {
+        resourceLoader.loadEnvironment(hdr.hdr_path).then((environment) => {
             state.environment = environment;
             // We need to wait until the environment is loaded to redraw
             redraw = true;
