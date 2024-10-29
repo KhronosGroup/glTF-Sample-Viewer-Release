@@ -1,6 +1,6 @@
 /**
  * Bundle of gltf-sample-viewer-example
- * Generated: 2024-10-28
+ * Generated: 2024-10-29
  * Version: 1.0.0
  * License: Apache-2.0
  * Dependencies:
@@ -1091,7 +1091,7 @@
 
 /**
  * Bundle of @khronosgroup/gltf-viewer
- * Generated: 2024-10-28
+ * Generated: 2024-10-29
  * Version: 1.1.0
  * License: Apache-2.0
  * Dependencies:
@@ -20525,11 +20525,6 @@ class UIModel
         const queryString = window.location.search;
         const urlParams = new URLSearchParams(queryString);
         const modelURL = urlParams.get("model");
-        const noUI = urlParams.get("noUI");
-        if (noUI !== null) {
-            this.app.uiVisible = false;
-            this.app.noUI = true;
-        }
 
         this.scene = app.sceneChanged.pipe();
         this.camera = app.cameraChanged.pipe();
@@ -59573,6 +59568,7 @@ const appCreated = vue_cjs.createApp({
             uploadedHDR: undefined,
             uiVisible: false,
             isMobile: false,
+            noUi: false,
             
 
             // these are handles for certain ui change related things
@@ -59593,6 +59589,13 @@ const appCreated = vue_cjs.createApp({
         } else {
             this.uiVisible=false;
             this.isMobile = true;
+        }
+        const queryString = window.location.search;
+        const urlParams = new URLSearchParams(queryString);
+        const noUI = urlParams.get("noUI");
+        if (noUI !== null) {
+            this.uiVisible = false;
+            this.noUI = true;
         }
     },
     mounted: function()
