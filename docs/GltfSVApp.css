@@ -15819,6 +15819,12 @@ label.switch {
   height: 100%;
 }
 
+.tabsContainer .tabs {
+  overflow-y: auto;
+  overflow-x: hidden;
+  height: 100%;
+}
+
 .smallerLabel .label {
   font-weight: 400;
   margin-bottom: 0.1em !important;

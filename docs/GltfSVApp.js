@@ -1,6 +1,6 @@
 /**
  * Bundle of gltf-sample-viewer-example
- * Generated: 2024-10-31
+ * Generated: 2024-11-05
  * Version: 1.0.0
  * License: Apache-2.0
  * Dependencies:
@@ -1091,7 +1091,7 @@
 
 /**
  * Bundle of @khronosgroup/gltf-viewer
- * Generated: 2024-10-31
+ * Generated: 2024-11-05
  * Version: 1.1.0
  * License: Apache-2.0
  * Dependencies:
