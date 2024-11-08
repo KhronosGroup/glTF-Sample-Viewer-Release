@@ -1,6 +1,6 @@
 /**
  * Bundle of gltf-sample-viewer-example
- * Generated: 2024-11-05
+ * Generated: 2024-11-08
  * Version: 1.0.0
  * License: Apache-2.0
  * Dependencies:
@@ -1091,7 +1091,7 @@
 
 /**
  * Bundle of @khronosgroup/gltf-viewer
- * Generated: 2024-11-05
+ * Generated: 2024-11-08
  * Version: 1.1.0
  * License: Apache-2.0
  * Dependencies:
@@ -3613,7 +3613,7 @@ class gltfAccessor extends GltfObject
             const arrayLength = this.count * componentCount;
 
             let stride = bufferView.byteStride !== 0 ? bufferView.byteStride : componentCount * componentSize;
-            let dv = new DataView(buffer.buffer, byteOffset, this.count * stride);
+            let dv = new DataView(buffer.buffer, byteOffset, this.count * stride - this.byteOffset);
 
             let func = 'getFloat32';
             switch (this.componentType)
@@ -4900,7 +4900,7 @@ var iblShader = "#define GLSLIFY 1\nuniform float u_EnvIntensity;vec3 getDiffuse
 
 var punctualShader = "#define GLSLIFY 1\nstruct Light{vec3 direction;float range;vec3 color;float intensity;vec3 position;float innerConeCos;float outerConeCos;int type;};const int LightType_Directional=0;const int LightType_Point=1;const int LightType_Spot=2;\n#ifdef USE_PUNCTUAL\nuniform Light u_Lights[LIGHT_COUNT+1];\n#endif\nfloat getRangeAttenuation(float range,float distance){if(range<=0.0){return 1.0/pow(distance,2.0);}return max(min(1.0-pow(distance/range,4.0),1.0),0.0)/pow(distance,2.0);}float getSpotAttenuation(vec3 pointToLight,vec3 spotDirection,float outerConeCos,float innerConeCos){float actualCos=dot(normalize(spotDirection),normalize(-pointToLight));if(actualCos>outerConeCos){if(actualCos<innerConeCos){float angularAttenuation=(actualCos-outerConeCos)/(innerConeCos-outerConeCos);return angularAttenuation*angularAttenuation;}return 1.0;}return 0.0;}vec3 getLighIntensity(Light light,vec3 pointToLight){float rangeAttenuation=1.0;float spotAttenuation=1.0;if(light.type!=LightType_Directional){rangeAttenuation=getRangeAttenuation(light.range,length(pointToLight));}if(light.type==LightType_Spot){spotAttenuation=getSpotAttenuation(pointToLight,light.direction,light.outerConeCos,light.innerConeCos);}return rangeAttenuation*spotAttenuation*light.intensity*light.color;}vec3 getPunctualRadianceTransmission(vec3 normal,vec3 view,vec3 pointToLight,float alphaRoughness,vec3 f0,vec3 f90,vec3 baseColor,float ior){float transmissionRougness=applyIorToRoughness(alphaRoughness,ior);vec3 n=normalize(normal);vec3 v=normalize(view);vec3 l=normalize(pointToLight);vec3 l_mirror=normalize(l+2.0*n*dot(-l,n));vec3 h=normalize(l_mirror+v);float D=D_GGX(clamp(dot(n,h),0.0,1.0),transmissionRougness);vec3 F=F_Schlick(f0,f90,clamp(dot(v,h),0.0,1.0));float Vis=V_GGX(clamp(dot(n,l_mirror),0.0,1.0),clamp(dot(n,v),0.0,1.0),transmissionRougness);return(1.0-F)*baseColor*D*Vis;}vec3 getPunctualRadianceClearCoat(vec3 clearcoatNormal,vec3 v,vec3 l,vec3 h,float VdotH,vec3 f0,vec3 f90,float clearcoatRoughness){float NdotL=clampedDot(clearcoatNormal,l);float NdotV=clampedDot(clearcoatNormal,v);float NdotH=clampedDot(clearcoatNormal,h);return NdotL*BRDF_specularGGX(clearcoatRoughness*clearcoatRoughness,NdotL,NdotV,NdotH);}vec3 getPunctualRadianceSheen(vec3 sheenColor,float sheenRoughness,float NdotL,float NdotV,float NdotH){return NdotL*BRDF_specularSheen(sheenColor,sheenRoughness,NdotL,NdotV,NdotH);}vec3 applyVolumeAttenuation(vec3 radiance,float transmissionDistance,vec3 attenuationColor,float attenuationDistance){if(attenuationDistance==0.0){return radiance;}else{vec3 transmittance=pow(attenuationColor,vec3(transmissionDistance/attenuationDistance));return transmittance*radiance;}}vec3 getVolumeTransmissionRay(vec3 n,vec3 v,float thickness,float ior,mat4 modelMatrix){vec3 refractionVector=refract(-v,normalize(n),1.0/ior);vec3 modelScale;modelScale.x=length(vec3(modelMatrix[0].xyz));modelScale.y=length(vec3(modelMatrix[1].xyz));modelScale.z=length(vec3(modelMatrix[2].xyz));return normalize(refractionVector)*thickness*modelScale;}"; // eslint-disable-line
 
-var primitiveShader = "#define GLSLIFY 1\n#include <animation.glsl>\nuniform mat4 u_ViewProjectionMatrix;uniform mat4 u_ModelMatrix;uniform mat4 u_NormalMatrix;in vec3 a_position;out vec3 v_Position;\n#ifdef HAS_NORMAL_VEC3\nin vec3 a_normal;\n#endif\n#ifdef HAS_NORMAL_VEC3\n#ifdef HAS_TANGENT_VEC4\nin vec4 a_tangent;out mat3 v_TBN;\n#else\nout vec3 v_Normal;\n#endif\n#endif\n#ifdef HAS_TEXCOORD_0_VEC2\nin vec2 a_texcoord_0;\n#endif\n#ifdef HAS_TEXCOORD_1_VEC2\nin vec2 a_texcoord_1;\n#endif\nout vec2 v_texcoord_0;out vec2 v_texcoord_1;\n#ifdef HAS_COLOR_0_VEC3\nin vec3 a_color_0;out vec3 v_Color;\n#endif\n#ifdef HAS_COLOR_0_VEC4\nin vec4 a_color_0;out vec4 v_Color;\n#endif\nvec4 getPosition(){vec4 pos=vec4(a_position,1.0);\n#ifdef USE_MORPHING\npos+=getTargetPosition(gl_VertexID);\n#endif\n#ifdef USE_SKINNING\npos=getSkinningMatrix()*pos;\n#endif\nreturn pos;}\n#ifdef HAS_NORMAL_VEC3\nvec3 getNormal(){vec3 normal=a_normal;\n#ifdef USE_MORPHING\nnormal+=getTargetNormal(gl_VertexID);\n#endif\n#ifdef USE_SKINNING\nnormal=mat3(getSkinningNormalMatrix())*normal;\n#endif\nreturn normalize(normal);}\n#endif\n#ifdef HAS_NORMAL_VEC3\n#ifdef HAS_TANGENT_VEC4\nvec3 getTangent(){vec3 tangent=a_tangent.xyz;\n#ifdef USE_MORPHING\ntangent+=getTargetTangent(gl_VertexID);\n#endif\n#ifdef USE_SKINNING\ntangent=mat3(getSkinningMatrix())*tangent;\n#endif\nreturn normalize(tangent);}\n#endif\n#endif\nvoid main(){gl_PointSize=1.0f;vec4 pos=u_ModelMatrix*getPosition();v_Position=vec3(pos.xyz)/pos.w;\n#ifdef HAS_NORMAL_VEC3\n#ifdef HAS_TANGENT_VEC4\nvec3 tangent=getTangent();vec3 normalW=normalize(vec3(u_NormalMatrix*vec4(getNormal(),0.0)));vec3 tangentW=normalize(vec3(u_ModelMatrix*vec4(tangent,0.0)));vec3 bitangentW=cross(normalW,tangentW)*a_tangent.w;v_TBN=mat3(tangentW,bitangentW,normalW);\n#else\nv_Normal=normalize(vec3(u_NormalMatrix*vec4(getNormal(),0.0)));\n#endif\n#endif\nv_texcoord_0=vec2(0.0,0.0);v_texcoord_1=vec2(0.0,0.0);\n#ifdef HAS_TEXCOORD_0_VEC2\nv_texcoord_0=a_texcoord_0;\n#endif\n#ifdef HAS_TEXCOORD_1_VEC2\nv_texcoord_1=a_texcoord_1;\n#endif\n#ifdef USE_MORPHING\nv_texcoord_0+=getTargetTexCoord0(gl_VertexID);v_texcoord_1+=getTargetTexCoord1(gl_VertexID);\n#endif\n#if defined(HAS_COLOR_0_VEC3)\nv_Color=a_color_0;\n#if defined(USE_MORPHING)\nv_Color=clamp(v_Color+getTargetColor0(gl_VertexID).xyz,0.0f,1.0f);\n#endif\n#endif\n#if defined(HAS_COLOR_0_VEC4)\nv_Color=a_color_0;\n#if defined(USE_MORPHING)\nv_Color=clamp(v_Color+getTargetColor0(gl_VertexID),0.0f,1.0f);\n#endif\n#endif\ngl_Position=u_ViewProjectionMatrix*pos;}"; // eslint-disable-line
+var primitiveShader = "#define GLSLIFY 1\n#include <animation.glsl>\nuniform mat4 u_ViewProjectionMatrix;uniform mat4 u_ModelMatrix;uniform mat4 u_NormalMatrix;in vec3 a_position;out vec3 v_Position;\n#ifdef HAS_NORMAL_VEC3\nin vec3 a_normal;\n#endif\n#ifdef HAS_NORMAL_VEC3\n#ifdef HAS_TANGENT_VEC4\nin vec4 a_tangent;out mat3 v_TBN;\n#else\nout vec3 v_Normal;\n#endif\n#endif\n#ifdef HAS_TEXCOORD_0_VEC2\nin vec2 a_texcoord_0;\n#endif\n#ifdef HAS_TEXCOORD_1_VEC2\nin vec2 a_texcoord_1;\n#endif\nout vec2 v_texcoord_0;out vec2 v_texcoord_1;\n#ifdef HAS_COLOR_0_VEC3\nin vec3 a_color_0;out vec3 v_Color;\n#endif\n#ifdef HAS_COLOR_0_VEC4\nin vec4 a_color_0;out vec4 v_Color;\n#endif\n#ifdef USE_INSTANCING\nin mat4 a_instance_model_matrix;\n#endif\nvec4 getPosition(){vec4 pos=vec4(a_position,1.0);\n#ifdef USE_MORPHING\npos+=getTargetPosition(gl_VertexID);\n#endif\n#ifdef USE_SKINNING\npos=getSkinningMatrix()*pos;\n#endif\nreturn pos;}\n#ifdef HAS_NORMAL_VEC3\nvec3 getNormal(){vec3 normal=a_normal;\n#ifdef USE_MORPHING\nnormal+=getTargetNormal(gl_VertexID);\n#endif\n#ifdef USE_SKINNING\nnormal=mat3(getSkinningNormalMatrix())*normal;\n#endif\nreturn normalize(normal);}\n#endif\n#ifdef HAS_NORMAL_VEC3\n#ifdef HAS_TANGENT_VEC4\nvec3 getTangent(){vec3 tangent=a_tangent.xyz;\n#ifdef USE_MORPHING\ntangent+=getTargetTangent(gl_VertexID);\n#endif\n#ifdef USE_SKINNING\ntangent=mat3(getSkinningMatrix())*tangent;\n#endif\nreturn normalize(tangent);}\n#endif\n#endif\nvoid main(){gl_PointSize=1.0f;\n#ifdef USE_INSTANCING\nmat4 modelMatrix=a_instance_model_matrix;mat4 normalMatrix=transpose(inverse(modelMatrix));\n#else\nmat4 modelMatrix=u_ModelMatrix;mat4 normalMatrix=u_NormalMatrix;\n#endif\nvec4 pos=modelMatrix*getPosition();v_Position=vec3(pos.xyz)/pos.w;\n#ifdef HAS_NORMAL_VEC3\n#ifdef HAS_TANGENT_VEC4\nvec3 tangent=getTangent();vec3 normalW=normalize(vec3(normalMatrix*vec4(getNormal(),0.0)));vec3 tangentW=normalize(vec3(modelMatrix*vec4(tangent,0.0)));vec3 bitangentW=cross(normalW,tangentW)*a_tangent.w;v_TBN=mat3(tangentW,bitangentW,normalW);\n#else\nv_Normal=normalize(vec3(normalMatrix*vec4(getNormal(),0.0)));\n#endif\n#endif\nv_texcoord_0=vec2(0.0,0.0);v_texcoord_1=vec2(0.0,0.0);\n#ifdef HAS_TEXCOORD_0_VEC2\nv_texcoord_0=a_texcoord_0;\n#endif\n#ifdef HAS_TEXCOORD_1_VEC2\nv_texcoord_1=a_texcoord_1;\n#endif\n#ifdef USE_MORPHING\nv_texcoord_0+=getTargetTexCoord0(gl_VertexID);v_texcoord_1+=getTargetTexCoord1(gl_VertexID);\n#endif\n#if defined(HAS_COLOR_0_VEC3)\nv_Color=a_color_0;\n#if defined(USE_MORPHING)\nv_Color=clamp(v_Color+getTargetColor0(gl_VertexID).xyz,0.0f,1.0f);\n#endif\n#endif\n#if defined(HAS_COLOR_0_VEC4)\nv_Color=a_color_0;\n#if defined(USE_MORPHING)\nv_Color=clamp(v_Color+getTargetColor0(gl_VertexID),0.0f,1.0f);\n#endif\n#endif\ngl_Position=u_ViewProjectionMatrix*pos;}"; // eslint-disable-line
 
 var texturesShader = "#define GLSLIFY 1\nuniform int u_MipCount;uniform samplerCube u_LambertianEnvSampler;uniform samplerCube u_GGXEnvSampler;uniform sampler2D u_GGXLUT;uniform samplerCube u_CharlieEnvSampler;uniform sampler2D u_CharlieLUT;uniform sampler2D u_SheenELUT;uniform mat3 u_EnvRotation;uniform sampler2D u_NormalSampler;uniform float u_NormalScale;uniform int u_NormalUVSet;uniform mat3 u_NormalUVTransform;uniform vec3 u_EmissiveFactor;uniform sampler2D u_EmissiveSampler;uniform int u_EmissiveUVSet;uniform mat3 u_EmissiveUVTransform;uniform sampler2D u_OcclusionSampler;uniform int u_OcclusionUVSet;uniform float u_OcclusionStrength;uniform mat3 u_OcclusionUVTransform;in vec2 v_texcoord_0;in vec2 v_texcoord_1;vec2 getNormalUV(){vec3 uv=vec3(u_NormalUVSet<1 ? v_texcoord_0 : v_texcoord_1,1.0);\n#ifdef HAS_NORMAL_UV_TRANSFORM\nuv=u_NormalUVTransform*uv;\n#endif\nreturn uv.xy;}vec2 getEmissiveUV(){vec3 uv=vec3(u_EmissiveUVSet<1 ? v_texcoord_0 : v_texcoord_1,1.0);\n#ifdef HAS_EMISSIVE_UV_TRANSFORM\nuv=u_EmissiveUVTransform*uv;\n#endif\nreturn uv.xy;}vec2 getOcclusionUV(){vec3 uv=vec3(u_OcclusionUVSet<1 ? v_texcoord_0 : v_texcoord_1,1.0);\n#ifdef HAS_OCCLUSION_UV_TRANSFORM\nuv=u_OcclusionUVTransform*uv;\n#endif\nreturn uv.xy;}\n#ifdef MATERIAL_METALLICROUGHNESS\nuniform sampler2D u_BaseColorSampler;uniform int u_BaseColorUVSet;uniform mat3 u_BaseColorUVTransform;uniform sampler2D u_MetallicRoughnessSampler;uniform int u_MetallicRoughnessUVSet;uniform mat3 u_MetallicRoughnessUVTransform;vec2 getBaseColorUV(){vec3 uv=vec3(u_BaseColorUVSet<1 ? v_texcoord_0 : v_texcoord_1,1.0);\n#ifdef HAS_BASECOLOR_UV_TRANSFORM\nuv=u_BaseColorUVTransform*uv;\n#endif\nreturn uv.xy;}vec2 getMetallicRoughnessUV(){vec3 uv=vec3(u_MetallicRoughnessUVSet<1 ? v_texcoord_0 : v_texcoord_1,1.0);\n#ifdef HAS_METALLICROUGHNESS_UV_TRANSFORM\nuv=u_MetallicRoughnessUVTransform*uv;\n#endif\nreturn uv.xy;}\n#endif\n#ifdef MATERIAL_SPECULARGLOSSINESS\nuniform sampler2D u_DiffuseSampler;uniform int u_DiffuseUVSet;uniform mat3 u_DiffuseUVTransform;uniform sampler2D u_SpecularGlossinessSampler;uniform int u_SpecularGlossinessUVSet;uniform mat3 u_SpecularGlossinessUVTransform;vec2 getSpecularGlossinessUV(){vec3 uv=vec3(u_SpecularGlossinessUVSet<1 ? v_texcoord_0 : v_texcoord_1,1.0);\n#ifdef HAS_SPECULARGLOSSINESS_UV_TRANSFORM\nuv=u_SpecularGlossinessUVTransform*uv;\n#endif\nreturn uv.xy;}vec2 getDiffuseUV(){vec3 uv=vec3(u_DiffuseUVSet<1 ? v_texcoord_0 : v_texcoord_1,1.0);\n#ifdef HAS_DIFFUSE_UV_TRANSFORM\nuv=u_DiffuseUVTransform*uv;\n#endif\nreturn uv.xy;}\n#endif\n#ifdef MATERIAL_CLEARCOAT\nuniform sampler2D u_ClearcoatSampler;uniform int u_ClearcoatUVSet;uniform mat3 u_ClearcoatUVTransform;uniform sampler2D u_ClearcoatRoughnessSampler;uniform int u_ClearcoatRoughnessUVSet;uniform mat3 u_ClearcoatRoughnessUVTransform;uniform sampler2D u_ClearcoatNormalSampler;uniform int u_ClearcoatNormalUVSet;uniform mat3 u_ClearcoatNormalUVTransform;uniform float u_ClearcoatNormalScale;vec2 getClearcoatUV(){vec3 uv=vec3(u_ClearcoatUVSet<1 ? v_texcoord_0 : v_texcoord_1,1.0);\n#ifdef HAS_CLEARCOAT_UV_TRANSFORM\nuv=u_ClearcoatUVTransform*uv;\n#endif\nreturn uv.xy;}vec2 getClearcoatRoughnessUV(){vec3 uv=vec3(u_ClearcoatRoughnessUVSet<1 ? v_texcoord_0 : v_texcoord_1,1.0);\n#ifdef HAS_CLEARCOATROUGHNESS_UV_TRANSFORM\nuv=u_ClearcoatRoughnessUVTransform*uv;\n#endif\nreturn uv.xy;}vec2 getClearcoatNormalUV(){vec3 uv=vec3(u_ClearcoatNormalUVSet<1 ? v_texcoord_0 : v_texcoord_1,1.0);\n#ifdef HAS_CLEARCOATNORMAL_UV_TRANSFORM\nuv=u_ClearcoatNormalUVTransform*uv;\n#endif\nreturn uv.xy;}\n#endif\n#ifdef MATERIAL_SHEEN\nuniform sampler2D u_SheenColorSampler;uniform int u_SheenColorUVSet;uniform mat3 u_SheenColorUVTransform;uniform sampler2D u_SheenRoughnessSampler;uniform int u_SheenRoughnessUVSet;uniform mat3 u_SheenRoughnessUVTransform;vec2 getSheenColorUV(){vec3 uv=vec3(u_SheenColorUVSet<1 ? v_texcoord_0 : v_texcoord_1,1.0);\n#ifdef HAS_SHEENCOLOR_UV_TRANSFORM\nuv=u_SheenColorUVTransform*uv;\n#endif\nreturn uv.xy;}vec2 getSheenRoughnessUV(){vec3 uv=vec3(u_SheenRoughnessUVSet<1 ? v_texcoord_0 : v_texcoord_1,1.0);\n#ifdef HAS_SHEENROUGHNESS_UV_TRANSFORM\nuv=u_SheenRoughnessUVTransform*uv;\n#endif\nreturn uv.xy;}\n#endif\n#ifdef MATERIAL_SPECULAR\nuniform sampler2D u_SpecularSampler;uniform int u_SpecularUVSet;uniform mat3 u_SpecularUVTransform;uniform sampler2D u_SpecularColorSampler;uniform int u_SpecularColorUVSet;uniform mat3 u_SpecularColorUVTransform;vec2 getSpecularUV(){vec3 uv=vec3(u_SpecularUVSet<1 ? v_texcoord_0 : v_texcoord_1,1.0);\n#ifdef HAS_SPECULAR_UV_TRANSFORM\nuv=u_SpecularUVTransform*uv;\n#endif\nreturn uv.xy;}vec2 getSpecularColorUV(){vec3 uv=vec3(u_SpecularColorUVSet<1 ? v_texcoord_0 : v_texcoord_1,1.0);\n#ifdef HAS_SPECULARCOLOR_UV_TRANSFORM\nuv=u_SpecularColorUVTransform*uv;\n#endif\nreturn uv.xy;}\n#endif\n#ifdef MATERIAL_TRANSMISSION\nuniform sampler2D u_TransmissionSampler;uniform int u_TransmissionUVSet;uniform mat3 u_TransmissionUVTransform;uniform sampler2D u_TransmissionFramebufferSampler;uniform ivec2 u_TransmissionFramebufferSize;vec2 getTransmissionUV(){vec3 uv=vec3(u_TransmissionUVSet<1 ? v_texcoord_0 : v_texcoord_1,1.0);\n#ifdef HAS_TRANSMISSION_UV_TRANSFORM\nuv=u_TransmissionUVTransform*uv;\n#endif\nreturn uv.xy;}\n#endif\n#ifdef MATERIAL_VOLUME\nuniform sampler2D u_ThicknessSampler;uniform int u_ThicknessUVSet;uniform mat3 u_ThicknessUVTransform;vec2 getThicknessUV(){vec3 uv=vec3(u_ThicknessUVSet<1 ? v_texcoord_0 : v_texcoord_1,1.0);\n#ifdef HAS_THICKNESS_UV_TRANSFORM\nuv=u_ThicknessUVTransform*uv;\n#endif\nreturn uv.xy;}\n#endif\n#ifdef MATERIAL_IRIDESCENCE\nuniform sampler2D u_IridescenceSampler;uniform int u_IridescenceUVSet;uniform mat3 u_IridescenceUVTransform;uniform sampler2D u_IridescenceThicknessSampler;uniform int u_IridescenceThicknessUVSet;uniform mat3 u_IridescenceThicknessUVTransform;vec2 getIridescenceUV(){vec3 uv=vec3(u_IridescenceUVSet<1 ? v_texcoord_0 : v_texcoord_1,1.0);\n#ifdef HAS_IRIDESCENCE_UV_TRANSFORM\nuv=u_IridescenceUVTransform*uv;\n#endif\nreturn uv.xy;}vec2 getIridescenceThicknessUV(){vec3 uv=vec3(u_IridescenceThicknessUVSet<1 ? v_texcoord_0 : v_texcoord_1,1.0);\n#ifdef HAS_IRIDESCENCETHICKNESS_UV_TRANSFORM\nuv=u_IridescenceThicknessUVTransform*uv;\n#endif\nreturn uv.xy;}\n#endif\n#ifdef MATERIAL_DIFFUSE_TRANSMISSION\nuniform sampler2D u_DiffuseTransmissionSampler;uniform int u_DiffuseTransmissionUVSet;uniform mat3 u_DiffuseTransmissionUVTransform;uniform sampler2D u_DiffuseTransmissionColorSampler;uniform int u_DiffuseTransmissionColorUVSet;uniform mat3 u_DiffuseTransmissionColorUVTransform;vec2 getDiffuseTransmissionUV(){vec3 uv=vec3(u_DiffuseTransmissionUVSet<1 ? v_texcoord_0 : v_texcoord_1,1.0);\n#ifdef HAS_DIFFUSETRANSMISSION_UV_TRANSFORM\nuv=u_DiffuseTransmissionUVTransform*uv;\n#endif\nreturn uv.xy;}vec2 getDiffuseTransmissionColorUV(){vec3 uv=vec3(u_DiffuseTransmissionColorUVSet<1 ? v_texcoord_0 : v_texcoord_1,1.0);\n#ifdef HAS_DIFFUSETRANSMISSIONCOLOR_UV_TRANSFORM\nuv=u_DiffuseTransmissionColorUVTransform*uv;\n#endif\nreturn uv.xy;}\n#endif\n#ifdef MATERIAL_ANISOTROPY\nuniform sampler2D u_AnisotropySampler;uniform int u_AnisotropyUVSet;uniform mat3 u_AnisotropyUVTransform;vec2 getAnisotropyUV(){vec3 uv=vec3(u_AnisotropyUVSet<1 ? v_texcoord_0 : v_texcoord_1,1.0);\n#ifdef HAS_ANISOTROPY_UV_TRANSFORM\nuv=u_AnisotropyUVTransform*uv;\n#endif\nreturn uv.xy;}\n#endif\n"; // eslint-disable-line
 
@@ -5098,6 +5098,9 @@ class gltfRenderer
         this.lightFill.direction = create$2();
         transformQuat(this.lightKey.direction, [0, 0, -1], quatKey);
         transformQuat(this.lightFill.direction, [0, 0, -1], quatFill);
+        
+        this.maxVertAttributes = undefined;
+        this.instanceBuffer = undefined;
     }
 
     /////////////////////////////////////////////////////////////////////
@@ -5163,6 +5166,8 @@ class gltfRenderer
             context.framebufferTexture2D(context.FRAMEBUFFER, context.DEPTH_ATTACHMENT, context.TEXTURE_2D, this.opaqueDepthTexture, 0);
             context.viewport(0, 0, this.opaqueFramebufferWidth, this.opaqueFramebufferHeight);
             context.bindFramebuffer(context.FRAMEBUFFER, null);
+
+            this.maxVertAttributes = context.getParameter(context.MAX_VERTEX_ATTRIBS);
 
             this.initialized = true;
 
@@ -5232,6 +5237,22 @@ class gltfRenderer
             .filter(({primitive}) => state.gltf.materials[primitive.material].alphaMode !== "BLEND"
                 && (state.gltf.materials[primitive.material].extensions === undefined
                     || state.gltf.materials[primitive.material].extensions.KHR_materials_transmission === undefined));
+        
+        let counter = 0;
+        this.opaqueDrawables = Object.groupBy(this.opaqueDrawables, (a) => {
+            const winding = Math.sign(determinant(a.node.worldTransform));
+            const id = `${a.node.mesh}_${winding}`;
+            // Disable instancing for skins, morph targets and if the GPU attributes limit is reached.
+            // Additionally we define a new id for each instance of the EXT_mesh_gpu_instancing extension.
+            if (a.node.skin || a.primitive.targets.length > 0 || a.primitive.glAttributes.length + 4 > this.maxVertAttributes || a.node.instanceMatrices) {
+                if (a.node.instanceMatrices && a.primitive.glAttributes.length + 4 > this.maxVertAttributes) {
+                    console.warn(`EXT_mesh_gpu_instancing disabled for mesh ${a.node.mesh} because the GPU vertex attribute limit is reached.`);
+                }
+                counter++;
+                return id + "_" + counter;
+            }
+            return id;
+        });
 
         // transparent drawables need sorting before they can be drawn
         this.transparentDrawables = drawables
@@ -5315,6 +5336,24 @@ class gltfRenderer
             }
         }
 
+        const instanceWorldTransforms = [];
+        for (const instance of Object.values(this.opaqueDrawables))
+        {  
+            let instanceOffset = undefined;
+            if (instance.length > 1) {
+                instanceOffset = [];
+                for (const iDrawable of instance) {
+                    instanceOffset.push(iDrawable.node.worldTransform);
+                }
+            } else if (instance[0].node.instanceMatrices !== undefined) {
+                // Set instance matrices for EXT_mesh_gpu_instancing extension
+                if (instance[0].primitive.glAttributes.length + 4 <= this.maxVertAttributes) {
+                    instanceOffset = instance[0].node.instanceWorldTransforms;
+                }
+            }
+            instanceWorldTransforms.push(instanceOffset);
+        }
+
         // If any transmissive drawables are present, render all opaque and transparent drawables into a separate framebuffer.
         if (this.transmissionDrawables.length > 0) {
             // Render transmission sample texture
@@ -5324,11 +5363,15 @@ class gltfRenderer
             // Render environment for the transmission background
             this.environmentRenderer.drawEnvironmentMap(this.webGl, this.viewProjectionMatrix, state, this.shaderCache, ["LINEAR_OUTPUT 1"]);
 
-            for (const drawable of this.opaqueDrawables)
+            let drawableCounter = 0;
+            for (const instance of Object.values(this.opaqueDrawables))
             {
+                const drawable = instance[0];
                 let renderpassConfiguration = {};
                 renderpassConfiguration.linearOutput = true;
-                this.drawPrimitive(state, renderpassConfiguration, drawable.primitive, drawable.node, this.viewProjectionMatrix);
+                const instanceOffset = instanceWorldTransforms[drawableCounter];
+                drawableCounter++;
+                this.drawPrimitive(state, renderpassConfiguration, drawable.primitive, drawable.node, this.viewProjectionMatrix, instanceOffset);
             }
 
             this.transparentDrawables = currentCamera.sortPrimitivesByDepth(state.gltf, this.transparentDrawables);
@@ -5359,11 +5402,15 @@ class gltfRenderer
         this.pushFragParameterDefines(fragDefines, state);
         this.environmentRenderer.drawEnvironmentMap(this.webGl, this.viewProjectionMatrix, state, this.shaderCache, fragDefines);
 
-        for (const drawable of this.opaqueDrawables)
+        let drawableCounter = 0;
+        for (const instance of Object.values(this.opaqueDrawables))
         {  
+            const drawable = instance[0];
             let renderpassConfiguration = {};
             renderpassConfiguration.linearOutput = false;
-            this.drawPrimitive(state, renderpassConfiguration, drawable.primitive, drawable.node, this.viewProjectionMatrix);
+            const instanceOffset = instanceWorldTransforms[drawableCounter];
+            drawableCounter++;
+            this.drawPrimitive(state, renderpassConfiguration, drawable.primitive, drawable.node, this.viewProjectionMatrix, undefined, instanceOffset);
         }
 
         // filter materials with transmission extension
@@ -5386,7 +5433,7 @@ class gltfRenderer
     }
 
     // vertices with given material
-    drawPrimitive(state, renderpassConfiguration, primitive, node, viewProjectionMatrix, transmissionSampleTexture)
+    drawPrimitive(state, renderpassConfiguration, primitive, node, viewProjectionMatrix, transmissionSampleTexture, instanceOffset = undefined)
     {
         if (primitive.skip) return;
 
@@ -5414,12 +5461,16 @@ class gltfRenderer
         let vertDefines = [];
         this.pushVertParameterDefines(vertDefines, state.renderingParameters, state.gltf, node, primitive);
         vertDefines = primitive.defines.concat(vertDefines);
+        if (instanceOffset !== undefined) {
+            vertDefines.push("USE_INSTANCING 1");
+        }
 
         let fragDefines = material.getDefines(state.renderingParameters).concat(vertDefines);
         if (renderpassConfiguration.linearOutput)
         {
             fragDefines.push("LINEAR_OUTPUT 1");
         }
+
         // POINTS, LINES, LINE_LOOP, LINE_STRIP
         if (primitive.mode < 4) {
             fragDefines.push("NOT_TRIANGLE 1");
@@ -5428,6 +5479,7 @@ class gltfRenderer
                 fragDefines = fragDefines.filter(e => e !== "HAS_NORMAL_MAP 1" && e !== "HAS_CLEARCOAT_NORMAL_MAP 1");
             }
         }
+
         this.pushFragParameterDefines(fragDefines, state);
         
         const fragmentHash = this.shaderCache.selectShader("pbr.frag", fragDefines);
@@ -5456,6 +5508,7 @@ class gltfRenderer
         this.shader.updateUniform("u_NormalMatrix", node.normalMatrix, false);
         this.shader.updateUniform("u_Exposure", state.renderingParameters.exposure, false);
         this.shader.updateUniform("u_Camera", this.currentCameraPosition, false);
+        
 
         this.updateAnimationUniforms(state, node, primitive);
 
@@ -5476,7 +5529,7 @@ class gltfRenderer
         {
             this.webGl.context.enable(GL.CULL_FACE);
         }
-
+    
         if (material.alphaMode === 'BLEND')
         {
             this.webGl.context.enable(GL.BLEND);
@@ -5487,6 +5540,7 @@ class gltfRenderer
         {
             this.webGl.context.disable(GL.BLEND);
         }
+        
 
         const drawIndexed = primitive.indices !== undefined;
         if (drawIndexed)
@@ -5514,8 +5568,37 @@ class gltfRenderer
             }
         }
 
-        // Update material uniforms
+        if (instanceOffset !== undefined) {
+            const location = this.shader.getAttributeLocation("a_instance_model_matrix");
+            const location2 = location + 1;
+            const location3 = location2 + 1;
+            const location4 = location3 + 1;
+            if (this.instanceBuffer === undefined) {
+                this.instanceBuffer = this.webGl.context.createBuffer();
+            }
+            this.webGl.context.enableVertexAttribArray(location);
+            this.webGl.context.enableVertexAttribArray(location2);
+            this.webGl.context.enableVertexAttribArray(location3);
+            this.webGl.context.enableVertexAttribArray(location4);
 
+            this.webGl.context.bindBuffer(GL.ARRAY_BUFFER, this.instanceBuffer);
+            const data = new Float32Array(instanceOffset.length * 16);
+            instanceOffset.forEach((element, index) => {
+                data.set(element, 16 * index);
+            });
+            this.webGl.context.bufferData(GL.ARRAY_BUFFER, data, GL.DYNAMIC_DRAW);
+            this.webGl.context.vertexAttribPointer(location, 4, GL.FLOAT, GL.FALSE, 4 * 16, 0);
+            this.webGl.context.vertexAttribPointer(location2, 4, GL.FLOAT, GL.FALSE, 4 * 16, 4 * 4);
+            this.webGl.context.vertexAttribPointer(location3, 4, GL.FLOAT, GL.FALSE, 4 * 16, 4 * 8);
+            this.webGl.context.vertexAttribPointer(location4, 4, GL.FLOAT, GL.FALSE, 4 * 16, 4 * 12);
+            
+            this.webGl.context.vertexAttribDivisor(location, 1);
+            this.webGl.context.vertexAttribDivisor(location2, 1);
+            this.webGl.context.vertexAttribDivisor(location3, 1);
+            this.webGl.context.vertexAttribDivisor(location4, 1);
+        }
+
+        // Update material uniforms
         material.updateTextureTransforms(this.shader);
 
         this.shader.updateUniform("u_EmissiveFactor", jsToGl(material.emissiveFactor));
@@ -5591,7 +5674,7 @@ class gltfRenderer
         this.shader.updateUniform("u_GlossinessFactor", material.extensions?.KHR_materials_pbrSpecularGlossiness?.glossinessFactor);
         this.shader.updateUniform("u_SpecularGlossinessUVSet", material.extensions?.KHR_materials_pbrSpecularGlossiness?.specularGlossinessTexture?.texCoord);
         this.shader.updateUniform("u_DiffuseUVSet", material.extensions?.KHR_materials_pbrSpecularGlossiness?.diffuseTexture?.texCoord);
-
+    
         let textureIndex = 0;
         for (; textureIndex < material.textures.length; ++textureIndex)
         {
@@ -5602,6 +5685,7 @@ class gltfRenderer
                 continue;
             }
         }
+
 
         // set the morph target texture
         if (primitive.morphTargetTextureInfo !== undefined) 
@@ -5649,11 +5733,19 @@ class gltfRenderer
         if (drawIndexed)
         {
             const indexAccessor = state.gltf.accessors[primitive.indices];
-            this.webGl.context.drawElements(primitive.mode, indexAccessor.count, indexAccessor.componentType, 0);
+            if (instanceOffset !== undefined) {
+                this.webGl.context.drawElementsInstanced(primitive.mode, indexAccessor.count, indexAccessor.componentType, 0, instanceOffset.length);
+            } else {
+                this.webGl.context.drawElements(primitive.mode, indexAccessor.count, indexAccessor.componentType, 0);
+            }
         }
         else
         {
-            this.webGl.context.drawArrays(primitive.mode, 0, vertexCount);
+            if (instanceOffset !== undefined) {
+                this.webGl.context.drawArraysInstanced(primitive.mode, 0, vertexCount, instanceOffset.length);
+            } else {
+                this.webGl.context.drawArrays(primitive.mode, 0, vertexCount);
+            }
         }
 
         for (const attribute of primitive.glAttributes)
@@ -5664,6 +5756,17 @@ class gltfRenderer
                 continue; // skip this attribute
             }
             this.webGl.context.disableVertexAttribArray(location);
+        }
+        if (instanceOffset !== undefined) {
+            const location = this.shader.getAttributeLocation("a_instance_model_matrix");
+            this.webGl.context.vertexAttribDivisor(location, 0);
+            this.webGl.context.vertexAttribDivisor(location + 1, 0);
+            this.webGl.context.vertexAttribDivisor(location + 2, 0);
+            this.webGl.context.vertexAttribDivisor(location + 3, 0);
+            this.webGl.context.disableVertexAttribArray(location);
+            this.webGl.context.disableVertexAttribArray(location + 1);
+            this.webGl.context.disableVertexAttribArray(location + 2);
+            this.webGl.context.disableVertexAttribArray(location + 3);
         }
     }
 
@@ -14022,10 +14125,7 @@ class gltfPrimitive extends GltfObject
                 console.error("To many vertex attributes for this primitive, skipping " + attribute);
                 break;
             }
-
-            const idx = this.attributes[attribute];
-            this.glAttributes.push({ attribute: attribute, name: "a_" + attribute.toLowerCase(), accessor: idx });
-            this.defines.push(`HAS_${attribute}_${gltf.accessors[idx].type} 1`);
+            let knownAttribute = true;
             switch (attribute)
             {
             case "POSITION":
@@ -14059,7 +14159,13 @@ class gltfPrimitive extends GltfObject
                 this.hasWeights = true;
                 break;
             default:
+                knownAttribute = false;
                 console.log("Unknown attribute: " + attribute);
+            }
+            if (knownAttribute) {
+                const idx = this.attributes[attribute];
+                this.glAttributes.push({ attribute: attribute, name: "a_" + attribute.toLowerCase(), accessor: idx });
+                this.defines.push(`HAS_${attribute}_${gltf.accessors[idx].type} 1`);
             }
         }
 
@@ -14828,6 +14934,43 @@ class gltfNode extends GltfObject
         this.inverseWorldTransform = create$3();
         this.normalMatrix = create$3();
         this.light = undefined;
+        this.instanceMatrices = undefined;
+        this.instanceWorldTransforms = undefined;
+    }
+
+    initGl(gltf, webGlContext)
+    {
+        if (this.extensions?.EXT_mesh_gpu_instancing?.attributes !== undefined) {
+            const firstAccessor = Object.values(this.extensions?.EXT_mesh_gpu_instancing?.attributes)[0];
+            const count = gltf.accessors[firstAccessor].count;
+            const translationAccessor = this.extensions?.EXT_mesh_gpu_instancing?.attributes?.TRANSLATION;
+            let translationData = undefined;
+            if (translationAccessor !== undefined) {
+                translationData = gltf.accessors[translationAccessor].getDeinterlacedView(gltf);
+            }
+            const rotationAccessor = this.extensions?.EXT_mesh_gpu_instancing?.attributes?.ROTATION;
+            let rotationData = undefined;
+            if (rotationAccessor !== undefined) {
+                rotationData = gltf.accessors[rotationAccessor].getDeinterlacedView(gltf);
+            }
+            const scaleAccessor = this.extensions?.EXT_mesh_gpu_instancing?.attributes?.SCALE;
+            let scaleData = undefined;
+            if (scaleAccessor !== undefined) {
+                scaleData = gltf.accessors[scaleAccessor].getDeinterlacedView(gltf);
+            }
+            this.instanceMatrices = [];
+            for (let i = 0; i < count; i++) {
+                const translation = translationData ? jsToGlSlice(translationData, i * 3, 3) : create$2();
+                const rotation = rotationData ? jsToGlSlice(rotationData, i * 4, 4) : create$5();
+                const scale = scaleData ? jsToGlSlice(scaleData, i * 3, 3) : fromValues$2(1, 1, 1);
+                this.instanceMatrices.push(fromRotationTranslationScale(
+                    create$3(),
+                    rotation,
+                    translation,
+                    scale
+                ));
+            }
+        }
     }
 
     fromJson(jsonNode) {
@@ -14910,6 +15053,16 @@ class gltfScene extends GltfObject
             multiply(node.worldTransform, parentTransform, node.getLocalTransform());
             invert(node.inverseWorldTransform, node.worldTransform);
             transpose(node.normalMatrix, node.inverseWorldTransform);
+
+            if (node.instanceMatrices) {
+                node.instanceWorldTransforms = [];
+                for (let i = 0; i < node.instanceMatrices.length; i++) {
+                    const instanceTransform = node.instanceMatrices[i];
+                    const instanceWorldTransform = create$3();
+                    multiply(instanceWorldTransform, node.worldTransform, instanceTransform);
+                    node.instanceWorldTransforms.push(instanceWorldTransform);
+                }
+            }
 
             for (const child of node.children)
             {
