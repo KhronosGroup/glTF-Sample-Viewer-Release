@@ -1,6 +1,6 @@
 /**
  * Bundle of gltf-sample-viewer-example
- * Generated: 2024-11-08
+ * Generated: 2024-11-11
  * Version: 1.0.0
  * License: Apache-2.0
  * Dependencies:
@@ -1091,7 +1091,7 @@
 
 /**
  * Bundle of @khronosgroup/gltf-viewer
- * Generated: 2024-11-08
+ * Generated: 2024-11-11
  * Version: 1.1.0
  * License: Apache-2.0
  * Dependencies:
@@ -3613,7 +3613,7 @@ class gltfAccessor extends GltfObject
             const arrayLength = this.count * componentCount;
 
             let stride = bufferView.byteStride !== 0 ? bufferView.byteStride : componentCount * componentSize;
-            let dv = new DataView(buffer.buffer, byteOffset, this.count * stride - this.byteOffset);
+            let dv = new DataView(buffer.buffer, byteOffset, this.count * stride);
 
             let func = 'getFloat32';
             switch (this.componentType)
