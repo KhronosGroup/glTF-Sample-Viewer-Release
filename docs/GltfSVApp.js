@@ -1,6 +1,6 @@
 /**
  * Bundle of gltf-sample-viewer-example
- * Generated: 2024-11-11
+ * Generated: 2024-11-12
  * Version: 1.0.0
  * License: Apache-2.0
  * Dependencies:
@@ -1091,7 +1091,7 @@
 
 /**
  * Bundle of @khronosgroup/gltf-viewer
- * Generated: 2024-11-11
+ * Generated: 2024-11-12
  * Version: 1.1.0
  * License: Apache-2.0
  * Dependencies:
@@ -3606,14 +3606,14 @@ class gltfAccessor extends GltfObject
         {
             const bufferView = gltf.bufferViews[this.bufferView];
             const buffer = gltf.buffers[bufferView.buffer];
-            const byteOffset = this.byteOffset + bufferView.byteOffset;
 
-            const componentSize = this.getComponentSize(this.componentType);
-            const componentCount = this.getComponentCount(this.type);
+            const componentSize = this.getComponentSize(this.componentType); // E.g. GL.FLOAT -> 4
+            const componentCount = this.getComponentCount(this.type); // E.g. Vec3 -> 3
             const arrayLength = this.count * componentCount;
 
             let stride = bufferView.byteStride !== 0 ? bufferView.byteStride : componentCount * componentSize;
-            let dv = new DataView(buffer.buffer, byteOffset, this.count * stride);
+
+            let bufferViewData = new DataView(buffer.buffer, bufferView.byteOffset, bufferView.byteLength);
 
             let func = 'getFloat32';
             switch (this.componentType)
@@ -3646,9 +3646,12 @@ class gltfAccessor extends GltfObject
 
             for(let i = 0; i < arrayLength; ++i)
             {
-                let offset = Math.floor(i/componentCount) * stride + (i % componentCount) * componentSize;
-                this.filteredView[i] = dv[func](offset, true);
+                const vertexIndex = Math.floor(i/componentCount);
+                const componentIndex = (i % componentCount) * componentSize;
+                const offset = vertexIndex * stride + componentIndex + this.byteOffset; // Add Accessor byte offset
+                this.filteredView[i] = bufferViewData[func](offset, true);
             }
+              
         }
         else
         {
@@ -5227,8 +5230,8 @@ class gltfRenderer
         // and nodes for the transform
         const drawables = this.nodes
             .filter(node => node.mesh !== undefined)
-            .reduce((acc, node) => acc.concat(state.gltf.meshes[node.mesh].primitives.map( primitive => {
-                return  {node: node, primitive: primitive};
+            .reduce((acc, node) => acc.concat(state.gltf.meshes[node.mesh].primitives.map( (primitive, index) => {
+                return  {node: node, primitive: primitive, primitiveIndex: index};
             })), [])
             .filter(({primitive}) => primitive.material !== undefined);
 
@@ -5241,7 +5244,7 @@ class gltfRenderer
         let counter = 0;
         this.opaqueDrawables = Object.groupBy(this.opaqueDrawables, (a) => {
             const winding = Math.sign(determinant(a.node.worldTransform));
-            const id = `${a.node.mesh}_${winding}`;
+            const id = `${a.node.mesh}_${winding}_${a.primitiveIndex}`;
             // Disable instancing for skins, morph targets and if the GPU attributes limit is reached.
             // Additionally we define a new id for each instance of the EXT_mesh_gpu_instancing extension.
             if (a.node.skin || a.primitive.targets.length > 0 || a.primitive.glAttributes.length + 4 > this.maxVertAttributes || a.node.instanceMatrices) {
@@ -5371,7 +5374,7 @@ class gltfRenderer
                 renderpassConfiguration.linearOutput = true;
                 const instanceOffset = instanceWorldTransforms[drawableCounter];
                 drawableCounter++;
-                this.drawPrimitive(state, renderpassConfiguration, drawable.primitive, drawable.node, this.viewProjectionMatrix, instanceOffset);
+                this.drawPrimitive(state, renderpassConfiguration, drawable.primitive, drawable.node, this.viewProjectionMatrix, undefined, instanceOffset);
             }
 
             this.transparentDrawables = currentCamera.sortPrimitivesByDepth(state.gltf, this.transparentDrawables);
