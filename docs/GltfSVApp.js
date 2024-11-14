@@ -1,6 +1,6 @@
 /**
  * Bundle of gltf-sample-viewer-example
- * Generated: 2024-11-12
+ * Generated: 2024-11-14
  * Version: 1.0.0
  * License: Apache-2.0
  * Dependencies:
@@ -1091,7 +1091,7 @@
 
 /**
  * Bundle of @khronosgroup/gltf-viewer
- * Generated: 2024-11-12
+ * Generated: 2024-11-14
  * Version: 1.1.0
  * License: Apache-2.0
  * Dependencies:
@@ -71148,6 +71148,11 @@ const validateBytes = (data, options) => gltf_validator_dart.validateBytes(data,
  * @returns {Promise} - Promise with Uint8Array data.
  */
 
+const ignoredIssues = [
+    // This sample renderer supports tangent space generation.
+    "MESH_PRIMITIVE_GENERATED_TANGENT_SPACE"
+];
+
 var main = async () => {
     const canvas = document.getElementById("canvas");
     const context = canvas.getContext("webgl2", {
@@ -71207,7 +71212,8 @@ var main = async () => {
                         const buffer = await response.arrayBuffer();
                         return await validateBytes(new Uint8Array(buffer), {
                             externalResourceFunction: externalRefFunction,
-                            uri: model.mainFile
+                            uri: model.mainFile,
+                            ignoredIssues
                         });
                     } else if (Array.isArray(model.mainFile)) {
                         const externalRefFunction = (uri) => {
@@ -71235,7 +71241,11 @@ var main = async () => {
 
                         const buffer = await model.mainFile[1].arrayBuffer();
                         return await validateBytes(new Uint8Array(buffer),
-                            {externalResourceFunction: externalRefFunction, uri: model.mainFile[0]});
+                            {
+                                externalResourceFunction: externalRefFunction,
+                                uri: model.mainFile[0],
+                                ignoredIssues
+                            });
                     }
                 } catch (error) {
                     console.error(error);
