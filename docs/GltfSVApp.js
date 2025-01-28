@@ -1,6 +1,6 @@
 /**
  * Bundle of gltf-sample-viewer-example
- * Generated: 2024-12-18
+ * Generated: 2025-01-28
  * Version: 1.0.0
  * License: Apache-2.0
  * Dependencies:
@@ -1091,7 +1091,7 @@
 
 /**
  * Bundle of @khronosgroup/gltf-viewer
- * Generated: 2024-12-18
+ * Generated: 2025-01-28
  * Version: 1.1.0
  * License: Apache-2.0
  * Dependencies:
@@ -59803,7 +59803,7 @@ const appCreated = vue_cjs.createApp({
     },
     beforeMount: function(){
         // Definition of mobile: https://bulma.io/documentation/start/responsiveness/
-        if(window.innerWidth > 768) { 
+        if(document.documentElement.clientWidth > 768) { 
             this.uiVisible = true;
             this.isMobile = false;
         } else {
