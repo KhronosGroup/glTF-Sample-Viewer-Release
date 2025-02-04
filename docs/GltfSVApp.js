@@ -1,6 +1,6 @@
 /**
  * Bundle of gltf-sample-viewer-example
- * Generated: 2025-01-28
+ * Generated: 2025-02-04
  * Version: 1.0.0
  * License: Apache-2.0
  * Dependencies:
@@ -1091,7 +1091,7 @@
 
 /**
  * Bundle of @khronosgroup/gltf-viewer
- * Generated: 2025-01-28
+ * Generated: 2025-02-04
  * Version: 1.1.0
  * License: Apache-2.0
  * Dependencies:
@@ -20930,7 +20930,7 @@ class UIModel
             this.app.selectedAnimations = state.animationIndices;
 
             if (gltf && gltf.variants) {
-                this.app.materialVariants = ["None", ...gltf.variants.map(variant => variant.name)];
+                this.app.materialVariants = ["None", ...gltf.variants.map(variant => variant?.name ?? "Unnamed")];
             } else {
                 this.app.materialVariants = ["None"];
             }
