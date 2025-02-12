@@ -1,6 +1,6 @@
 /**
  * Bundle of gltf-sample-viewer-example
- * Generated: 2025-02-04
+ * Generated: 2025-02-12
  * Version: 1.0.0
  * License: Apache-2.0
  * Dependencies:
@@ -1091,7 +1091,7 @@
 
 /**
  * Bundle of @khronosgroup/gltf-viewer
- * Generated: 2025-02-04
+ * Generated: 2025-02-12
  * Version: 1.1.0
  * License: Apache-2.0
  * Dependencies:
@@ -20957,9 +20957,53 @@ class UIModel
         );
     }
 
+    /**
+     * Creates a descriptive summary of the given validation report.
+     * 
+     * If there are no issues, messages, or warnings in the given 
+     * report, then an empty object is returned.
+     * 
+     * Otherwise, the result will be an object that contains 
+     * `numIgnoredWarnings:number` that counts the number of warnings 
+     * that are ignored by the sample viewer, and a `message:string` 
+     * that explains why these warnings are ignored.
+     * 
+     * @param {any} validationReport The glTF validator validation report
+     * @returns The description
+     */
+    createValidationReportDescription(validationReport) {
+        const issues = validationReport?.issues;
+        const messages = issues?.messages;
+        const numWarnings = issues?.numWarnings ?? 0;
+        if (!issues || !messages || numWarnings === 0) {
+            return {};
+        }
+        let numIgnoredWarnings = 0;
+        for (const message of messages) {
+            if (message.code === "MESH_PRIMITIVE_GENERATED_TANGENT_SPACE") {
+                numIgnoredWarnings++;
+            }
+        }
+        if (numIgnoredWarnings === 0) {
+            return {};
+        }
+        return {
+            numIgnoredWarnings: numIgnoredWarnings,
+            message: `The validation generated ${issues.numWarnings} warnings. `
+                +`${numIgnoredWarnings} of these warnings have been about missing `
+                +`tangent space information. Omitting the tangent space information `
+                +`may be a conscious decision by the designer, but it may limit `
+                +`the portability of the asset. The glTF-Sample-Viewer generates `
+                +`tangents using the default MikkTSpace algorithm in this case.`
+        };
+    }
+
     updateValidationReport(validationReportObservable)
     {
-        validationReportObservable.subscribe(data => this.app.validationReport = data);
+        validationReportObservable.subscribe(data => {
+            this.app.validationReport = data;
+            this.app.validationReportDescription = this.createValidationReportDescription(data);
+        });
     }
 
     disabledAnimations(disabledAnimationsObservable)
@@ -59752,6 +59796,7 @@ const appCreated = vue_cjs.createApp({
             disabledAnimations: [],
 
             validationReport: {},
+            validationReportDescription: {},
 
             ibl: true,
             iblIntensity: 0.0,
@@ -59900,25 +59945,71 @@ const appCreated = vue_cjs.createApp({
             element.click();
             document.body.removeChild(element);
         },
-        getValidationCounter: function(){
-            let number = 0;
+
+        /**
+         * Creates a div string summarizing the given issues.
+         * 
+         * If the given issues are empty or do not contain any errors,
+         * warnings, or infos, then the empty string is returned.
+         * 
+         * Otherwise, the div contains the number of errors/warnings/infos
+         * with an appropriate background color. When all warnings of
+         * the given report are ignored, then this will only be a
+         * small "info" div. Clicking on that will expand the details
+         * about the ignored warnings.
+         * 
+         * @param {any} issues The `issues` property that is part of
+         * the validation report of the glTF Validator
+         * @returns The div string
+         */
+        getValidationInfoDiv : function(issues) {
+            if (!issues) {
+                return "";
+            }
+            let info = "";
             let color = "white";
-            if (this.validationReport?.issues?.numErrors > 0) {
-                number = this.validationReport?.issues?.numErrors;
+            if (issues.numErrors > 0) {
+                info = `${issues.numErrors}`;
                 color = "red";
-            } else if (this.validationReport?.issues?.numWarnings > 0) {
-                number = this.validationReport?.issues?.numWarnings;
-                color = "yellow";
-            } else if (this.validationReport?.issues?.numInfos > 0) {
-                number = this.validationReport?.issues?.numInfos;
+            } else if (issues.numWarnings > 0) {
+                const allIgnored = issues.numWarnings ===
+                    this.validationReportDescription?.numIgnoredWarnings;
+                if (allIgnored) {
+                    info = "i";
+                    color = "lightBlue";
+                } else {
+                    info = `${issues.numWarnings}`;
+                    color = "yellow";
+                }
+            } else if (issues.numInfos > 0) {
+                info = `${issues.numInfos}`;
             }
-            if (number !== 0) {
-                return `<div style="display:flex;color:black; font-weight:bold; background-color:${color}; border-radius:50%; width:fit-content; min-width:2rem; align-items:center;aspect-ratio:1/1;justify-content:center;">${number}</div>`;
+            if (info.length > 3) {
+                info = "999+";
             }
-            if (this.tabsHidden === false && this.activeTab === 2) {
-                return `<img src="assets/ui/Capture 50X50.svg" width="50px" height="100%">`;
+            if (info === "") {
+                return "";
             }
-            return '<img src="assets/ui/Capture 30X30.svg" width="30px">';
+            const padding = this.isMobile ? "right:-3px;top:-18px;" : "right:-18px;top:-18px;";
+            const infoDiv =
+                `<div style="display:flex;color:black; position:absolute; ${padding} ` +
+                `font-size:80%; font-weight:bold; background-color:${color}; border-radius:50%; width:fit-content; ` +
+                `min-width:2rem; align-items:center;aspect-ratio:1/1;justify-content:center;">${info}</div>`;
+            return infoDiv;
+        },
+
+        getValidationCounter: function(){
+            const infoDiv = this.getValidationInfoDiv(this.validationReport?.issues);
+            if (this.tabContentHidden === false && this.activeTab === 2) {
+                return `<div style="position:relative; width:50px; height:100%">` 
+                    + `<img src="assets/ui/Capture 50X50.svg" width="50px" height="100%">` 
+                    + infoDiv  
+                    + `</div>`;
+            }
+            return `<div style="position:relative; width:50px; height:100%">` 
+                + `<img src="assets/ui/Capture 30X30.svg" width="30px">` 
+                + infoDiv  
+                + `</div>`;
         },
         setAnimationState: function(value)
         {
@@ -71214,11 +71305,6 @@ const validateBytes = (data, options) => gltf_validator_dart.validateBytes(data,
  * @returns {Promise} - Promise with Uint8Array data.
  */
 
-const ignoredIssues = [
-    // This sample renderer supports tangent space generation.
-    "MESH_PRIMITIVE_GENERATED_TANGENT_SPACE"
-];
-
 var main = async () => {
     const canvas = document.getElementById("canvas");
     const context = canvas.getContext("webgl2", {
@@ -71278,8 +71364,7 @@ var main = async () => {
                         const buffer = await response.arrayBuffer();
                         return await validateBytes(new Uint8Array(buffer), {
                             externalResourceFunction: externalRefFunction,
-                            uri: model.mainFile,
-                            ignoredIssues
+                            uri: model.mainFile
                         });
                     } else if (Array.isArray(model.mainFile)) {
                         const externalRefFunction = (uri) => {
@@ -71309,8 +71394,7 @@ var main = async () => {
                         return await validateBytes(new Uint8Array(buffer),
                             {
                                 externalResourceFunction: externalRefFunction,
-                                uri: model.mainFile[0],
-                                ignoredIssues
+                                uri: model.mainFile[0]
                             });
                     }
                 } catch (error) {
