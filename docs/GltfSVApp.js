@@ -60178,6 +60178,10 @@ canvasUI.mount('#canvasUI');
     };
 
     window.onerror = function(msg, url, lineNo, columnNo, error) {
+        // If error is not from the sample viewer, ignore it
+        if (url === undefined || url === null || url === "") {
+            return;
+        }
         app.error([
             'Message: ' + msg,
             'URL: ' + url,
