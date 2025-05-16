@@ -1,6 +1,6 @@
 /**
  * Bundle of gltf-sample-viewer-example
- * Generated: 2025-04-23
+ * Generated: 2025-05-16
  * Version: 1.0.0
  * License: Apache-2.0
  * Dependencies:
@@ -1091,7 +1091,7 @@
 
 /**
  * Bundle of @khronosgroup/gltf-viewer
- * Generated: 2025-04-23
+ * Generated: 2025-05-16
  * Version: 1.1.0
  * License: Apache-2.0
  * Dependencies:
@@ -5142,7 +5142,7 @@ class gltfRenderer
             context.texParameteri(context.TEXTURE_2D, context.TEXTURE_WRAP_S, context.CLAMP_TO_EDGE);
             context.texParameteri(context.TEXTURE_2D, context.TEXTURE_WRAP_T, context.CLAMP_TO_EDGE);
             context.texParameteri(context.TEXTURE_2D, context.TEXTURE_MAG_FILTER, context.NEAREST);
-            context.texImage2D( context.TEXTURE_2D, 0, context.DEPTH_COMPONENT16, this.opaqueFramebufferWidth, this.opaqueFramebufferHeight, 0, context.DEPTH_COMPONENT, context.UNSIGNED_SHORT, null);
+            context.texImage2D( context.TEXTURE_2D, 0, context.DEPTH_COMPONENT24, this.opaqueFramebufferWidth, this.opaqueFramebufferHeight, 0, context.DEPTH_COMPONENT, context.UNSIGNED_INT, null);
             context.bindTexture(context.TEXTURE_2D, null);
 
 
@@ -5154,7 +5154,7 @@ class gltfRenderer
             context.bindRenderbuffer(context.RENDERBUFFER, this.depthRenderBuffer);
             context.renderbufferStorageMultisample( context.RENDERBUFFER,
                 samples,
-                context.DEPTH_COMPONENT16, 
+                context.DEPTH_COMPONENT24, 
                 this.opaqueFramebufferWidth,
                 this.opaqueFramebufferHeight);
 
