@@ -1,6 +1,6 @@
 /**
  * Bundle of gltf-sample-viewer-example
- * Generated: 2025-05-16
+ * Generated: 2025-07-02
  * Version: 1.0.0
  * License: Apache-2.0
  * Dependencies:
@@ -1091,7 +1091,7 @@
 
 /**
  * Bundle of @khronosgroup/gltf-viewer
- * Generated: 2025-05-16
+ * Generated: 2025-07-02
  * Version: 1.1.0
  * License: Apache-2.0
  * Dependencies:
@@ -1303,7 +1303,7 @@ function fromMat4(out, a) {
  * @returns {mat3} out
  */
 
-function multiply$1(out, a, b) {
+function multiply$2(out, a, b) {
   var a00 = a[0],
       a01 = a[1],
       a02 = a[2];
@@ -1583,7 +1583,7 @@ function determinant(a) {
  * @returns {mat4} out
  */
 
-function multiply(out, a, b) {
+function multiply$1(out, a, b) {
   var a00 = a[0],
       a01 = a[1],
       a02 = a[2],
@@ -2040,7 +2040,7 @@ function lookAt(out, eye, center, up) {
  * @function
  */
 
-var mul = multiply;
+var mul = multiply$1;
 
 /**
  * 3 Dimensional Vector
@@ -2498,6 +2498,30 @@ function setAxisAngle(out, axis, rad) {
   out[1] = s * axis[1];
   out[2] = s * axis[2];
   out[3] = Math.cos(rad);
+  return out;
+}
+/**
+ * Multiplies two quat's
+ *
+ * @param {quat} out the receiving quaternion
+ * @param {ReadonlyQuat} a the first operand
+ * @param {ReadonlyQuat} b the second operand
+ * @returns {quat} out
+ */
+
+function multiply(out, a, b) {
+  var ax = a[0],
+      ay = a[1],
+      az = a[2],
+      aw = a[3];
+  var bx = b[0],
+      by = b[1],
+      bz = b[2],
+      bw = b[3];
+  out[0] = ax * bw + aw * bx + ay * bz - az * by;
+  out[1] = ay * bw + aw * by + az * bx - ax * bz;
+  out[2] = az * bw + aw * bz + ax * by - ay * bx;
+  out[3] = aw * bw - ax * bx - ay * by - az * bz;
   return out;
 }
 /**
@@ -2999,7 +3023,7 @@ class gltfCamera extends GltfObject
         for (const drawable of drawables)
         {
             const modelView = create$3();
-            multiply(modelView, this.getViewMatrix(gltf), drawable.node.worldTransform);
+            multiply$1(modelView, this.getViewMatrix(gltf), drawable.node.worldTransform);
 
             // Transform primitive centroid to find the primitive's depth.
             const pos = transformMat4(create$2(), clone(drawable.primitive.centroid), modelView);
@@ -3074,12 +3098,16 @@ class gltfCamera extends GltfObject
         return direction;
     }
 
+    getRotationMatrix(gltf)
+    {
+        const node = this.getNode(gltf);
+        return node.worldRotation;
+    }
+
     getRotation(gltf)
     {
-        const rotation = create$5();
         const node = this.getNode(gltf);
-        getRotation(rotation, node.worldTransform);
-        return rotation;
+        return node.worldQuaternion;
     }
 
     getNode(gltf)
@@ -3090,11 +3118,17 @@ class gltfCamera extends GltfObject
     getTransformMatrix(gltf)
     {
         const node = this.getNode(gltf);
-        if (node !== undefined && node.worldTransform !== undefined)
-        {
-            return node.worldTransform;
+        if (node === undefined || node.worldTransform === undefined){
+            return create$3();
         }
-        return create$3();
+
+        // Compose transform from rotation and position as we want to ignore scale
+        return fromRotationTranslationScale(
+            create$3(),
+            this.getRotation(gltf),
+            this.getPosition(gltf),
+            fromValues$2(1, 1, 1)
+        );
 
     }
 
@@ -4093,7 +4127,7 @@ class UserCamera extends gltfCamera
         fromYRotation(mat4y, yaw);
         this.transform = mat4y;
         this.setPosition(tmpPos);
-        multiply(this.transform, this.transform, mat4x);
+        multiply$1(this.transform, this.transform, mat4x);
     }
 
     /**
@@ -4903,7 +4937,7 @@ var iblShader = "#define GLSLIFY 1\nuniform float u_EnvIntensity;vec3 getDiffuse
 
 var punctualShader = "#define GLSLIFY 1\nstruct Light{vec3 direction;float range;vec3 color;float intensity;vec3 position;float innerConeCos;float outerConeCos;int type;};const int LightType_Directional=0;const int LightType_Point=1;const int LightType_Spot=2;\n#ifdef USE_PUNCTUAL\nuniform Light u_Lights[LIGHT_COUNT+1];\n#endif\nfloat getRangeAttenuation(float range,float distance){if(range<=0.0){return 1.0/pow(distance,2.0);}return max(min(1.0-pow(distance/range,4.0),1.0),0.0)/pow(distance,2.0);}float getSpotAttenuation(vec3 pointToLight,vec3 spotDirection,float outerConeCos,float innerConeCos){float actualCos=dot(normalize(spotDirection),normalize(-pointToLight));if(actualCos>outerConeCos){if(actualCos<innerConeCos){float angularAttenuation=(actualCos-outerConeCos)/(innerConeCos-outerConeCos);return angularAttenuation*angularAttenuation;}return 1.0;}return 0.0;}vec3 getLighIntensity(Light light,vec3 pointToLight){float rangeAttenuation=1.0;float spotAttenuation=1.0;if(light.type!=LightType_Directional){rangeAttenuation=getRangeAttenuation(light.range,length(pointToLight));}if(light.type==LightType_Spot){spotAttenuation=getSpotAttenuation(pointToLight,light.direction,light.outerConeCos,light.innerConeCos);}return rangeAttenuation*spotAttenuation*light.intensity*light.color;}vec3 getPunctualRadianceTransmission(vec3 normal,vec3 view,vec3 pointToLight,float alphaRoughness,vec3 baseColor,float ior){float transmissionRougness=applyIorToRoughness(alphaRoughness,ior);vec3 n=normalize(normal);vec3 v=normalize(view);vec3 l=normalize(pointToLight);vec3 l_mirror=normalize(l+2.0*n*dot(-l,n));vec3 h=normalize(l_mirror+v);float D=D_GGX(clamp(dot(n,h),0.0,1.0),transmissionRougness);float Vis=V_GGX(clamp(dot(n,l_mirror),0.0,1.0),clamp(dot(n,v),0.0,1.0),transmissionRougness);return baseColor*D*Vis;}vec3 getPunctualRadianceClearCoat(vec3 clearcoatNormal,vec3 v,vec3 l,vec3 h,float VdotH,vec3 f0,vec3 f90,float clearcoatRoughness){float NdotL=clampedDot(clearcoatNormal,l);float NdotV=clampedDot(clearcoatNormal,v);float NdotH=clampedDot(clearcoatNormal,h);return NdotL*BRDF_specularGGX(clearcoatRoughness*clearcoatRoughness,NdotL,NdotV,NdotH);}vec3 getPunctualRadianceSheen(vec3 sheenColor,float sheenRoughness,float NdotL,float NdotV,float NdotH){return NdotL*BRDF_specularSheen(sheenColor,sheenRoughness,NdotL,NdotV,NdotH);}vec3 applyVolumeAttenuation(vec3 radiance,float transmissionDistance,vec3 attenuationColor,float attenuationDistance){if(attenuationDistance==0.0){return radiance;}else{vec3 transmittance=pow(attenuationColor,vec3(transmissionDistance/attenuationDistance));return transmittance*radiance;}}vec3 getVolumeTransmissionRay(vec3 n,vec3 v,float thickness,float ior,mat4 modelMatrix){vec3 refractionVector=refract(-v,normalize(n),1.0/ior);vec3 modelScale;modelScale.x=length(vec3(modelMatrix[0].xyz));modelScale.y=length(vec3(modelMatrix[1].xyz));modelScale.z=length(vec3(modelMatrix[2].xyz));return normalize(refractionVector)*thickness*modelScale;}"; // eslint-disable-line
 
-var primitiveShader = "#define GLSLIFY 1\n#include <animation.glsl>\nuniform mat4 u_ViewProjectionMatrix;uniform mat4 u_ModelMatrix;uniform mat4 u_NormalMatrix;in vec3 a_position;out vec3 v_Position;\n#ifdef HAS_NORMAL_VEC3\nin vec3 a_normal;\n#endif\n#ifdef HAS_NORMAL_VEC3\n#ifdef HAS_TANGENT_VEC4\nin vec4 a_tangent;out mat3 v_TBN;\n#else\nout vec3 v_Normal;\n#endif\n#endif\n#ifdef HAS_TEXCOORD_0_VEC2\nin vec2 a_texcoord_0;\n#endif\n#ifdef HAS_TEXCOORD_1_VEC2\nin vec2 a_texcoord_1;\n#endif\nout vec2 v_texcoord_0;out vec2 v_texcoord_1;\n#ifdef HAS_COLOR_0_VEC3\nin vec3 a_color_0;out vec3 v_Color;\n#endif\n#ifdef HAS_COLOR_0_VEC4\nin vec4 a_color_0;out vec4 v_Color;\n#endif\n#ifdef USE_INSTANCING\nin mat4 a_instance_model_matrix;\n#endif\n#ifdef HAS_VERT_NORMAL_UV_TRANSFORM\nuniform mat3 u_vertNormalUVTransform;\n#endif\nvec4 getPosition(){vec4 pos=vec4(a_position,1.0);\n#ifdef USE_MORPHING\npos+=getTargetPosition(gl_VertexID);\n#endif\n#ifdef USE_SKINNING\npos=getSkinningMatrix()*pos;\n#endif\nreturn pos;}\n#ifdef HAS_NORMAL_VEC3\nvec3 getNormal(){vec3 normal=a_normal;\n#ifdef USE_MORPHING\nnormal+=getTargetNormal(gl_VertexID);\n#endif\n#ifdef USE_SKINNING\nnormal=mat3(getSkinningNormalMatrix())*normal;\n#endif\nreturn normalize(normal);}\n#endif\n#ifdef HAS_NORMAL_VEC3\n#ifdef HAS_TANGENT_VEC4\nvec3 getTangent(){vec3 tangent=a_tangent.xyz;\n#ifdef USE_MORPHING\ntangent+=getTargetTangent(gl_VertexID);\n#endif\n#ifdef USE_SKINNING\ntangent=mat3(getSkinningMatrix())*tangent;\n#endif\nreturn normalize(tangent);}\n#endif\n#endif\nvoid main(){gl_PointSize=1.0f;\n#ifdef USE_INSTANCING\nmat4 modelMatrix=a_instance_model_matrix;mat4 normalMatrix=transpose(inverse(modelMatrix));\n#else\nmat4 modelMatrix=u_ModelMatrix;mat4 normalMatrix=u_NormalMatrix;\n#endif\nvec4 pos=modelMatrix*getPosition();v_Position=vec3(pos.xyz)/pos.w;\n#ifdef HAS_NORMAL_VEC3\n#ifdef HAS_TANGENT_VEC4\nvec3 tangent=getTangent();vec3 normalW=normalize(vec3(normalMatrix*vec4(getNormal(),0.0)));vec3 tangentW=vec3(modelMatrix*vec4(tangent,0.0));vec3 bitangentW=cross(normalW,tangentW)*a_tangent.w;\n#ifdef HAS_VERT_NORMAL_UV_TRANSFORM\ntangentW=u_vertNormalUVTransform*tangentW;bitangentW=u_vertNormalUVTransform*bitangentW;\n#endif\nbitangentW=normalize(bitangentW);tangentW=normalize(tangentW);v_TBN=mat3(tangentW,bitangentW,normalW);\n#else\nv_Normal=normalize(vec3(normalMatrix*vec4(getNormal(),0.0)));\n#endif\n#endif\nv_texcoord_0=vec2(0.0,0.0);v_texcoord_1=vec2(0.0,0.0);\n#ifdef HAS_TEXCOORD_0_VEC2\nv_texcoord_0=a_texcoord_0;\n#endif\n#ifdef HAS_TEXCOORD_1_VEC2\nv_texcoord_1=a_texcoord_1;\n#endif\n#ifdef USE_MORPHING\nv_texcoord_0+=getTargetTexCoord0(gl_VertexID);v_texcoord_1+=getTargetTexCoord1(gl_VertexID);\n#endif\n#if defined(HAS_COLOR_0_VEC3)\nv_Color=a_color_0;\n#if defined(USE_MORPHING)\nv_Color=clamp(v_Color+getTargetColor0(gl_VertexID).xyz,0.0f,1.0f);\n#endif\n#endif\n#if defined(HAS_COLOR_0_VEC4)\nv_Color=a_color_0;\n#if defined(USE_MORPHING)\nv_Color=clamp(v_Color+getTargetColor0(gl_VertexID),0.0f,1.0f);\n#endif\n#endif\ngl_Position=u_ViewProjectionMatrix*pos;}"; // eslint-disable-line
+var primitiveShader = "#define GLSLIFY 1\n#include <animation.glsl>\nuniform mat4 u_ViewProjectionMatrix;uniform mat4 u_ModelMatrix;uniform mat4 u_NormalMatrix;in vec3 a_position;out vec3 v_Position;\n#ifdef HAS_NORMAL_VEC3\nin vec3 a_normal;\n#endif\n#ifdef HAS_NORMAL_VEC3\n#ifdef HAS_TANGENT_VEC4\nin vec4 a_tangent;out mat3 v_TBN;\n#else\nout vec3 v_Normal;\n#endif\n#endif\n#ifdef HAS_TEXCOORD_0_VEC2\nin vec2 a_texcoord_0;\n#endif\n#ifdef HAS_TEXCOORD_1_VEC2\nin vec2 a_texcoord_1;\n#endif\nout vec2 v_texcoord_0;out vec2 v_texcoord_1;\n#ifdef HAS_COLOR_0_VEC3\nin vec3 a_color_0;out vec3 v_Color;\n#endif\n#ifdef HAS_COLOR_0_VEC4\nin vec4 a_color_0;out vec4 v_Color;\n#endif\n#ifdef USE_INSTANCING\nin mat4 a_instance_model_matrix;\n#endif\n#ifdef HAS_VERT_NORMAL_UV_TRANSFORM\nuniform mat3 u_vertNormalUVTransform;\n#endif\nvec4 getPosition(){vec4 pos=vec4(a_position,1.0);\n#ifdef USE_MORPHING\npos+=getTargetPosition(gl_VertexID);\n#endif\n#ifdef USE_SKINNING\npos=getSkinningMatrix()*pos;\n#endif\nreturn pos;}\n#ifdef HAS_NORMAL_VEC3\nvec3 getNormal(){vec3 normal=a_normal;\n#ifdef USE_MORPHING\nnormal+=getTargetNormal(gl_VertexID);\n#endif\n#ifdef USE_SKINNING\nnormal=mat3(getSkinningNormalMatrix())*normal;\n#endif\nreturn normalize(normal);}\n#endif\n#ifdef HAS_NORMAL_VEC3\n#ifdef HAS_TANGENT_VEC4\nvec3 getTangent(){vec3 tangent=a_tangent.xyz;\n#ifdef USE_MORPHING\ntangent+=getTargetTangent(gl_VertexID);\n#endif\n#ifdef USE_SKINNING\ntangent=mat3(getSkinningMatrix())*tangent;\n#endif\nreturn normalize(tangent);}\n#endif\n#endif\nvoid main(){gl_PointSize=1.0f;\n#ifdef USE_INSTANCING\nmat4 modelMatrix=a_instance_model_matrix;mat4 normalMatrix=transpose(inverse(modelMatrix));\n#else\nmat4 modelMatrix=u_ModelMatrix;mat4 normalMatrix=u_NormalMatrix;\n#endif\n#ifdef USE_SKINNING\nvec4 pos=getPosition();\n#else\nvec4 pos=modelMatrix*getPosition();\n#endif\nv_Position=vec3(pos.xyz)/pos.w;\n#ifdef HAS_NORMAL_VEC3\n#ifdef HAS_TANGENT_VEC4\nvec3 tangent=getTangent();vec3 normalW=normalize(vec3(normalMatrix*vec4(getNormal(),0.0)));vec3 tangentW=vec3(modelMatrix*vec4(tangent,0.0));vec3 bitangentW=cross(normalW,tangentW)*a_tangent.w;\n#ifdef HAS_VERT_NORMAL_UV_TRANSFORM\ntangentW=u_vertNormalUVTransform*tangentW;bitangentW=u_vertNormalUVTransform*bitangentW;\n#endif\nbitangentW=normalize(bitangentW);tangentW=normalize(tangentW);v_TBN=mat3(tangentW,bitangentW,normalW);\n#else\nv_Normal=normalize(vec3(normalMatrix*vec4(getNormal(),0.0)));\n#endif\n#endif\nv_texcoord_0=vec2(0.0,0.0);v_texcoord_1=vec2(0.0,0.0);\n#ifdef HAS_TEXCOORD_0_VEC2\nv_texcoord_0=a_texcoord_0;\n#endif\n#ifdef HAS_TEXCOORD_1_VEC2\nv_texcoord_1=a_texcoord_1;\n#endif\n#ifdef USE_MORPHING\nv_texcoord_0+=getTargetTexCoord0(gl_VertexID);v_texcoord_1+=getTargetTexCoord1(gl_VertexID);\n#endif\n#if defined(HAS_COLOR_0_VEC3)\nv_Color=a_color_0;\n#if defined(USE_MORPHING)\nv_Color=clamp(v_Color+getTargetColor0(gl_VertexID).xyz,0.0f,1.0f);\n#endif\n#endif\n#if defined(HAS_COLOR_0_VEC4)\nv_Color=a_color_0;\n#if defined(USE_MORPHING)\nv_Color=clamp(v_Color+getTargetColor0(gl_VertexID),0.0f,1.0f);\n#endif\n#endif\ngl_Position=u_ViewProjectionMatrix*pos;}"; // eslint-disable-line
 
 var texturesShader = "#define GLSLIFY 1\nuniform int u_MipCount;uniform samplerCube u_LambertianEnvSampler;uniform samplerCube u_GGXEnvSampler;uniform sampler2D u_GGXLUT;uniform samplerCube u_CharlieEnvSampler;uniform sampler2D u_CharlieLUT;uniform sampler2D u_SheenELUT;uniform mat3 u_EnvRotation;uniform sampler2D u_NormalSampler;uniform float u_NormalScale;uniform int u_NormalUVSet;uniform mat3 u_NormalUVTransform;uniform vec3 u_EmissiveFactor;uniform sampler2D u_EmissiveSampler;uniform int u_EmissiveUVSet;uniform mat3 u_EmissiveUVTransform;uniform sampler2D u_OcclusionSampler;uniform int u_OcclusionUVSet;uniform float u_OcclusionStrength;uniform mat3 u_OcclusionUVTransform;in vec2 v_texcoord_0;in vec2 v_texcoord_1;vec2 getNormalUV(){vec3 uv=vec3(u_NormalUVSet<1 ? v_texcoord_0 : v_texcoord_1,1.0);\n#ifdef HAS_NORMAL_UV_TRANSFORM\nuv=u_NormalUVTransform*uv;\n#endif\nreturn uv.xy;}vec2 getEmissiveUV(){vec3 uv=vec3(u_EmissiveUVSet<1 ? v_texcoord_0 : v_texcoord_1,1.0);\n#ifdef HAS_EMISSIVE_UV_TRANSFORM\nuv=u_EmissiveUVTransform*uv;\n#endif\nreturn uv.xy;}vec2 getOcclusionUV(){vec3 uv=vec3(u_OcclusionUVSet<1 ? v_texcoord_0 : v_texcoord_1,1.0);\n#ifdef HAS_OCCLUSION_UV_TRANSFORM\nuv=u_OcclusionUVTransform*uv;\n#endif\nreturn uv.xy;}\n#ifdef MATERIAL_METALLICROUGHNESS\nuniform sampler2D u_BaseColorSampler;uniform int u_BaseColorUVSet;uniform mat3 u_BaseColorUVTransform;uniform sampler2D u_MetallicRoughnessSampler;uniform int u_MetallicRoughnessUVSet;uniform mat3 u_MetallicRoughnessUVTransform;vec2 getBaseColorUV(){vec3 uv=vec3(u_BaseColorUVSet<1 ? v_texcoord_0 : v_texcoord_1,1.0);\n#ifdef HAS_BASECOLOR_UV_TRANSFORM\nuv=u_BaseColorUVTransform*uv;\n#endif\nreturn uv.xy;}vec2 getMetallicRoughnessUV(){vec3 uv=vec3(u_MetallicRoughnessUVSet<1 ? v_texcoord_0 : v_texcoord_1,1.0);\n#ifdef HAS_METALLICROUGHNESS_UV_TRANSFORM\nuv=u_MetallicRoughnessUVTransform*uv;\n#endif\nreturn uv.xy;}\n#endif\n#ifdef MATERIAL_SPECULARGLOSSINESS\nuniform sampler2D u_DiffuseSampler;uniform int u_DiffuseUVSet;uniform mat3 u_DiffuseUVTransform;uniform sampler2D u_SpecularGlossinessSampler;uniform int u_SpecularGlossinessUVSet;uniform mat3 u_SpecularGlossinessUVTransform;vec2 getSpecularGlossinessUV(){vec3 uv=vec3(u_SpecularGlossinessUVSet<1 ? v_texcoord_0 : v_texcoord_1,1.0);\n#ifdef HAS_SPECULARGLOSSINESS_UV_TRANSFORM\nuv=u_SpecularGlossinessUVTransform*uv;\n#endif\nreturn uv.xy;}vec2 getDiffuseUV(){vec3 uv=vec3(u_DiffuseUVSet<1 ? v_texcoord_0 : v_texcoord_1,1.0);\n#ifdef HAS_DIFFUSE_UV_TRANSFORM\nuv=u_DiffuseUVTransform*uv;\n#endif\nreturn uv.xy;}\n#endif\n#ifdef MATERIAL_CLEARCOAT\nuniform sampler2D u_ClearcoatSampler;uniform int u_ClearcoatUVSet;uniform mat3 u_ClearcoatUVTransform;uniform sampler2D u_ClearcoatRoughnessSampler;uniform int u_ClearcoatRoughnessUVSet;uniform mat3 u_ClearcoatRoughnessUVTransform;uniform sampler2D u_ClearcoatNormalSampler;uniform int u_ClearcoatNormalUVSet;uniform mat3 u_ClearcoatNormalUVTransform;uniform float u_ClearcoatNormalScale;vec2 getClearcoatUV(){vec3 uv=vec3(u_ClearcoatUVSet<1 ? v_texcoord_0 : v_texcoord_1,1.0);\n#ifdef HAS_CLEARCOAT_UV_TRANSFORM\nuv=u_ClearcoatUVTransform*uv;\n#endif\nreturn uv.xy;}vec2 getClearcoatRoughnessUV(){vec3 uv=vec3(u_ClearcoatRoughnessUVSet<1 ? v_texcoord_0 : v_texcoord_1,1.0);\n#ifdef HAS_CLEARCOATROUGHNESS_UV_TRANSFORM\nuv=u_ClearcoatRoughnessUVTransform*uv;\n#endif\nreturn uv.xy;}vec2 getClearcoatNormalUV(){vec3 uv=vec3(u_ClearcoatNormalUVSet<1 ? v_texcoord_0 : v_texcoord_1,1.0);\n#ifdef HAS_CLEARCOATNORMAL_UV_TRANSFORM\nuv=u_ClearcoatNormalUVTransform*uv;\n#endif\nreturn uv.xy;}\n#endif\n#ifdef MATERIAL_SHEEN\nuniform sampler2D u_SheenColorSampler;uniform int u_SheenColorUVSet;uniform mat3 u_SheenColorUVTransform;uniform sampler2D u_SheenRoughnessSampler;uniform int u_SheenRoughnessUVSet;uniform mat3 u_SheenRoughnessUVTransform;vec2 getSheenColorUV(){vec3 uv=vec3(u_SheenColorUVSet<1 ? v_texcoord_0 : v_texcoord_1,1.0);\n#ifdef HAS_SHEENCOLOR_UV_TRANSFORM\nuv=u_SheenColorUVTransform*uv;\n#endif\nreturn uv.xy;}vec2 getSheenRoughnessUV(){vec3 uv=vec3(u_SheenRoughnessUVSet<1 ? v_texcoord_0 : v_texcoord_1,1.0);\n#ifdef HAS_SHEENROUGHNESS_UV_TRANSFORM\nuv=u_SheenRoughnessUVTransform*uv;\n#endif\nreturn uv.xy;}\n#endif\n#ifdef MATERIAL_SPECULAR\nuniform sampler2D u_SpecularSampler;uniform int u_SpecularUVSet;uniform mat3 u_SpecularUVTransform;uniform sampler2D u_SpecularColorSampler;uniform int u_SpecularColorUVSet;uniform mat3 u_SpecularColorUVTransform;vec2 getSpecularUV(){vec3 uv=vec3(u_SpecularUVSet<1 ? v_texcoord_0 : v_texcoord_1,1.0);\n#ifdef HAS_SPECULAR_UV_TRANSFORM\nuv=u_SpecularUVTransform*uv;\n#endif\nreturn uv.xy;}vec2 getSpecularColorUV(){vec3 uv=vec3(u_SpecularColorUVSet<1 ? v_texcoord_0 : v_texcoord_1,1.0);\n#ifdef HAS_SPECULARCOLOR_UV_TRANSFORM\nuv=u_SpecularColorUVTransform*uv;\n#endif\nreturn uv.xy;}\n#endif\n#ifdef MATERIAL_TRANSMISSION\nuniform sampler2D u_TransmissionSampler;uniform int u_TransmissionUVSet;uniform mat3 u_TransmissionUVTransform;uniform sampler2D u_TransmissionFramebufferSampler;uniform ivec2 u_TransmissionFramebufferSize;vec2 getTransmissionUV(){vec3 uv=vec3(u_TransmissionUVSet<1 ? v_texcoord_0 : v_texcoord_1,1.0);\n#ifdef HAS_TRANSMISSION_UV_TRANSFORM\nuv=u_TransmissionUVTransform*uv;\n#endif\nreturn uv.xy;}\n#endif\n#ifdef MATERIAL_VOLUME\nuniform sampler2D u_ThicknessSampler;uniform int u_ThicknessUVSet;uniform mat3 u_ThicknessUVTransform;vec2 getThicknessUV(){vec3 uv=vec3(u_ThicknessUVSet<1 ? v_texcoord_0 : v_texcoord_1,1.0);\n#ifdef HAS_THICKNESS_UV_TRANSFORM\nuv=u_ThicknessUVTransform*uv;\n#endif\nreturn uv.xy;}\n#endif\n#ifdef MATERIAL_IRIDESCENCE\nuniform sampler2D u_IridescenceSampler;uniform int u_IridescenceUVSet;uniform mat3 u_IridescenceUVTransform;uniform sampler2D u_IridescenceThicknessSampler;uniform int u_IridescenceThicknessUVSet;uniform mat3 u_IridescenceThicknessUVTransform;vec2 getIridescenceUV(){vec3 uv=vec3(u_IridescenceUVSet<1 ? v_texcoord_0 : v_texcoord_1,1.0);\n#ifdef HAS_IRIDESCENCE_UV_TRANSFORM\nuv=u_IridescenceUVTransform*uv;\n#endif\nreturn uv.xy;}vec2 getIridescenceThicknessUV(){vec3 uv=vec3(u_IridescenceThicknessUVSet<1 ? v_texcoord_0 : v_texcoord_1,1.0);\n#ifdef HAS_IRIDESCENCETHICKNESS_UV_TRANSFORM\nuv=u_IridescenceThicknessUVTransform*uv;\n#endif\nreturn uv.xy;}\n#endif\n#ifdef MATERIAL_DIFFUSE_TRANSMISSION\nuniform sampler2D u_DiffuseTransmissionSampler;uniform int u_DiffuseTransmissionUVSet;uniform mat3 u_DiffuseTransmissionUVTransform;uniform sampler2D u_DiffuseTransmissionColorSampler;uniform int u_DiffuseTransmissionColorUVSet;uniform mat3 u_DiffuseTransmissionColorUVTransform;vec2 getDiffuseTransmissionUV(){vec3 uv=vec3(u_DiffuseTransmissionUVSet<1 ? v_texcoord_0 : v_texcoord_1,1.0);\n#ifdef HAS_DIFFUSETRANSMISSION_UV_TRANSFORM\nuv=u_DiffuseTransmissionUVTransform*uv;\n#endif\nreturn uv.xy;}vec2 getDiffuseTransmissionColorUV(){vec3 uv=vec3(u_DiffuseTransmissionColorUVSet<1 ? v_texcoord_0 : v_texcoord_1,1.0);\n#ifdef HAS_DIFFUSETRANSMISSIONCOLOR_UV_TRANSFORM\nuv=u_DiffuseTransmissionColorUVTransform*uv;\n#endif\nreturn uv.xy;}\n#endif\n#ifdef MATERIAL_ANISOTROPY\nuniform sampler2D u_AnisotropySampler;uniform int u_AnisotropyUVSet;uniform mat3 u_AnisotropyUVTransform;vec2 getAnisotropyUV(){vec3 uv=vec3(u_AnisotropyUVSet<1 ? v_texcoord_0 : v_texcoord_1,1.0);\n#ifdef HAS_ANISOTROPY_UV_TRANSFORM\nuv=u_AnisotropyUVTransform*uv;\n#endif\nreturn uv.xy;}\n#endif\n"; // eslint-disable-line
 
@@ -5331,7 +5365,7 @@ class gltfRenderer
             this.visibleLights.push([null, this.lightFill]);
         }
 
-        multiply(this.viewProjectionMatrix, this.projMatrix, this.viewMatrix);
+        multiply$1(this.viewProjectionMatrix, this.projMatrix, this.viewMatrix);
 
         // Update skins.
         for (const node of this.nodes)
@@ -5814,7 +5848,7 @@ class gltfRenderer
         if (state.renderingParameters.skinning && state.gltf.skins !== undefined)
         {
             const skin = state.gltf.skins[node.skin];
-            skin.computeJoints(state.gltf, node, this.webGl.context);
+            skin.computeJoints(state.gltf, this.webGl.context);
         }
     }
 
@@ -13092,8 +13126,8 @@ class gltfMaterial extends GltfObject
             }
 
             let uvMatrix = create$4();
-            multiply$1(uvMatrix, translation, rotation);
-            multiply$1(uvMatrix, uvMatrix, scale);
+            multiply$2(uvMatrix, translation, rotation);
+            multiply$2(uvMatrix, uvMatrix, scale);
             shader.updateUniform("u_" + key + "UVTransform", jsToGl(uvMatrix));
             
             if(key === "Normal") {
@@ -14953,6 +14987,7 @@ class gltfNode extends GltfObject
 
         // non gltf
         this.worldTransform = create$3();
+        this.worldQuaternion = create$5();
         this.inverseWorldTransform = create$3();
         this.normalMatrix = create$3();
         this.light = undefined;
@@ -15072,7 +15107,7 @@ class gltfScene extends GltfObject
     {
         function applyTransform(gltf, node, parentTransform)
         {
-            multiply(node.worldTransform, parentTransform, node.getLocalTransform());
+            multiply$1(node.worldTransform, parentTransform, node.getLocalTransform());
             invert(node.inverseWorldTransform, node.worldTransform);
             transpose(node.normalMatrix, node.inverseWorldTransform);
 
@@ -15081,7 +15116,7 @@ class gltfScene extends GltfObject
                 for (let i = 0; i < node.instanceMatrices.length; i++) {
                     const instanceTransform = node.instanceMatrices[i];
                     const instanceWorldTransform = create$3();
-                    multiply(instanceWorldTransform, node.worldTransform, instanceTransform);
+                    multiply$1(instanceWorldTransform, node.worldTransform, instanceTransform);
                     node.instanceWorldTransforms.push(instanceWorldTransform);
                 }
             }
@@ -15091,12 +15126,28 @@ class gltfScene extends GltfObject
                 applyTransform(gltf, gltf.nodes[child], node.worldTransform);
             }
         }
-
         for (const node of this.nodes)
         {
             applyTransform(gltf, gltf.nodes[node], rootTransform);
         }
+
+
+        function applyWorldRotation(gltf, node, parentRotation) 
+        {
+            multiply(node.worldQuaternion, parentRotation,  node.rotation);
+
+            // Recurse into children
+            for (const child of node.children) {
+                applyWorldRotation(gltf, gltf.nodes[child], node.worldQuaternion);
+            }
+        }
+
+        for (const node of this.nodes)
+        {  
+            applyWorldRotation(gltf, gltf.nodes[node], create$5());
+        }
     }
+
 
     gatherNodes(gltf)
     {
@@ -16487,7 +16538,7 @@ class gltfSkin extends GltfObject
         this.jointTextureInfo.generateMips = false;
     }
 
-    computeJoints(gltf, parentNode, webGlContext)
+    computeJoints(gltf, webGlContext)
     {
         let ibmAccessor = null;
         if (this.inverseBindMatrices !== undefined) {
@@ -16510,7 +16561,6 @@ class gltfSkin extends GltfObject
             if (ibmAccessor !== null) {
                 let ibm = jsToGlSlice(ibmAccessor, i * 16, 16);
                 mul(jointMatrix, jointMatrix, ibm);
-                mul(jointMatrix, parentNode.inverseWorldTransform, jointMatrix);
             }
 
             let normalMatrix = create$3();
@@ -17598,9 +17648,9 @@ class KtxDecoder {
         this.libktx = null;
         if (context !== undefined)
         {
-            if (externalKtxlib === undefined && LIBKTX !== undefined)
+            if (externalKtxlib === undefined && createKtxModule !== undefined)
             {
-                externalKtxlib = LIBKTX;
+                externalKtxlib = createKtxModule;
             }
             if (externalKtxlib !== undefined)
             {
@@ -17652,7 +17702,7 @@ class KtxDecoder {
             } else if (etcSupported) {
                 format = this.libktx.TranscodeTarget.ETC;
             } else {
-                format = this.libktx.TranscodeTarget.RGBA8888;
+                format = this.libktx.TranscodeTarget.RGBA4444;
             }
             if (ktexture.transcodeBasis(format, 0) != this.libktx.ErrorCode.SUCCESS) {
                 console.warn('Texture transcode failed. See console for details.');
@@ -17667,13 +17717,17 @@ class KtxDecoder {
         const texture = new this.libktx.ktxTexture(data);
         this.transcode(texture);
         let uploadResult = texture.glUpload();
-        if (uploadResult.texture == null)
-        {
-            console.error("Could not load KTX data");
+        if (uploadResult.error != this.gl.NO_ERROR) {
+            console.error('WebGL error when uploading texture, code = '
+                + uploadResult.error.toString(16));
             return undefined;
         }
-        uploadResult.texture.levels = Math.log2(texture.baseWidth);
-        return uploadResult.texture;
+        if (uploadResult.object === undefined) {
+            console.error('Texture upload failed. See console for details.');
+            return undefined;
+        }
+        uploadResult.object.levels = Math.log2(texture.baseWidth);
+        return uploadResult.object;
     }
 
     async loadKtxFromBuffer(data) {
@@ -17681,12 +17735,16 @@ class KtxDecoder {
         const texture = new this.libktx.ktxTexture(data);
         this.transcode(texture);
         const uploadResult = texture.glUpload();
-        if (uploadResult.texture == null)
-        {
-            console.error("Could not load KTX data");
+        if (uploadResult.error != this.gl.NO_ERROR) {
+            console.error('WebGL error when uploading texture, code = '
+                + uploadResult.error.toString(16));
             return undefined;
         }
-        return uploadResult.texture;
+        if (uploadResult.object === undefined) {
+            console.error('Texture upload failed. See console for details.');
+            return undefined;
+        }
+        return uploadResult.object;
     }
 }
 
