@@ -1,6 +1,6 @@
 /**
  * Bundle of gltf-sample-viewer-example
- * Generated: 2025-07-02
+ * Generated: 2025-07-08
  * Version: 1.0.0
  * License: Apache-2.0
  * Dependencies:
@@ -1091,7 +1091,7 @@
 
 /**
  * Bundle of @khronosgroup/gltf-viewer
- * Generated: 2025-07-02
+ * Generated: 2025-07-08
  * Version: 1.1.0
  * License: Apache-2.0
  * Dependencies:
@@ -60025,11 +60025,19 @@ const appCreated = vue_cjs.createApp({
          * @returns The div string
          */
         getValidationInfoDiv : function(issues) {
+            let info = "";
+            let color = "white";
+            const padding = this.isMobile ? "right:-3px;top:-18px;" : "right:-18px;top:-18px;";
+            if (this.validationReport.error) {
+                info = "X";
+                color = "red";
+                return `<div style="display:flex;color:black; position:absolute; ${padding} ` +
+                    `font-size:80%; font-weight:bold; background-color:${color}; border-radius:50%; width:fit-content; ` +
+                    `min-width:2rem; align-items:center;aspect-ratio:1/1;justify-content:center;">${info}</div>`;
+            }
             if (!issues) {
                 return "";
             }
-            let info = "";
-            let color = "white";
             if (issues.numErrors > 0) {
                 info = `${issues.numErrors}`;
                 color = "red";
@@ -60052,7 +60060,6 @@ const appCreated = vue_cjs.createApp({
             if (info === "") {
                 return "";
             }
-            const padding = this.isMobile ? "right:-3px;top:-18px;" : "right:-18px;top:-18px;";
             const infoDiv =
                 `<div style="display:flex;color:black; position:absolute; ${padding} ` +
                 `font-size:80%; font-weight:bold; background-color:${color}; border-radius:50%; width:fit-content; ` +
@@ -71405,8 +71412,15 @@ var main = async () => {
 
     const uiModel = new UIModel(app, pathProvider, environmentPaths);
 
+    const chromeVersionString = navigator.userAgent.match(/Chrom(e|ium)\/([0-9]+)\./);
+    let disableValidator = undefined;
+    if (chromeVersionString) {
+        if (parseInt(chromeVersionString[2]) == 138) {
+            disableValidator = of({"error" : "Due to a bug in Chromium 138, glTF Validator is disabled in browsers with this specific Chromium version."});
+        }
+    }
 
-    const validation = uiModel.model.pipe(
+    const validation = disableValidator ? disableValidator.pipe() : uiModel.model.pipe(
         mergeMap((model) => {
             const func = async(model) => {
                 try {
@@ -71467,7 +71481,7 @@ var main = async () => {
                     console.error(error);
                 }
             };
-            return from(func(model)).pipe(catchError((error) => { console.error(`Validation failed: ${error}`); return EMPTY; }));
+            return from(func(model)).pipe(catchError((error) => { console.error(`Validation failed: ${error}`); return {"error" : `Validation failed: ${error}`}; }));
         })
     );
 
