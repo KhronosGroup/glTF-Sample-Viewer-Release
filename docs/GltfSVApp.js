@@ -1,6 +1,6 @@
 /**
  * Bundle of gltf-sample-viewer-example
- * Generated: 2025-07-23
+ * Generated: 2025-08-12
  * Version: 1.0.0
  * License: Apache-2.0
  * Dependencies:
@@ -1091,7 +1091,7 @@
 
 /**
  * Bundle of @khronosgroup/gltf-viewer
- * Generated: 2025-07-23
+ * Generated: 2025-08-12
  * Version: 1.1.0
  * License: Apache-2.0
  * Dependencies:
@@ -2993,28 +2993,6 @@ class gltfCamera extends GltfObject
     initGl(gltf, webGlContext)
     {
         super.initGl(gltf, webGlContext);
-
-        let cameraIndex = undefined;
-        for (let i = 0; i < gltf.nodes.length; i++)
-        {
-            cameraIndex = gltf.nodes[i].camera;
-            if (cameraIndex === undefined)
-            {
-                continue;
-            }
-
-            if (gltf.cameras[cameraIndex] === this)
-            {
-                this.node = i;
-                break;
-            }
-        }
-
-        // cameraIndex stays undefined if camera is not assigned to any node
-        if(this.node === undefined && cameraIndex !== undefined)
-        {
-            console.error("Invalid node for camera " + cameraIndex);
-        }
     }
 
     sortPrimitivesByDepth(gltf, drawables)
@@ -3110,8 +3088,19 @@ class gltfCamera extends GltfObject
         return node.worldQuaternion;
     }
 
+    setNode(gltf, nodeIndex)
+    {
+        if (nodeIndex === undefined || nodeIndex < 0 || nodeIndex >= gltf.nodes.length || gltf.nodes[nodeIndex].camera === undefined) {
+            throw new Error("Invalid camera node index");
+        }
+        this.node = nodeIndex;
+    }
+
     getNode(gltf)
     {
+        if (this.node === undefined || this.node < 0 || this.node >= gltf.nodes.length || gltf.nodes[this.node].camera === undefined) {
+            throw new Error("Camera node is not defined");
+        }
         return gltf.nodes[this.node];
     }
 
@@ -4333,10 +4322,10 @@ class GltfState
         /** gltf scene that is visible in the view */
         this.sceneIndex = 0;
         /**
-         * index of the camera that is used to render the view. a
+         * index of the camera node that is used to render the view. a
          * value of 'undefined' enables the user camera
          */
-        this.cameraIndex = undefined;
+        this.cameraNodeIndex = undefined;
         /** indices of active animations */
         this.animationIndices = [];
         /** animation timer allows to control the animation time */
@@ -5315,14 +5304,18 @@ class gltfRenderer
 
         let currentCamera = undefined;
 
-        if (state.cameraIndex === undefined)
+        if (state.cameraNodeIndex === undefined)
         {
             currentCamera = state.userCamera;
             currentCamera.perspective.aspectRatio = this.currentWidth / this.currentHeight;
         }
         else
         {
-            currentCamera = state.gltf.cameras[state.cameraIndex];
+            currentCamera = state.gltf.cameras[state.gltf.nodes[state.cameraNodeIndex].camera];
+            if (currentCamera === undefined) {
+                throw new Error("Camera is misconfigured.");
+            }
+            currentCamera.setNode(state.gltf, state.cameraNodeIndex);
         }
 
         let aspectHeight = this.currentHeight;
@@ -21092,13 +21085,16 @@ class UIModel
                 let cameraIndices = [{title: "User Camera", index: -1}];
                 if (gltf.scenes[state.sceneIndex] !== undefined)
                 {
-                    cameraIndices.push(...gltf.cameras.map( (camera, index) => {
-                        if(gltf.scenes[state.sceneIndex].includesNode(gltf, camera.node))
+                    cameraIndices.push(...gltf.nodes.map( (node, index) => {
+                        if(node.camera !== undefined && gltf.scenes[state.sceneIndex].includesNode(gltf, index))
                         {
-                            let name = camera.name;
-                            if(name === "" || name === undefined)
+                            let name = node.name ?? "Node " + index;
+                            const camera = gltf.cameras[node.camera];
+                            if(camera.name !== undefined && camera.name !== "")
                             {
-                                name = index;
+                                name += ": " + camera.name;
+                            } else {
+                                name += ": Camera " + node.camera;
                             }
                             return {title: name, index: index};
                         }
@@ -21111,7 +21107,7 @@ class UIModel
             })
         );
         cameraIndices.subscribe(cameras => this.app.cameras = cameras);
-        const loadedCameraIndex = sceneChangeObservable.pipe(map(state => state.cameraIndex));
+        const loadedCameraIndex = sceneChangeObservable.pipe(map(state => state.cameraNodeIndex));
         loadedCameraIndex.subscribe(index => this.app.selectedCamera = index !== undefined ? index : -1 );
     }
 
@@ -71504,7 +71500,7 @@ var main = async () => {
                         state.gltf = gltf;
                         const defaultScene = state.gltf.scene;
                         state.sceneIndex = defaultScene === undefined ? 0 : defaultScene;
-                        state.cameraIndex = undefined;
+                        state.cameraNodeIndex = undefined;
 
                         if (state.gltf.scenes.length != 0) {
                             if (state.sceneIndex > state.gltf.scenes.length - 1) {
@@ -71549,7 +71545,7 @@ var main = async () => {
                             .then((gltf) => {
                                 state.gltf = gltf;
                                 state.sceneIndex = 0;
-                                state.cameraIndex = undefined;
+                                state.cameraNodeIndex = undefined;
 
                                 uiModel.exitLoadingState();
                                 redraw = true;
@@ -71578,7 +71574,7 @@ var main = async () => {
     const sceneChangedObservable = uiModel.scene.pipe(
         map((sceneIndex) => {
             state.sceneIndex = sceneIndex;
-            state.cameraIndex = undefined;
+            state.cameraNodeIndex = undefined;
             const scene = state.gltf.scenes[state.sceneIndex];
             if (scene !== undefined) {
                 scene.applyTransformHierarchy(state.gltf);
@@ -71596,9 +71592,9 @@ var main = async () => {
     const cameraExportChangedObservable = uiModel.cameraValuesExport.pipe(
         map(() => {
             const camera =
-        state.cameraIndex === undefined
+        state.cameraNodeIndex === undefined
             ? state.userCamera
-            : state.gltf.cameras[state.cameraIndex];
+            : state.gltf.cameras[state.cameraNodeIndex];
             return camera.getDescription(state.gltf);
         })
     );
@@ -71635,7 +71631,7 @@ var main = async () => {
     listenForRedraw(uiModel.scene);
 
     uiModel.camera.subscribe(
-        (camera) => (state.cameraIndex = camera !== -1 ? camera : undefined)
+        (camera) => (state.cameraNodeIndex = camera !== -1 ? camera : undefined)
     );
     listenForRedraw(uiModel.camera);
 
@@ -71825,21 +71821,21 @@ var main = async () => {
     uiModel.attachCameraChangeObservable(sceneChangedStateObservable);
 
     uiModel.orbit.subscribe((orbit) => {
-        if (state.cameraIndex === undefined) {
+        if (state.cameraNodeIndex === undefined) {
             state.userCamera.orbit(orbit.deltaPhi, orbit.deltaTheta);
         }
     });
     listenForRedraw(uiModel.orbit);
 
     uiModel.pan.subscribe((pan) => {
-        if (state.cameraIndex === undefined) {
+        if (state.cameraNodeIndex === undefined) {
             state.userCamera.pan(pan.deltaX, -pan.deltaY);
         }
     });
     listenForRedraw(uiModel.pan);
 
     uiModel.zoom.subscribe((zoom) => {
-        if (state.cameraIndex === undefined) {
+        if (state.cameraNodeIndex === undefined) {
             state.userCamera.zoomBy(zoom.deltaZoom);
         }
     });
