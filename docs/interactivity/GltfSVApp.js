@@ -3873,7 +3873,10 @@ class BehaveEngineNode {
             case "float3":
                 return [NaN, NaN, NaN];
             case "float4":
+            case "float2x2":
                 return [NaN, NaN, NaN, NaN];
+            case "float3x3":
+                return [NaN, NaN, NaN, NaN, NaN, NaN, NaN, NaN, NaN];
             case "float4x4":
                 return [NaN, NaN, NaN, NaN, NaN, NaN, NaN, NaN, NaN, NaN, NaN, NaN, NaN, NaN, NaN, NaN];
             default:
@@ -4430,23 +4433,36 @@ class Receive extends BehaveEngineNode {
                 return this.parseMaybeJSON(val[0]);
             case "float4":
                 return this.parseMaybeJSON(val[0]);
+            case "float2x2":
+                return this.parseMaybeJSON(val[0], 2);
+            case "float3x3":
+                return this.parseMaybeJSON(val[0], 3);
             case "float4x4":
-                return this.parseMaybeJSON(val[0]);
+                return this.parseMaybeJSON(val[0], 4);
             default:
                 return val;
         }
     }
-    parseMaybeJSON(input) {
-        if (typeof input === "string") {
+    parseMaybeJSON(input, matrixWidth) {
+        let inputCopy = JSON.parse(JSON.stringify(input));
+        if (typeof inputCopy === "string") {
             try {
-                return JSON.parse(input);
+                inputCopy = JSON.parse(inputCopy);
             }
             catch (e) {
                 throw new Error("Invalid JSON string");
             }
         }
+        if (matrixWidth && Array.isArray(inputCopy) && inputCopy.length === matrixWidth * matrixWidth) {
+            // If the input is a flat array with the correct length, convert it to a 2D array
+            const matrix = [];
+            for (let i = 0; i < matrixWidth; i++) {
+                matrix[i] = inputCopy.slice(i * matrixWidth, (i + 1) * matrixWidth);
+            }
+            return matrix;
+        }
         // Already an object/array/etc.
-        return input;
+        return inputCopy;
     }
 }
 
@@ -9206,6 +9222,9 @@ class BasicBehaveEngine {
             this.eventBus.clearCustomEventListeners();
         };
         this.loadBehaveGraph = (behaveGraph, runGraph = true) => {
+            this.hoverableNodesIndices.clear();
+            this.selectableNodesIndices.clear();
+            this.lastHoveredNodeIndices.clear();
             try {
                 this.validateGraph(behaveGraph);
             }
@@ -9293,6 +9312,10 @@ class BasicBehaveEngine {
         };
         this.getWorld = () => {
             //pass
+        };
+        this.getParentNodeIndex = (nodeIndex) => {
+            //pass
+            return undefined;
         };
         this.isSlerpPath = (path) => {
             if (path.endsWith("rotation")) {
@@ -9539,6 +9562,9 @@ class BasicBehaveEngine {
         this.nodes = [];
         this.types = [];
         this._timerID = null;
+        this.hoverableNodesIndices = new Map();
+        this.lastHoveredNodeIndices = new Map();
+        this.selectableNodesIndices = new Map();
         this.registerKnownBehaviorNodes();
     }
     get lastTickTime() {
@@ -9549,6 +9575,65 @@ class BasicBehaveEngine {
     }
     get variables() {
         return this._variables;
+    }
+    select(selectedNodeIndex, controllerIndex, selectionPoint, selectionRayOrigin) {
+        this.alertOnSelect(selectedNodeIndex, controllerIndex, selectionPoint, selectionRayOrigin, selectedNodeIndex);
+    }
+    alertOnSelect(selectedNodeIndex, controllerIndex, selectionPoint, selectionRayOrigin, currentNodeIndex) {
+        while (currentNodeIndex !== undefined) {
+            const callback = this.selectableNodesIndices.get(currentNodeIndex);
+            if (callback !== undefined) {
+                callback(selectedNodeIndex, controllerIndex, selectionPoint, selectionRayOrigin);
+                return;
+            }
+            currentNodeIndex = this.getParentNodeIndex(currentNodeIndex);
+        }
+    }
+    hoverOn(nodeIndex, controllerIndex) {
+        const lastHoverNodeIndex = this.lastHoveredNodeIndices.get(controllerIndex);
+        if (nodeIndex === lastHoverNodeIndex) {
+            return;
+        }
+        const oldHoverIndicies = new Set();
+        let firstCommonHoverNodeIndex = undefined;
+        if (lastHoverNodeIndex !== undefined && nodeIndex !== undefined) {
+            let currentOldHoverNodeIndex = lastHoverNodeIndex;
+            while (currentOldHoverNodeIndex !== undefined) {
+                oldHoverIndicies.add(currentOldHoverNodeIndex);
+                currentOldHoverNodeIndex = this.getParentNodeIndex(currentOldHoverNodeIndex);
+            }
+            let currentHoverNodeIndex = nodeIndex;
+            while (currentHoverNodeIndex !== undefined) {
+                if (oldHoverIndicies.has(currentHoverNodeIndex)) {
+                    firstCommonHoverNodeIndex = currentHoverNodeIndex;
+                    break;
+                }
+                currentHoverNodeIndex = this.getParentNodeIndex(currentHoverNodeIndex);
+            }
+        }
+        this.alertOnHoverOut(nodeIndex, controllerIndex, lastHoverNodeIndex, firstCommonHoverNodeIndex);
+        this.alertOnHoverIn(nodeIndex, controllerIndex, nodeIndex, firstCommonHoverNodeIndex);
+        this.lastHoveredNodeIndices.set(controllerIndex, nodeIndex);
+    }
+    alertOnHoverIn(selectedNodeIndex, controllerIndex, currentHoverNodeIndex, firstCommonHoverNodeIndex) {
+        while (currentHoverNodeIndex !== undefined && currentHoverNodeIndex !== firstCommonHoverNodeIndex) {
+            const hoverInformation = this.hoverableNodesIndices.get(currentHoverNodeIndex);
+            if ((hoverInformation === null || hoverInformation === void 0 ? void 0 : hoverInformation.callbackHoverIn) !== undefined) {
+                hoverInformation.callbackHoverIn(selectedNodeIndex, controllerIndex, firstCommonHoverNodeIndex);
+                break;
+            }
+            currentHoverNodeIndex = this.getParentNodeIndex(currentHoverNodeIndex);
+        }
+    }
+    alertOnHoverOut(selectedNodeIndex, controllerIndex, currentHoverNodeIndex, firstCommonHoverNodeIndex) {
+        while (currentHoverNodeIndex !== undefined && currentHoverNodeIndex !== firstCommonHoverNodeIndex) {
+            const hoverInformation = this.hoverableNodesIndices.get(currentHoverNodeIndex);
+            if ((hoverInformation === null || hoverInformation === void 0 ? void 0 : hoverInformation.callbackHoverOut) !== undefined) {
+                hoverInformation.callbackHoverOut(selectedNodeIndex, controllerIndex, firstCommonHoverNodeIndex);
+                break;
+            }
+            currentHoverNodeIndex = this.getParentNodeIndex(currentHoverNodeIndex);
+        }
     }
     clearScheduledDelays() {
         this._scheduledDelays = [];
@@ -9636,76 +9721,82 @@ class DOMEventBus {
 
 class ADecorator {
     constructor(behaveEngine) {
-        this.getEventList = () => {
-            return this.behaveEngine.getEventList();
-        };
-        this.clearEventList = () => {
-            this.behaveEngine.clearEventList();
-        };
-        this.addEvent = (event) => {
-            this.behaveEngine.addEvent(event);
-        };
-        this.addCustomEventListener = (name, func) => {
-            this.behaveEngine.addCustomEventListener(name, func);
-        };
-        this.clearCustomEventListeners = () => {
-            this.behaveEngine.clearCustomEventListeners();
-        };
-        this.registerBehaveEngineNode = (type, behaveEngineNode) => {
-            this.behaveEngine.registerBehaveEngineNode(type, behaveEngineNode);
-        };
-        this.isSlerpPath = (path) => {
-            return this.behaveEngine.isSlerpPath(path);
-        };
-        this.animateCubicBezier = (path, p1, p2, initialValue, targetValue, duration, valueType, callback) => {
-            this.behaveEngine.animateCubicBezier(path, p1, p2, initialValue, targetValue, duration, valueType, callback);
-        };
-        this.loadBehaveGraph = (behaveGraph, run = true) => {
-            this.behaveEngine.loadBehaveGraph(behaveGraph, run);
-        };
-        this.pauseEventQueue = () => {
-            this.behaveEngine.pauseEventQueue();
-        };
-        this.playEventQueue = () => {
-            this.behaveEngine.playEventQueue();
-        };
-        this.dispatchCustomEvent = (name, vals) => {
-            this.behaveEngine.dispatchCustomEvent(name, vals);
-        };
-        this.setPathValue = (path, targetValue) => {
-            this.behaveEngine.setPathValue(path, targetValue);
-        };
-        this.getPathValue = (path) => {
-            this.behaveEngine.getPathValue(path);
-        };
-        this.getPathtypeName = (path) => {
-            this.behaveEngine.getPathtypeName(path);
-        };
-        this.addEntryToValueEvaluationCache = (key, val) => {
-            this.behaveEngine.addEntryToValueEvaluationCache(key, val);
-        };
-        this.clearValueEvaluationCache = () => {
-            this.behaveEngine.clearValueEvaluationCache();
-        };
-        this.getValueEvaluationCacheValue = (key) => {
-            return this.behaveEngine.getValueEvaluationCacheValue(key);
-        };
-        this.setPointerInterpolationCallback = (path, action) => {
-            this.behaveEngine.setPointerInterpolationCallback(path, action);
-        };
-        this.clearPointerInterpolation = (path) => {
-            this.behaveEngine.clearPointerInterpolation(path);
-        };
-        this.setVariableInterpolationCallback = (variable, action) => {
-            this.behaveEngine.setVariableInterpolationCallback(variable, action);
-        };
-        this.clearVariableInterpolation = (variable) => {
-            this.behaveEngine.clearVariableInterpolation(variable);
-        };
         this.behaveEngine = behaveEngine;
     }
+    hoverOn(nodeIndex, controllerIndex) {
+        this.behaveEngine.hoverOn(nodeIndex, controllerIndex);
+    }
+    select(selectedNodeIndex, controllerIndex, selectionPoint, selectionRayOrigin) {
+        this.behaveEngine.select(selectedNodeIndex, controllerIndex, selectionPoint, selectionRayOrigin);
+    }
+    getEventList() {
+        return this.behaveEngine.getEventList();
+    }
+    clearEventList() {
+        this.behaveEngine.clearEventList();
+    }
+    addEvent(event) {
+        this.behaveEngine.addEvent(event);
+    }
+    addCustomEventListener(name, func) {
+        this.behaveEngine.addCustomEventListener(name, func);
+    }
+    clearCustomEventListeners() {
+        this.behaveEngine.clearCustomEventListeners();
+    }
+    registerBehaveEngineNode(type, behaveEngineNode) {
+        this.behaveEngine.registerBehaveEngineNode(type, behaveEngineNode);
+    }
+    isSlerpPath(path) {
+        return this.behaveEngine.isSlerpPath(path);
+    }
+    animateCubicBezier(path, p1, p2, initialValue, targetValue, duration, valueType, callback) {
+        this.behaveEngine.animateCubicBezier(path, p1, p2, initialValue, targetValue, duration, valueType, callback);
+    }
     get fps() {
-        return 1;
+        return this.behaveEngine.fps;
+    }
+    loadBehaveGraph(behaveGraph, runGraph = true) {
+        this.behaveEngine.loadBehaveGraph(behaveGraph, runGraph);
+    }
+    pauseEventQueue() {
+        this.behaveEngine.pauseEventQueue();
+    }
+    playEventQueue() {
+        this.behaveEngine.playEventQueue();
+    }
+    dispatchCustomEvent(name, vals) {
+        this.behaveEngine.dispatchCustomEvent(name, vals);
+    }
+    setPathValue(path, targetValue) {
+        this.behaveEngine.setPathValue(path, targetValue);
+    }
+    getPathValue(path) {
+        this.behaveEngine.getPathValue(path);
+    }
+    getPathtypeName(path) {
+        this.behaveEngine.getPathtypeName(path);
+    }
+    addEntryToValueEvaluationCache(key, val) {
+        this.behaveEngine.addEntryToValueEvaluationCache(key, val);
+    }
+    clearValueEvaluationCache() {
+        this.behaveEngine.clearValueEvaluationCache();
+    }
+    getValueEvaluationCacheValue(key) {
+        return this.behaveEngine.getValueEvaluationCacheValue(key);
+    }
+    setPointerInterpolationCallback(path, action) {
+        this.behaveEngine.setPointerInterpolationCallback(path, action);
+    }
+    clearPointerInterpolation(path) {
+        this.behaveEngine.clearPointerInterpolation(path);
+    }
+    setVariableInterpolationCallback(variable, action) {
+        this.behaveEngine.setVariableInterpolationCallback(variable, action);
+    }
+    clearVariableInterpolation(variable) {
+        this.behaveEngine.clearVariableInterpolation(variable);
     }
 }
 
@@ -9738,18 +9829,18 @@ class OnSelect extends BehaveEngineNode {
         this.setUpOnSelect();
     }
     setUpOnSelect() {
-        const callback = (selectionPoint, selectedNodeIndex, controllerIndex, selectionRayOrigin) => {
+        const callback = (selectedNodeIndex, controllerIndex, selectionPoint, selectionRayOrigin) => {
             this.outValues.selectionPoint = {
                 type: this.getTypeIndex('float3'),
-                value: selectionPoint,
+                value: selectionPoint !== null && selectionPoint !== void 0 ? selectionPoint : [NaN, NaN, NaN],
             };
             this.outValues.selectionRayOrigin = {
                 type: this.getTypeIndex('float3'),
-                value: selectionRayOrigin,
+                value: selectionRayOrigin !== null && selectionRayOrigin !== void 0 ? selectionRayOrigin : [NaN, NaN, NaN],
             };
             this.outValues.selectedNodeIndex = {
                 type: this.getTypeIndex('int'),
-                value: [selectedNodeIndex],
+                value: [selectedNodeIndex !== null && selectedNodeIndex !== void 0 ? selectedNodeIndex : -1],
             };
             this.outValues.controllerIndex = {
                 type: this.getTypeIndex('int'),
@@ -9758,14 +9849,11 @@ class OnSelect extends BehaveEngineNode {
             console.log("OnSelect", { node: this._nodeIndex, outValues: this.outValues });
             this.addEventToWorkQueue(this.flows.out);
             if (!this._stopPropagation) {
-                // eslint-disable-next-line @typescript-eslint/ban-ts-comment
-                // @ts-ignore
-                this.graphEngine.alertParentOnSelect(selectionPoint, selectedNodeIndex, controllerIndex, selectionRayOrigin, this._nodeIndex);
+                const parentNodeIndex = this.graphEngine.getParentNodeIndex(this._nodeIndex);
+                this.graphEngine.alertOnSelect(selectedNodeIndex, controllerIndex, selectionPoint, selectionRayOrigin, parentNodeIndex);
             }
         };
-        // eslint-disable-next-line @typescript-eslint/ban-ts-comment
-        // @ts-ignore
-        this.graphEngine.addNodeClickedListener(this._nodeIndex, callback);
+        this.graphEngine.selectableNodesIndices.set(this._nodeIndex, callback);
     }
 }
 
@@ -9879,12 +9967,12 @@ class OnHoverIn extends BehaveEngineNode {
         this.setUpOnHoverIn();
     }
     setUpOnHoverIn() {
-        const callback = (selectedNodeIndex, controllerIndex) => {
-            if (this.graphEngine.getWorld().glTFNodes[this._nodeIndex].metadata.shouldExecuteHoverIn) {
-                this.graphEngine.getWorld().glTFNodes[this._nodeIndex].metadata.shouldExecuteHoverIn = false;
+        const callback = (selectedNodeIndex, controllerIndex, firstCommonHoverNodeIndex) => {
+            const hoverInformation = this.graphEngine.hoverableNodesIndices.get(this._nodeIndex);
+            if (hoverInformation) {
                 this.outValues.selectedNodeIndex = {
                     type: this.getTypeIndex('int'),
-                    value: [selectedNodeIndex],
+                    value: [selectedNodeIndex !== null && selectedNodeIndex !== void 0 ? selectedNodeIndex : -1],
                 };
                 this.outValues.controllerIndex = {
                     type: this.getTypeIndex('int'),
@@ -9893,12 +9981,17 @@ class OnHoverIn extends BehaveEngineNode {
                 this.addEventToWorkQueue(this.flows.out);
             }
             if (!this._stopPropagation) {
-                // eslint-disable-next-line @typescript-eslint/ban-ts-comment
-                // @ts-ignore
-                this.graphEngine.alertParentOnHoverIn(selectedNodeIndex, controllerIndex, this._nodeIndex);
+                const parentNodeIndex = this.graphEngine.getParentNodeIndex(this._nodeIndex);
+                this.graphEngine.alertOnHoverIn(selectedNodeIndex, controllerIndex, parentNodeIndex, firstCommonHoverNodeIndex);
             }
         };
-        this.graphEngine.getWorld().glTFNodes[this._nodeIndex].metadata.onHoverInCallback = callback;
+        const hoverInformation = this.graphEngine.hoverableNodesIndices.get(this._nodeIndex);
+        if (hoverInformation) {
+            hoverInformation.callbackHoverIn = callback;
+        }
+        else {
+            this.graphEngine.hoverableNodesIndices.set(this._nodeIndex, { callbackHoverIn: callback });
+        }
     }
 }
 
@@ -9923,12 +10016,12 @@ class OnHoverOut extends BehaveEngineNode {
         this.setUpOnHoverOut();
     }
     setUpOnHoverOut() {
-        const callback = (selectedNodeIndex, controllerIndex) => {
-            if (this.graphEngine.getWorld().glTFNodes[this._nodeIndex].metadata.shouldExecuteHoverOut) {
-                this.graphEngine.getWorld().glTFNodes[this._nodeIndex].metadata.shouldExecuteHoverOut = false;
+        const callback = (selectedNodeIndex, controllerIndex, firstCommonHoverNodeIndex) => {
+            const hoverInformation = this.graphEngine.hoverableNodesIndices.get(this._nodeIndex);
+            if (hoverInformation) {
                 this.outValues.selectedNodeIndex = {
                     type: this.getTypeIndex('int'),
-                    value: [selectedNodeIndex],
+                    value: [selectedNodeIndex !== null && selectedNodeIndex !== void 0 ? selectedNodeIndex : -1],
                 };
                 this.outValues.controllerIndex = {
                     type: this.getTypeIndex('int'),
@@ -9937,12 +10030,17 @@ class OnHoverOut extends BehaveEngineNode {
                 this.addEventToWorkQueue(this.flows.out);
             }
             if (!this._stopPropagation) {
-                // eslint-disable-next-line @typescript-eslint/ban-ts-comment
-                // @ts-ignore
-                this.graphEngine.alertParentOnHoverOut(selectedNodeIndex, controllerIndex, this._nodeIndex);
+                const parentNodeIndex = this.graphEngine.getParentNodeIndex(this._nodeIndex);
+                this.graphEngine.alertOnHoverOut(selectedNodeIndex, controllerIndex, parentNodeIndex, firstCommonHoverNodeIndex);
             }
         };
-        this.graphEngine.getWorld().glTFNodes[this._nodeIndex].metadata.onHoverOutCallback = callback;
+        const hoverInformation = this.graphEngine.hoverableNodesIndices.get(this._nodeIndex);
+        if (hoverInformation) {
+            hoverInformation.callbackHoverOut = callback;
+        }
+        else {
+            this.graphEngine.hoverableNodesIndices.set(this._nodeIndex, { callbackHoverOut: callback });
+        }
     }
 }
 
