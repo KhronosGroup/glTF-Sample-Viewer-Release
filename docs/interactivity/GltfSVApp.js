@@ -1,6 +1,6 @@
 /**
  * Bundle of gltf-sample-viewer-example
- * Generated: 2025-09-18
+ * Generated: 2025-09-19
  * Version: 1.0.0
  * License: Apache-2.0
  * Dependencies:
@@ -1091,7 +1091,7 @@
 
 /**
  * Bundle of @khronosgroup/gltf-viewer
- * Generated: 2025-09-18
+ * Generated: 2025-09-19
  * Version: 1.1.0
  * License: Apache-2.0
  * Dependencies:
@@ -29097,7 +29097,7 @@ class UIModel
         const inputObservables = getInputObservables(canvas, this.app);
 
         const dropdownGltfChanged = app.modelChanged.pipe(
-            startWith(modelURL === null ? "DamagedHelmet" : null),
+            startWith(modelURL === null ? "BowShooting" : null),
             filter(value => value !== null),
             map(value => {
                 app.flavours = modelPathProvider.getModelFlavours(value);
@@ -68113,7 +68113,7 @@ const appCreated = vue_cjs.createApp({
             assetGenerator: "",
             statistics: [],
 
-            selectedModel: "DamagedHelmet",
+            selectedModel: "BowShooting",
             selectedFlavour: "",
             selectedScene: {},
             selectedCamera: {},
@@ -79782,7 +79782,7 @@ var main = async () => {
     state.renderingParameters.useDirectionalLightsWithDisabledIBL = true;
 
     const pathProvider = new GltfModelPathProvider(
-        "https://raw.githubusercontent.com/KhronosGroup/glTF-Sample-Assets/main"
+        "https://raw.githubusercontent.com/KhronosGroup/glTF-Test-Assets-Interactivity/main"
     );
     await pathProvider.initialize();
     const environmentPaths = fillEnvironmentWithPaths(
