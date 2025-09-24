@@ -1,6 +1,6 @@
 /**
  * Bundle of gltf-sample-viewer-example
- * Generated: 2025-09-19
+ * Generated: 2025-09-24
  * Version: 1.0.0
  * License: Apache-2.0
  * Dependencies:
@@ -1091,7 +1091,7 @@
 
 /**
  * Bundle of @khronosgroup/gltf-viewer
- * Generated: 2025-09-19
+ * Generated: 2025-09-24
  * Version: 1.1.0
  * License: Apache-2.0
  * Dependencies:
@@ -4444,25 +4444,32 @@ class Receive extends BehaveEngineNode {
         }
     }
     parseMaybeJSON(input, matrixWidth) {
-        let inputCopy = JSON.parse(JSON.stringify(input));
-        if (typeof inputCopy === "string") {
-            try {
-                inputCopy = JSON.parse(inputCopy);
+        try {
+            let inputCopy = input;
+            if (typeof input === "string") {
+                inputCopy = JSON.parse(input);
             }
-            catch (e) {
-                throw new Error("Invalid JSON string");
+            if (matrixWidth && inputCopy.length === matrixWidth * matrixWidth) {
+                // If the input is a flat array with the correct length, convert it to a 2D array
+                const matrix = [];
+                for (let i = 0; i < matrixWidth; i++) {
+                    matrix[i] = inputCopy.slice(i * matrixWidth, (i + 1) * matrixWidth);
+                }
+                return matrix;
             }
+            // Create copy of array, otherwise use JSON.parse for copying objects.
+            // This avoids issues with Float32Array that are parsed incorrectly via the JSON functions.
+            if (inputCopy.slice) {
+                inputCopy = inputCopy.slice(0);
+            }
+            else {
+                inputCopy = JSON.parse(JSON.stringify(inputCopy));
+            }
+            return inputCopy;
         }
-        if (matrixWidth && Array.isArray(inputCopy) && inputCopy.length === matrixWidth * matrixWidth) {
-            // If the input is a flat array with the correct length, convert it to a 2D array
-            const matrix = [];
-            for (let i = 0; i < matrixWidth; i++) {
-                matrix[i] = inputCopy.slice(i * matrixWidth, (i + 1) * matrixWidth);
-            }
-            return matrix;
+        catch (e) {
+            throw new Error("Error while parsing JSON in event/receive");
         }
-        // Already an object/array/etc.
-        return inputCopy;
     }
 }
 
@@ -9156,6 +9163,39 @@ class QuatAngleBetween extends BehaveEngineNode {
     }
 }
 
+class VariableSetMultiple extends BehaveEngineNode {
+    constructor(props) {
+        super(props);
+        this.REQUIRED_CONFIGURATIONS = { variables: {} };
+        this.name = "VariableSetMultiple";
+        this.validateValues(this.values);
+        this.validateConfigurations(this.configuration);
+        const { variables } = this.evaluateAllConfigurations(Object.keys(this.REQUIRED_CONFIGURATIONS));
+        if (typeof variables[0] === "string") {
+            this._variables = JSON.parse(variables);
+        }
+        else {
+            this._variables = variables;
+        }
+    }
+    processNode(flowSocket) {
+        this.graphEngine.clearValueEvaluationCache();
+        const vals = this.evaluateAllValues(this._variables.map(variable => variable.toString()));
+        this.graphEngine.processNodeStarted(this);
+        for (const variableId of this._variables) {
+            this.graphEngine.clearVariableInterpolation(variableId);
+            const value = vals[variableId.toString()];
+            if (Array.isArray(value)) {
+                this.variables[variableId].value = value;
+            }
+            else {
+                this.variables[variableId].value = [value];
+            }
+        }
+        super.processNode(flowSocket);
+    }
+}
+
 var __awaiter = function (thisArg, _arguments, P, generator) {
     function adopt(value) { return value instanceof P ? value : new P(function (resolve) { resolve(value); }); }
     return new (P || (P = Promise))(function (resolve, reject) {
@@ -9385,6 +9425,7 @@ class BasicBehaveEngine {
             this.registerBehaveEngineNode("event/send", Send);
             this.registerBehaveEngineNode("variable/get", VariableGet);
             this.registerBehaveEngineNode("variable/set", VariableSet);
+            this.registerBehaveEngineNode("variable/setMultiple", VariableSetMultiple);
             this.registerBehaveEngineNode("variable/interpolate", VariableInterpolate);
             this.registerBehaveEngineNode("math/E", Euler);
             this.registerBehaveEngineNode("math/Inf", Inf);
@@ -9853,7 +9894,7 @@ class OnSelect extends BehaveEngineNode {
                 this.graphEngine.alertOnSelect(selectedNodeIndex, controllerIndex, selectionPoint, selectionRayOrigin, parentNodeIndex);
             }
         };
-        this.graphEngine.selectableNodesIndices.set(this._nodeIndex, callback);
+        this.graphEngine.selectableNodesIndices.set(Number(this._nodeIndex), callback);
     }
 }
 
@@ -9990,7 +10031,7 @@ class OnHoverIn extends BehaveEngineNode {
             hoverInformation.callbackHoverIn = callback;
         }
         else {
-            this.graphEngine.hoverableNodesIndices.set(this._nodeIndex, { callbackHoverIn: callback });
+            this.graphEngine.hoverableNodesIndices.set(Number(this._nodeIndex), { callbackHoverIn: callback });
         }
     }
 }
@@ -10039,7 +10080,7 @@ class OnHoverOut extends BehaveEngineNode {
             hoverInformation.callbackHoverOut = callback;
         }
         else {
-            this.graphEngine.hoverableNodesIndices.set(this._nodeIndex, { callbackHoverOut: callback });
+            this.graphEngine.hoverableNodesIndices.set(Number(this._nodeIndex), { callbackHoverOut: callback });
         }
     }
 }
