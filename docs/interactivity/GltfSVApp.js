@@ -1,6 +1,6 @@
 /**
  * Bundle of gltf-sample-viewer-example
- * Generated: 2025-09-24
+ * Generated: 2025-10-17
  * Version: 1.0.0
  * License: Apache-2.0
  * Dependencies:
@@ -1091,7 +1091,7 @@
 
 /**
  * Bundle of @khronosgroup/gltf-viewer
- * Generated: 2025-09-24
+ * Generated: 2025-10-17
  * Version: 1.1.0
  * License: Apache-2.0
  * Dependencies:
@@ -8920,7 +8920,7 @@ class MathSwitch extends BehaveEngineNode {
         const selection = evaluatedValues.selection;
         this.graphEngine.processNodeStarted(this);
         // ensure all cases are defined
-        const caseVals = this.evaluateAllValues(Object.keys(this._cases));
+        const caseVals = this.evaluateAllValues(this._cases.map(c => c.toString()));
         for (const [key, caseVal] of Object.entries(caseVals)) {
             if (caseVal === undefined) {
                 throw Error(`case value ${key} is undefined`);
@@ -8941,8 +8941,6 @@ class MathSwitch extends BehaveEngineNode {
                 throw Error(`case value ${key} has invalid type, expected ${typeDefault}`);
             }
         }
-        console.log(this._cases);
-        console.log(caseVals);
         const selectionIndex = Number(selection);
         if (selectionIndex < 0 || selectionIndex >= this._cases.length) {
             return {
@@ -8950,9 +8948,10 @@ class MathSwitch extends BehaveEngineNode {
             };
         }
         else {
-            console.log(Object.values(caseVals)[selectionIndex]);
+            const val = Object.values(caseVals)[selectionIndex];
+            const returnVal = Array.isArray(val) ? val : [val];
             return {
-                'value': { value: [Object.values(caseVals)[selectionIndex]], type: typeIndexDefault }
+                'value': { value: returnVal, type: typeIndexDefault }
             };
         }
     }
@@ -8984,15 +8983,15 @@ class Inverse extends BehaveEngineNode {
         const result = create$4();
         const success = invert(result, colMajor);
         if (!success) {
-            console.error("Matrix is not invertible.");
-            return this.createIdentityMatrix();
+            return { value: this.createIdentityMatrix(), isValid: false };
         }
-        return [
+        const resultMatrix = [
             [result[0], result[1], result[2], result[3]],
             [result[4], result[5], result[6], result[7]],
             [result[8], result[9], result[10], result[11]],
             [result[12], result[13], result[14], result[15]]
         ];
+        return { value: resultMatrix, isValid: true };
     }
     static invert3x3(matrix) {
         const [[m11, m21, m31], [m12, m22, m32], [m13, m23, m33]] = matrix;
@@ -9001,8 +9000,7 @@ class Inverse extends BehaveEngineNode {
         const cofactor13 = m21 * m32 - m22 * m31;
         const determinant = m11 * cofactor11 + m12 * cofactor12 + m13 * cofactor13;
         if (determinant === 0) {
-            console.error("Matrix is not invertible.");
-            return this.createIdentityMatrix(); // Assuming createIdentityMatrix is a valid function in your context
+            return { value: this.createIdentityMatrix(), isValid: false };
         }
         const inverseDeterminant = 1 / determinant;
         const result = [
@@ -9012,39 +9010,38 @@ class Inverse extends BehaveEngineNode {
                 -(m11 * (m22 * m33 - m23 * m32) - m21 * (m12 * m33 - m13 * m32) + m31 * (m12 * m23 - m13 * m22)) * inverseDeterminant,
                 m11 * (m22 * m33 - m23 * m32) - m21 * (m12 * m33 - m13 * m32) + m31 * (m12 * m23 - m13 * m22) * inverseDeterminant]
         ];
-        return result;
+        return { value: result, isValid: true };
     }
     static invert2x2(matrix) {
         const [[m11, m21], [m12, m22]] = matrix;
         const determinant = m11 * m22 - m12 * m21;
         if (determinant === 0) {
-            console.error("Matrix is not invertible.");
-            return this.createIdentityMatrix();
+            return { value: this.createIdentityMatrix(), isValid: false };
         }
         const inverseDeterminant = 1 / determinant;
         const result = [[m22 * inverseDeterminant, -m12 * inverseDeterminant], [-m21 * inverseDeterminant, m11 * inverseDeterminant]];
-        return result;
+        return { value: result, isValid: true };
     }
     processNode(flowSocket) {
         const { a } = this.evaluateAllValues(Object.keys(this.REQUIRED_VALUES));
         this.graphEngine.processNodeStarted(this);
         const typeIndex = this.values['a'].type;
         const type = this.getType(typeIndex);
-        let val;
+        let result;
         switch (type) {
             case "float4x4":
-                val = Inverse.invert4x4(a);
+                result = Inverse.invert4x4(a);
                 break;
             case "float3x3":
-                val = Inverse.invert3x3(a);
+                result = Inverse.invert3x3(a);
                 break;
             case "float2x2":
-                val = Inverse.invert2x2(a);
+                result = Inverse.invert2x2(a);
                 break;
             default:
                 throw Error("Invalid type");
         }
-        return { 'value': { value: val, type: typeIndex } };
+        return { 'value': { value: result.value, type: typeIndex }, 'isValid': { value: result.isValid, type: this.getTypeIndex('bool') } };
     }
 }
 
@@ -9995,7 +9992,7 @@ class OnHoverIn extends BehaveEngineNode {
         this.validateValues(this.values);
         this.validateConfigurations(this.configuration);
         const { nodeIndex, stopPropagation } = this.evaluateAllConfigurations(Object.keys(this.REQUIRED_CONFIGURATIONS));
-        this._nodeIndex = nodeIndex[0];
+        this._nodeIndex = Number(nodeIndex[0]);
         this._stopPropagation = stopPropagation[0];
         this.outValues.selectedNodeIndex = {
             type: this.getTypeIndex('int'),
@@ -10031,7 +10028,7 @@ class OnHoverIn extends BehaveEngineNode {
             hoverInformation.callbackHoverIn = callback;
         }
         else {
-            this.graphEngine.hoverableNodesIndices.set(Number(this._nodeIndex), { callbackHoverIn: callback });
+            this.graphEngine.hoverableNodesIndices.set(this._nodeIndex, { callbackHoverIn: callback });
         }
     }
 }
@@ -10044,7 +10041,7 @@ class OnHoverOut extends BehaveEngineNode {
         this.validateValues(this.values);
         this.validateConfigurations(this.configuration);
         const { nodeIndex, stopPropagation } = this.evaluateAllConfigurations(Object.keys(this.REQUIRED_CONFIGURATIONS));
-        this._nodeIndex = nodeIndex[0];
+        this._nodeIndex = Number(nodeIndex[0]);
         this._stopPropagation = stopPropagation[0];
         this.outValues.selectedNodeIndex = {
             type: this.getTypeIndex('int'),
@@ -10080,7 +10077,7 @@ class OnHoverOut extends BehaveEngineNode {
             hoverInformation.callbackHoverOut = callback;
         }
         else {
-            this.graphEngine.hoverableNodesIndices.set(Number(this._nodeIndex), { callbackHoverOut: callback });
+            this.graphEngine.hoverableNodesIndices.set(this._nodeIndex, { callbackHoverOut: callback });
         }
     }
 }
@@ -10140,7 +10137,6 @@ class GraphController {
         this.graphIndex = undefined;
         this.playing = false;
         this.decorator.setState(state);
-        this.engine.clearCustomEventListeners();
         this.engine.clearEventList();
         this.engine.clearPointerInterpolation();
         this.engine.clearVariableInterpolation();
@@ -10230,6 +10226,23 @@ class GraphController {
         }
     }
 
+    /**
+     * Adds a custom event listener to the decorator.
+     * Khronos test assets use test/onStart, test/onFail and test/onSuccess.
+     * @param {string} eventName 
+     * @param {function(CustomEvent)} callback 
+     */
+    addCustomEventListener(eventName, callback) {
+        this.decorator.addCustomEventListener(eventName, callback);
+    }
+
+    /**
+     * Clears all custom event listeners from the decorator.
+     */
+    clearCustomEventListeners() {
+        this.decorator.clearCustomEventListeners();
+    }
+
 }
 
 class SampleViewerDecorator extends ADecorator {
@@ -10263,6 +10276,10 @@ class SampleViewerDecorator extends ADecorator {
 
     dispatchCustomEvent(eventName, data) {
         this.behaveEngine.dispatchCustomEvent(`KHR_INTERACTIVITY:${eventName}`, data);
+    }
+
+    addCustomEventListener(eventName, callback) {
+        this.behaveEngine.addCustomEventListener(`KHR_INTERACTIVITY:${eventName}`, callback);
     }
 
     convertArrayToMatrix(array, width) {
@@ -10334,7 +10351,6 @@ class SampleViewerDecorator extends ADecorator {
             parent.animatedPropertyObjects[propertyName].rest();
         };
         this.recurseAllAnimatedProperties(this.world.gltf, resetAnimatedProperty);
-        this.behaveEngine.clearCustomEventListeners();
         this.behaveEngine.clearEventList();
         this.behaveEngine.clearPointerInterpolation();
         this.behaveEngine.clearVariableInterpolation();
@@ -10545,10 +10561,8 @@ class SampleViewerDecorator extends ADecorator {
         this.registerJsonPointer(`/nodes/${nodeCount}/globalMatrix`, (path) => {
             const pathParts = path.split('/');
             const nodeIndex = parseInt(pathParts[2]);
-            const node = this.world.gltf.nodes[nodeIndex];
-            if (node.scene.gltfObjectIndex !== this.world.sceneIndex) {
-                node.scene.applyTransformHierarchy(this.world.gltf);
-            }
+            const node = this.world.gltf.nodes[nodeIndex];   
+            node.scene.applyTransformHierarchy(this.world.gltf);
             return this.convertArrayToMatrix(node.worldTransform, 4); // gl-matrix uses column-major order
         }, (path, value) => {}, "float4x4", true);
         this.registerJsonPointer(`/nodes/${nodeCount}/matrix`, (path) => {
@@ -11044,27 +11058,35 @@ class gltfWebGl
             return false;
         }
 
-        if (gltfTex.glTexture === undefined)
+        if ((gltfTex.glTexture === undefined && textureInfo.linear) || (gltfTex.glTextureSRGB === undefined && !textureInfo.linear))
         {
             if (image.mimeType === ImageMimeType.KTX2 ||
                 image.mimeType === ImageMimeType.GLTEXTURE)
             {
                 // these image resources are directly loaded to a GPU resource by resource loader
-                gltfTex.glTexture = image.image;
+                if (textureInfo.linear) {
+                    gltfTex.glTexture = image.image;
+                } else {
+                    gltfTex.glTextureSRGB = image.image;
+                }
             }
             else
             {
                 // other images will be uploaded in a later step
-                gltfTex.glTexture = this.context.createTexture();
+                if (textureInfo.linear) {
+                    gltfTex.glTexture = this.context.createTexture();
+                } else {
+                    gltfTex.glTextureSRGB = this.context.createTexture();
+                }
             }
         }
 
         this.context.activeTexture(GL.TEXTURE0 + texSlot);
-        this.context.bindTexture(gltfTex.type, gltfTex.glTexture);
+        this.context.bindTexture(gltfTex.type, textureInfo.linear ? gltfTex.glTexture : gltfTex.glTextureSRGB);
 
         this.context.uniform1i(loc, texSlot);
 
-        if (!gltfTex.initialized)
+        if ((!gltfTex.initialized && textureInfo.linear) || (!gltfTex.initializedSRGB && !textureInfo.linear))
         {
             const gltfSampler = gltf.samplers[gltfTex.sampler];
 
@@ -11083,7 +11105,7 @@ class gltfWebGl
                 image.mimeType === ImageMimeType.HDR)
             {
                 // the check `GL.SRGB8_ALPHA8 === undefined` is needed as at the moment node-gles does not define the full format enum
-                const internalformat = (gltfTex.linear || GL.SRGB8_ALPHA8 === undefined) ? GL.RGBA : GL.SRGB8_ALPHA8;
+                const internalformat = (textureInfo.linear || GL.SRGB8_ALPHA8 === undefined) ? GL.RGBA : GL.SRGB8_ALPHA8;
                 this.context.texImage2D(image.type, image.miplevel, internalformat, GL.RGBA, GL.UNSIGNED_BYTE, image.image);
             }
 
@@ -11102,10 +11124,16 @@ class gltfWebGl
                 }
             }
 
-            gltfTex.initialized = true;
+            if (textureInfo.linear) {
+                gltfTex.initialized = true;
+            } else {
+                gltfTex.initializedSRGB = true;
+            }
         }
-
-        return gltfTex.initialized;
+        if (textureInfo.linear) {
+            return gltfTex.initialized;
+        }
+        return gltfTex.initializedSRGB;
     }
 
     setIndices(gltf, accessorIndex)
@@ -12155,6 +12183,8 @@ class GltfState
                 KHR_materials_transmission: true,
                 /** KHR_materials_volume */
                 KHR_materials_volume: true,
+                /** KHR_materials_volume_scatter */
+                KHR_materials_volume_scatter: true,
                 /** KHR_materials_ior makes the index of refraction configurable */
                 KHR_materials_ior: true,
                 /** KHR_materials_specular allows configuring specular color (f0 color) and amount of specular reflection */
@@ -12326,6 +12356,15 @@ GltfState.DebugOutput = {
         /** output final direction as defined by the anisotropyTexture and rotation*/
         ANISOTROPIC_DIRECTION: "Anisotropic Direction",
     },
+
+    volumeScatter: {
+        /** output the multi-scatter color */
+        MULTI_SCATTER_COLOR: "Multi-Scatter Color",
+        /** output the single-scatter color */
+        SINGLE_SCATTER_COLOR: "Single-Scatter Color",
+        /** output for the pre scatter pass, which collects all lighting contribution for scattering */
+        PRE_SCATTER_PASS: "Pre-Scatter Pass",
+    }
 };
 
 class gltfShader
@@ -12739,7 +12778,7 @@ class EnvironmentRenderer
     }
 }
 
-var pbrShader = "precision highp float;\n#define GLSLIFY 1\n#include <tonemapping.glsl>\n#include <textures.glsl>\n#include <functions.glsl>\n#include <brdf.glsl>\n#include <punctual.glsl>\n#include <ibl.glsl>\n#include <material_info.glsl>\n#ifdef MATERIAL_IRIDESCENCE\n#include <iridescence.glsl>\n#endif\nout vec4 g_finalColor;void main(){vec4 baseColor=getBaseColor();\n#if ALPHAMODE == ALPHAMODE_OPAQUE\nbaseColor.a=1.0;\n#endif\nvec3 color=vec3(0);vec3 v=normalize(u_Camera-v_Position);NormalInfo normalInfo=getNormalInfo(v);vec3 n=normalInfo.n;vec3 t=normalInfo.t;vec3 b=normalInfo.b;float NdotV=clampedDot(n,v);float TdotV=clampedDot(t,v);float BdotV=clampedDot(b,v);MaterialInfo materialInfo;materialInfo.baseColor=baseColor.rgb;materialInfo.ior=1.5;materialInfo.f0_dielectric=vec3(0.04);materialInfo.specularWeight=1.0;materialInfo.f90=vec3(1.0);materialInfo.f90_dielectric=materialInfo.f90;\n#ifdef MATERIAL_IOR\nmaterialInfo=getIorInfo(materialInfo);\n#endif\n#ifdef MATERIAL_METALLICROUGHNESS\nmaterialInfo=getMetallicRoughnessInfo(materialInfo);\n#endif\n#ifdef MATERIAL_SHEEN\nmaterialInfo=getSheenInfo(materialInfo);\n#endif\n#ifdef MATERIAL_CLEARCOAT\nmaterialInfo=getClearCoatInfo(materialInfo,normalInfo);\n#endif\n#ifdef MATERIAL_SPECULAR\nmaterialInfo=getSpecularInfo(materialInfo);\n#endif\n#ifdef MATERIAL_TRANSMISSION\nmaterialInfo=getTransmissionInfo(materialInfo);\n#endif\n#ifdef MATERIAL_VOLUME\nmaterialInfo=getVolumeInfo(materialInfo);\n#endif\n#ifdef MATERIAL_IRIDESCENCE\nmaterialInfo=getIridescenceInfo(materialInfo);\n#endif\n#ifdef MATERIAL_DIFFUSE_TRANSMISSION\nmaterialInfo=getDiffuseTransmissionInfo(materialInfo);\n#endif\n#ifdef MATERIAL_ANISOTROPY\nmaterialInfo=getAnisotropyInfo(materialInfo,normalInfo);\n#endif\nmaterialInfo.perceptualRoughness=clamp(materialInfo.perceptualRoughness,0.0,1.0);materialInfo.metallic=clamp(materialInfo.metallic,0.0,1.0);materialInfo.alphaRoughness=materialInfo.perceptualRoughness*materialInfo.perceptualRoughness;vec3 f_specular_dielectric=vec3(0.0);vec3 f_specular_metal=vec3(0.0);vec3 f_diffuse=vec3(0.0);vec3 f_dielectric_brdf_ibl=vec3(0.0);vec3 f_metal_brdf_ibl=vec3(0.0);vec3 f_emissive=vec3(0.0);vec3 clearcoat_brdf=vec3(0.0);vec3 f_sheen=vec3(0.0);vec3 f_specular_transmission=vec3(0.0);vec3 f_diffuse_transmission=vec3(0.0);float clearcoatFactor=0.0;vec3 clearcoatFresnel=vec3(0);float albedoSheenScaling=1.0;float diffuseTransmissionThickness=1.0;\n#ifdef MATERIAL_IRIDESCENCE\nvec3 iridescenceFresnel_dielectric=evalIridescence(1.0,materialInfo.iridescenceIor,NdotV,materialInfo.iridescenceThickness,materialInfo.f0_dielectric);vec3 iridescenceFresnel_metallic=evalIridescence(1.0,materialInfo.iridescenceIor,NdotV,materialInfo.iridescenceThickness,baseColor.rgb);if(materialInfo.iridescenceThickness==0.0){materialInfo.iridescenceFactor=0.0;}\n#endif\n#ifdef MATERIAL_DIFFUSE_TRANSMISSION\n#ifdef MATERIAL_VOLUME\ndiffuseTransmissionThickness=materialInfo.thickness*(length(vec3(u_ModelMatrix[0].xyz))+length(vec3(u_ModelMatrix[1].xyz))+length(vec3(u_ModelMatrix[2].xyz)))/3.0;\n#endif\n#endif\n#ifdef MATERIAL_CLEARCOAT\nclearcoatFactor=materialInfo.clearcoatFactor;clearcoatFresnel=F_Schlick(materialInfo.clearcoatF0,materialInfo.clearcoatF90,clampedDot(materialInfo.clearcoatNormal,v));\n#endif\n#if defined(USE_IBL) || defined(MATERIAL_TRANSMISSION)\nf_diffuse=getDiffuseLight(n)*baseColor.rgb;\n#ifdef MATERIAL_DIFFUSE_TRANSMISSION\nvec3 diffuseTransmissionIBL=getDiffuseLight(-n)*materialInfo.diffuseTransmissionColorFactor;\n#ifdef MATERIAL_VOLUME\ndiffuseTransmissionIBL=applyVolumeAttenuation(diffuseTransmissionIBL,diffuseTransmissionThickness,materialInfo.attenuationColor,materialInfo.attenuationDistance);\n#endif\nf_diffuse=mix(f_diffuse,diffuseTransmissionIBL,materialInfo.diffuseTransmissionFactor);\n#endif\n#if defined(MATERIAL_TRANSMISSION)\nf_specular_transmission=getIBLVolumeRefraction(n,v,materialInfo.perceptualRoughness,baseColor.rgb,v_Position,u_ModelMatrix,u_ViewMatrix,u_ProjectionMatrix,materialInfo.ior,materialInfo.thickness,materialInfo.attenuationColor,materialInfo.attenuationDistance,materialInfo.dispersion);f_diffuse=mix(f_diffuse,f_specular_transmission,materialInfo.transmissionFactor);\n#endif\n#ifdef MATERIAL_ANISOTROPY\nf_specular_metal=getIBLRadianceAnisotropy(n,v,materialInfo.perceptualRoughness,materialInfo.anisotropyStrength,materialInfo.anisotropicB);f_specular_dielectric=f_specular_metal;\n#else\nf_specular_metal=getIBLRadianceGGX(n,v,materialInfo.perceptualRoughness);f_specular_dielectric=f_specular_metal;\n#endif\nvec3 f_metal_fresnel_ibl=getIBLGGXFresnel(n,v,materialInfo.perceptualRoughness,baseColor.rgb,1.0);f_metal_brdf_ibl=f_metal_fresnel_ibl*f_specular_metal;vec3 f_dielectric_fresnel_ibl=getIBLGGXFresnel(n,v,materialInfo.perceptualRoughness,materialInfo.f0_dielectric,materialInfo.specularWeight);f_dielectric_brdf_ibl=mix(f_diffuse,f_specular_dielectric,f_dielectric_fresnel_ibl);\n#ifdef MATERIAL_IRIDESCENCE\nf_metal_brdf_ibl=mix(f_metal_brdf_ibl,f_specular_metal*iridescenceFresnel_metallic,materialInfo.iridescenceFactor);f_dielectric_brdf_ibl=mix(f_dielectric_brdf_ibl,rgb_mix(f_diffuse,f_specular_dielectric,iridescenceFresnel_dielectric),materialInfo.iridescenceFactor);\n#endif\n#ifdef MATERIAL_CLEARCOAT\nclearcoat_brdf=getIBLRadianceGGX(materialInfo.clearcoatNormal,v,materialInfo.clearcoatRoughness);\n#endif\n#ifdef MATERIAL_SHEEN\nf_sheen=getIBLRadianceCharlie(n,v,materialInfo.sheenRoughnessFactor,materialInfo.sheenColorFactor);albedoSheenScaling=1.0-max3(materialInfo.sheenColorFactor)*albedoSheenScalingLUT(NdotV,materialInfo.sheenRoughnessFactor);\n#endif\ncolor=mix(f_dielectric_brdf_ibl,f_metal_brdf_ibl,materialInfo.metallic);color=f_sheen+color*albedoSheenScaling;color=mix(color,clearcoat_brdf,clearcoatFactor*clearcoatFresnel);\n#ifdef HAS_OCCLUSION_MAP\nfloat ao=1.0;ao=texture(u_OcclusionSampler,getOcclusionUV()).r;color=color*(1.0+u_OcclusionStrength*(ao-1.0));\n#endif\n#endif\nf_diffuse=vec3(0.0);f_specular_dielectric=vec3(0.0);f_specular_metal=vec3(0.0);vec3 f_dielectric_brdf=vec3(0.0);vec3 f_metal_brdf=vec3(0.0);\n#ifdef USE_PUNCTUAL\nfor(int i=0;i<LIGHT_COUNT;++i){Light light=u_Lights[i];vec3 pointToLight;if(light.type!=LightType_Directional){pointToLight=light.position-v_Position;}else{pointToLight=-light.direction;}vec3 l=normalize(pointToLight);vec3 h=normalize(l+v);float NdotL=clampedDot(n,l);float NdotV=clampedDot(n,v);float NdotH=clampedDot(n,h);float LdotH=clampedDot(l,h);float VdotH=clampedDot(v,h);vec3 dielectric_fresnel=F_Schlick(materialInfo.f0_dielectric*materialInfo.specularWeight,materialInfo.f90_dielectric,abs(VdotH));vec3 metal_fresnel=F_Schlick(baseColor.rgb,vec3(1.0),abs(VdotH));vec3 lightIntensity=getLighIntensity(light,pointToLight);vec3 l_diffuse=lightIntensity*NdotL*BRDF_lambertian(baseColor.rgb);vec3 l_specular_dielectric=vec3(0.0);vec3 l_specular_metal=vec3(0.0);vec3 l_dielectric_brdf=vec3(0.0);vec3 l_metal_brdf=vec3(0.0);vec3 l_clearcoat_brdf=vec3(0.0);vec3 l_sheen=vec3(0.0);float l_albedoSheenScaling=1.0;\n#ifdef MATERIAL_DIFFUSE_TRANSMISSION\nl_diffuse=l_diffuse*(1.0-materialInfo.diffuseTransmissionFactor);if(dot(n,l)<0.0){float diffuseNdotL=clampedDot(-n,l);vec3 diffuse_btdf=lightIntensity*diffuseNdotL*BRDF_lambertian(materialInfo.diffuseTransmissionColorFactor);vec3 l_mirror=normalize(l+2.0*n*dot(-l,n));float diffuseVdotH=clampedDot(v,normalize(l_mirror+v));dielectric_fresnel=F_Schlick(materialInfo.f0_dielectric*materialInfo.specularWeight,materialInfo.f90_dielectric,abs(diffuseVdotH));\n#ifdef MATERIAL_VOLUME\ndiffuse_btdf=applyVolumeAttenuation(diffuse_btdf,diffuseTransmissionThickness,materialInfo.attenuationColor,materialInfo.attenuationDistance);\n#endif\nl_diffuse+=diffuse_btdf*materialInfo.diffuseTransmissionFactor;}\n#endif\n#ifdef MATERIAL_TRANSMISSION\nvec3 transmissionRay=getVolumeTransmissionRay(n,v,materialInfo.thickness,materialInfo.ior,u_ModelMatrix);pointToLight-=transmissionRay;l=normalize(pointToLight);vec3 transmittedLight=lightIntensity*getPunctualRadianceTransmission(n,v,l,materialInfo.alphaRoughness,baseColor.rgb,materialInfo.ior);\n#ifdef MATERIAL_VOLUME\ntransmittedLight=applyVolumeAttenuation(transmittedLight,length(transmissionRay),materialInfo.attenuationColor,materialInfo.attenuationDistance);\n#endif\nl_diffuse=mix(l_diffuse,transmittedLight,materialInfo.transmissionFactor);\n#endif\nvec3 intensity=getLighIntensity(light,pointToLight);\n#ifdef MATERIAL_ANISOTROPY\nl_specular_metal=intensity*NdotL*BRDF_specularGGXAnisotropy(materialInfo.alphaRoughness,materialInfo.anisotropyStrength,n,v,l,h,materialInfo.anisotropicT,materialInfo.anisotropicB);l_specular_dielectric=l_specular_metal;\n#else\nl_specular_metal=intensity*NdotL*BRDF_specularGGX(materialInfo.alphaRoughness,NdotL,NdotV,NdotH);l_specular_dielectric=l_specular_metal;\n#endif\nl_metal_brdf=metal_fresnel*l_specular_metal;l_dielectric_brdf=mix(l_diffuse,l_specular_dielectric,dielectric_fresnel);\n#ifdef MATERIAL_IRIDESCENCE\nl_metal_brdf=mix(l_metal_brdf,l_specular_metal*iridescenceFresnel_metallic,materialInfo.iridescenceFactor);l_dielectric_brdf=mix(l_dielectric_brdf,rgb_mix(l_diffuse,l_specular_dielectric,iridescenceFresnel_dielectric),materialInfo.iridescenceFactor);\n#endif\n#ifdef MATERIAL_CLEARCOAT\nl_clearcoat_brdf=intensity*getPunctualRadianceClearCoat(materialInfo.clearcoatNormal,v,l,h,VdotH,materialInfo.clearcoatF0,materialInfo.clearcoatF90,materialInfo.clearcoatRoughness);\n#endif\n#ifdef MATERIAL_SHEEN\nl_sheen=intensity*getPunctualRadianceSheen(materialInfo.sheenColorFactor,materialInfo.sheenRoughnessFactor,NdotL,NdotV,NdotH);l_albedoSheenScaling=min(1.0-max3(materialInfo.sheenColorFactor)*albedoSheenScalingLUT(NdotV,materialInfo.sheenRoughnessFactor),1.0-max3(materialInfo.sheenColorFactor)*albedoSheenScalingLUT(NdotL,materialInfo.sheenRoughnessFactor));\n#endif\nvec3 l_color=mix(l_dielectric_brdf,l_metal_brdf,materialInfo.metallic);l_color=l_sheen+l_color*l_albedoSheenScaling;l_color=mix(l_color,l_clearcoat_brdf,clearcoatFactor*clearcoatFresnel);color+=l_color;}\n#endif\nf_emissive=u_EmissiveFactor;\n#ifdef MATERIAL_EMISSIVE_STRENGTH\nf_emissive*=u_EmissiveStrength;\n#endif\n#ifdef HAS_EMISSIVE_MAP\nf_emissive*=texture(u_EmissiveSampler,getEmissiveUV()).rgb;\n#endif\n#ifdef MATERIAL_UNLIT\ncolor=baseColor.rgb;\n#elif defined(NOT_TRIANGLE) && !defined(HAS_NORMAL_VEC3)\ncolor=f_emissive+baseColor.rgb;\n#else\ncolor=f_emissive*(1.0-clearcoatFactor*clearcoatFresnel)+color;\n#endif\n#if DEBUG == DEBUG_NONE\n#if ALPHAMODE == ALPHAMODE_MASK\nif(baseColor.a<u_AlphaCutoff){discard;}baseColor.a=1.0;\n#endif\n#ifdef LINEAR_OUTPUT\ng_finalColor=vec4(color.rgb,baseColor.a);\n#else\ng_finalColor=vec4(toneMap(color),baseColor.a);\n#endif\n#else\ng_finalColor=vec4(1.0);{float frequency=0.02;float gray=0.9;vec2 v1=step(0.5,fract(frequency*gl_FragCoord.xy));vec2 v2=step(0.5,vec2(1.0)-fract(frequency*gl_FragCoord.xy));g_finalColor.rgb*=gray+v1.x*v1.y+v2.x*v2.y;}\n#endif\n#if DEBUG == DEBUG_UV_0 && defined(HAS_TEXCOORD_0_VEC2)\ng_finalColor.rgb=vec3(v_texcoord_0,0);\n#endif\n#if DEBUG == DEBUG_UV_1 && defined(HAS_TEXCOORD_1_VEC2)\ng_finalColor.rgb=vec3(v_texcoord_1,0);\n#endif\n#if DEBUG == DEBUG_NORMAL_TEXTURE && defined(HAS_NORMAL_MAP)\ng_finalColor.rgb=(normalInfo.ntex+1.0)/2.0;\n#endif\n#if DEBUG == DEBUG_NORMAL_SHADING\ng_finalColor.rgb=(n+1.0)/2.0;\n#endif\n#if DEBUG == DEBUG_NORMAL_GEOMETRY\ng_finalColor.rgb=(normalInfo.ng+1.0)/2.0;\n#endif\n#if DEBUG == DEBUG_TANGENT\ng_finalColor.rgb=(normalInfo.t+1.0)/2.0;\n#endif\n#if DEBUG == DEBUG_BITANGENT\ng_finalColor.rgb=(normalInfo.b+1.0)/2.0;\n#endif\n#if DEBUG == DEBUG_ALPHA\ng_finalColor.rgb=vec3(baseColor.a);\n#endif\n#if DEBUG == DEBUG_OCCLUSION && defined(HAS_OCCLUSION_MAP)\ng_finalColor.rgb=vec3(ao);\n#endif\n#if DEBUG == DEBUG_EMISSIVE\ng_finalColor.rgb=linearTosRGB(f_emissive);\n#endif\n#if DEBUG == DEBUG_METALLIC\ng_finalColor.rgb=vec3(materialInfo.metallic);\n#endif\n#if DEBUG == DEBUG_ROUGHNESS\ng_finalColor.rgb=vec3(materialInfo.perceptualRoughness);\n#endif\n#if DEBUG == DEBUG_BASE_COLOR\ng_finalColor.rgb=linearTosRGB(materialInfo.baseColor);\n#endif\n#ifdef MATERIAL_CLEARCOAT\n#if DEBUG == DEBUG_CLEARCOAT_FACTOR\ng_finalColor.rgb=vec3(materialInfo.clearcoatFactor);\n#endif\n#if DEBUG == DEBUG_CLEARCOAT_ROUGHNESS\ng_finalColor.rgb=vec3(materialInfo.clearcoatRoughness);\n#endif\n#if DEBUG == DEBUG_CLEARCOAT_NORMAL\ng_finalColor.rgb=(materialInfo.clearcoatNormal+vec3(1))/2.0;\n#endif\n#endif\n#ifdef MATERIAL_SHEEN\n#if DEBUG == DEBUG_SHEEN_COLOR\ng_finalColor.rgb=materialInfo.sheenColorFactor;\n#endif\n#if DEBUG == DEBUG_SHEEN_ROUGHNESS\ng_finalColor.rgb=vec3(materialInfo.sheenRoughnessFactor);\n#endif\n#endif\n#ifdef MATERIAL_SPECULAR\n#if DEBUG == DEBUG_SPECULAR_FACTOR\ng_finalColor.rgb=vec3(materialInfo.specularWeight);\n#endif\n#if DEBUG == DEBUG_SPECULAR_COLOR\nvec3 specularTexture=vec3(1.0);\n#ifdef HAS_SPECULAR_COLOR_MAP\nspecularTexture.rgb=texture(u_SpecularColorSampler,getSpecularColorUV()).rgb;\n#endif\ng_finalColor.rgb=u_KHR_materials_specular_specularColorFactor*specularTexture.rgb;\n#endif\n#endif\n#ifdef MATERIAL_TRANSMISSION\n#if DEBUG == DEBUG_TRANSMISSION_FACTOR\ng_finalColor.rgb=vec3(materialInfo.transmissionFactor);\n#endif\n#endif\n#ifdef MATERIAL_VOLUME\n#if DEBUG == DEBUG_VOLUME_THICKNESS\ng_finalColor.rgb=vec3(materialInfo.thickness/u_ThicknessFactor);\n#endif\n#endif\n#ifdef MATERIAL_IRIDESCENCE\n#if DEBUG == DEBUG_IRIDESCENCE_FACTOR\ng_finalColor.rgb=vec3(materialInfo.iridescenceFactor);\n#endif\n#if DEBUG == DEBUG_IRIDESCENCE_THICKNESS\ng_finalColor.rgb=vec3(materialInfo.iridescenceThickness/1200.0);\n#endif\n#endif\n#ifdef MATERIAL_ANISOTROPY\n#if DEBUG == DEBUG_ANISOTROPIC_STRENGTH\ng_finalColor.rgb=vec3(materialInfo.anisotropyStrength);\n#endif\n#if DEBUG == DEBUG_ANISOTROPIC_DIRECTION\nvec2 direction=vec2(1.0,0.0);\n#ifdef HAS_ANISOTROPY_MAP\ndirection=texture(u_AnisotropySampler,getAnisotropyUV()).xy;direction=direction*2.0-vec2(1.0);\n#endif\nvec2 directionRotation=u_Anisotropy.xy;mat2 rotationMatrix=mat2(directionRotation.x,directionRotation.y,-directionRotation.y,directionRotation.x);direction=(direction+vec2(1.0))*0.5;g_finalColor.rgb=vec3(direction,0.0);\n#endif\n#endif\n#ifdef MATERIAL_DIFFUSE_TRANSMISSION\n#if DEBUG == DEBUG_DIFFUSE_TRANSMISSION_FACTOR\ng_finalColor.rgb=linearTosRGB(vec3(materialInfo.diffuseTransmissionFactor));\n#endif\n#if DEBUG == DEBUG_DIFFUSE_TRANSMISSION_COLOR_FACTOR\ng_finalColor.rgb=linearTosRGB(materialInfo.diffuseTransmissionColorFactor);\n#endif\n#endif\n}"; // eslint-disable-line
+var pbrShader = "precision highp float;\n#define GLSLIFY 1\n#include <tonemapping.glsl>\n#include <textures.glsl>\n#include <functions.glsl>\n#include <brdf.glsl>\n#include <punctual.glsl>\n#include <ibl.glsl>\n#include <material_info.glsl>\n#ifdef MATERIAL_IRIDESCENCE\n#include <iridescence.glsl>\n#endif\nout vec4 g_finalColor;void main(){vec4 baseColor=getBaseColor();\n#if ALPHAMODE == ALPHAMODE_OPAQUE\nbaseColor.a=1.0;\n#endif\nvec3 color=vec3(0);vec3 v=normalize(u_Camera-v_Position);NormalInfo normalInfo=getNormalInfo(v);vec3 n=normalInfo.n;vec3 t=normalInfo.t;vec3 b=normalInfo.b;float NdotV=clampedDot(n,v);float TdotV=clampedDot(t,v);float BdotV=clampedDot(b,v);MaterialInfo materialInfo;materialInfo.baseColor=baseColor.rgb;materialInfo.ior=1.5;materialInfo.f0_dielectric=vec3(0.04);materialInfo.specularWeight=1.0;materialInfo.f90=vec3(1.0);materialInfo.f90_dielectric=materialInfo.f90;\n#ifdef MATERIAL_IOR\nmaterialInfo=getIorInfo(materialInfo);\n#endif\n#ifdef MATERIAL_METALLICROUGHNESS\nmaterialInfo=getMetallicRoughnessInfo(materialInfo);\n#endif\n#ifdef MATERIAL_SHEEN\nmaterialInfo=getSheenInfo(materialInfo);\n#endif\n#ifdef MATERIAL_CLEARCOAT\nmaterialInfo=getClearCoatInfo(materialInfo,normalInfo);\n#endif\n#ifdef MATERIAL_SPECULAR\nmaterialInfo=getSpecularInfo(materialInfo);\n#endif\n#ifdef MATERIAL_TRANSMISSION\nmaterialInfo=getTransmissionInfo(materialInfo);\n#endif\n#ifdef MATERIAL_VOLUME\nmaterialInfo=getVolumeInfo(materialInfo);\n#endif\n#ifdef MATERIAL_IRIDESCENCE\nmaterialInfo=getIridescenceInfo(materialInfo);\n#endif\n#ifdef MATERIAL_DIFFUSE_TRANSMISSION\nmaterialInfo=getDiffuseTransmissionInfo(materialInfo);\n#endif\n#ifdef MATERIAL_ANISOTROPY\nmaterialInfo=getAnisotropyInfo(materialInfo,normalInfo);\n#endif\nmaterialInfo.perceptualRoughness=clamp(materialInfo.perceptualRoughness,0.0,1.0);materialInfo.metallic=clamp(materialInfo.metallic,0.0,1.0);materialInfo.alphaRoughness=materialInfo.perceptualRoughness*materialInfo.perceptualRoughness;vec3 f_specular_dielectric=vec3(0.0);vec3 f_specular_metal=vec3(0.0);vec3 f_diffuse=vec3(0.0);vec3 f_dielectric_brdf_ibl=vec3(0.0);vec3 f_metal_brdf_ibl=vec3(0.0);vec3 f_emissive=vec3(0.0);vec3 clearcoat_brdf=vec3(0.0);vec3 f_sheen=vec3(0.0);vec3 f_specular_transmission=vec3(0.0);vec3 f_diffuse_transmission=vec3(0.0);float clearcoatFactor=0.0;vec3 clearcoatFresnel=vec3(0);float albedoSheenScaling=1.0;float diffuseTransmissionThickness=1.0;vec3 diffuseTransmissionIBL=vec3(0.0);\n#ifdef MATERIAL_IRIDESCENCE\nvec3 iridescenceFresnel_dielectric=evalIridescence(1.0,materialInfo.iridescenceIor,NdotV,materialInfo.iridescenceThickness,materialInfo.f0_dielectric);vec3 iridescenceFresnel_metallic=evalIridescence(1.0,materialInfo.iridescenceIor,NdotV,materialInfo.iridescenceThickness,baseColor.rgb);if(materialInfo.iridescenceThickness==0.0){materialInfo.iridescenceFactor=0.0;}\n#endif\n#ifdef MATERIAL_DIFFUSE_TRANSMISSION\n#ifdef MATERIAL_VOLUME\ndiffuseTransmissionThickness=materialInfo.thickness*(length(vec3(u_ModelMatrix[0].xyz))+length(vec3(u_ModelMatrix[1].xyz))+length(vec3(u_ModelMatrix[2].xyz)))/3.0;\n#endif\n#endif\n#ifdef MATERIAL_VOLUME_SCATTER\nvec3 singleScatter=multiToSingleScatter();\n#endif\n#ifdef MATERIAL_CLEARCOAT\nclearcoatFactor=materialInfo.clearcoatFactor;clearcoatFresnel=F_Schlick(materialInfo.clearcoatF0,materialInfo.clearcoatF90,clampedDot(materialInfo.clearcoatNormal,v));\n#endif\n#if defined(USE_IBL) || defined(MATERIAL_TRANSMISSION)\nf_diffuse=getDiffuseLight(n)*baseColor.rgb;\n#ifdef MATERIAL_DIFFUSE_TRANSMISSION\ndiffuseTransmissionIBL=getDiffuseLight(-n)*materialInfo.diffuseTransmissionColorFactor;\n#ifdef MATERIAL_VOLUME\ndiffuseTransmissionIBL=applyVolumeAttenuation(diffuseTransmissionIBL,diffuseTransmissionThickness,materialInfo.attenuationColor,materialInfo.attenuationDistance);\n#endif\n#ifdef MATERIAL_VOLUME_SCATTER\ndiffuseTransmissionIBL*=(1.0-singleScatter);\n#endif\nf_diffuse=mix(f_diffuse,diffuseTransmissionIBL,materialInfo.diffuseTransmissionFactor);\n#endif\n#if defined(MATERIAL_TRANSMISSION)\nf_specular_transmission=getIBLVolumeRefraction(n,v,materialInfo.perceptualRoughness,baseColor.rgb,v_Position,u_ModelMatrix,u_ViewMatrix,u_ProjectionMatrix,materialInfo.ior,materialInfo.thickness,materialInfo.attenuationColor,materialInfo.attenuationDistance,materialInfo.dispersion);f_diffuse=mix(f_diffuse,f_specular_transmission,materialInfo.transmissionFactor);\n#endif\n#ifdef MATERIAL_ANISOTROPY\nf_specular_metal=getIBLRadianceAnisotropy(n,v,materialInfo.perceptualRoughness,materialInfo.anisotropyStrength,materialInfo.anisotropicB);f_specular_dielectric=f_specular_metal;\n#else\nf_specular_metal=getIBLRadianceGGX(n,v,materialInfo.perceptualRoughness);f_specular_dielectric=f_specular_metal;\n#endif\nvec3 f_metal_fresnel_ibl=getIBLGGXFresnel(n,v,materialInfo.perceptualRoughness,baseColor.rgb,1.0);f_metal_brdf_ibl=f_metal_fresnel_ibl*f_specular_metal;vec3 f_dielectric_fresnel_ibl=getIBLGGXFresnel(n,v,materialInfo.perceptualRoughness,materialInfo.f0_dielectric,materialInfo.specularWeight);f_dielectric_brdf_ibl=mix(f_diffuse,f_specular_dielectric,f_dielectric_fresnel_ibl);\n#ifdef MATERIAL_IRIDESCENCE\nf_metal_brdf_ibl=mix(f_metal_brdf_ibl,f_specular_metal*iridescenceFresnel_metallic,materialInfo.iridescenceFactor);f_dielectric_brdf_ibl=mix(f_dielectric_brdf_ibl,rgb_mix(f_diffuse,f_specular_dielectric,iridescenceFresnel_dielectric),materialInfo.iridescenceFactor);\n#endif\n#ifdef MATERIAL_CLEARCOAT\nclearcoat_brdf=getIBLRadianceGGX(materialInfo.clearcoatNormal,v,materialInfo.clearcoatRoughness);\n#endif\n#ifdef MATERIAL_SHEEN\nf_sheen=getIBLRadianceCharlie(n,v,materialInfo.sheenRoughnessFactor,materialInfo.sheenColorFactor);albedoSheenScaling=1.0-max3(materialInfo.sheenColorFactor)*albedoSheenScalingLUT(NdotV,materialInfo.sheenRoughnessFactor);\n#endif\ncolor=mix(f_dielectric_brdf_ibl,f_metal_brdf_ibl,materialInfo.metallic);color=f_sheen+color*albedoSheenScaling;color=mix(color,clearcoat_brdf,clearcoatFactor*clearcoatFresnel);\n#ifdef HAS_OCCLUSION_MAP\nfloat ao=1.0;ao=texture(u_OcclusionSampler,getOcclusionUV()).r;color=color*(1.0+u_OcclusionStrength*(ao-1.0));\n#endif\n#endif\nf_diffuse=vec3(0.0);f_specular_dielectric=vec3(0.0);f_specular_metal=vec3(0.0);vec3 f_dielectric_brdf=vec3(0.0);vec3 f_metal_brdf=vec3(0.0);\n#ifdef USE_PUNCTUAL\nfor(int i=0;i<LIGHT_COUNT;++i){Light light=u_Lights[i];vec3 pointToLight;if(light.type!=LightType_Directional){pointToLight=light.position-v_Position;}else{pointToLight=-light.direction;}vec3 l=normalize(pointToLight);vec3 h=normalize(l+v);float NdotL=clampedDot(n,l);float NdotV=clampedDot(n,v);float NdotH=clampedDot(n,h);float LdotH=clampedDot(l,h);float VdotH=clampedDot(v,h);vec3 dielectric_fresnel=F_Schlick(materialInfo.f0_dielectric*materialInfo.specularWeight,materialInfo.f90_dielectric,abs(VdotH));vec3 metal_fresnel=F_Schlick(baseColor.rgb,vec3(1.0),abs(VdotH));vec3 lightIntensity=getLighIntensity(light,pointToLight);vec3 l_diffuse=lightIntensity*NdotL*BRDF_lambertian(baseColor.rgb);vec3 l_specular_dielectric=vec3(0.0);vec3 l_specular_metal=vec3(0.0);vec3 l_dielectric_brdf=vec3(0.0);vec3 l_metal_brdf=vec3(0.0);vec3 l_clearcoat_brdf=vec3(0.0);vec3 l_sheen=vec3(0.0);float l_albedoSheenScaling=1.0;vec3 l_diffuse_btdf=vec3(0.0);\n#ifdef MATERIAL_DIFFUSE_TRANSMISSION\nl_diffuse=l_diffuse*(1.0-materialInfo.diffuseTransmissionFactor);if(dot(n,l)<0.0){float diffuseNdotL=clampedDot(-n,l);l_diffuse_btdf=lightIntensity*diffuseNdotL*BRDF_lambertian(materialInfo.diffuseTransmissionColorFactor);vec3 l_mirror=normalize(l+2.0*n*dot(-l,n));float diffuseVdotH=clampedDot(v,normalize(l_mirror+v));dielectric_fresnel=F_Schlick(materialInfo.f0_dielectric*materialInfo.specularWeight,materialInfo.f90_dielectric,abs(diffuseVdotH));\n#ifdef MATERIAL_VOLUME\nl_diffuse_btdf=applyVolumeAttenuation(l_diffuse_btdf,diffuseTransmissionThickness,materialInfo.attenuationColor,materialInfo.attenuationDistance);\n#endif\n#ifdef MATERIAL_VOLUME_SCATTER\nl_diffuse_btdf*=(1.0-singleScatter);\n#endif\nl_diffuse+=l_diffuse_btdf*materialInfo.diffuseTransmissionFactor;}\n#endif\n#ifdef MATERIAL_TRANSMISSION\nvec3 transmissionRay=getVolumeTransmissionRay(n,v,materialInfo.thickness,materialInfo.ior,u_ModelMatrix);pointToLight-=transmissionRay;l=normalize(pointToLight);vec3 transmittedLight=lightIntensity*getPunctualRadianceTransmission(n,v,l,materialInfo.alphaRoughness,baseColor.rgb,materialInfo.ior);\n#ifdef MATERIAL_VOLUME\ntransmittedLight=applyVolumeAttenuation(transmittedLight,length(transmissionRay),materialInfo.attenuationColor,materialInfo.attenuationDistance);\n#endif\nl_diffuse=mix(l_diffuse,transmittedLight,materialInfo.transmissionFactor);\n#endif\nvec3 intensity=getLighIntensity(light,pointToLight);\n#ifdef MATERIAL_ANISOTROPY\nl_specular_metal=intensity*NdotL*BRDF_specularGGXAnisotropy(materialInfo.alphaRoughness,materialInfo.anisotropyStrength,n,v,l,h,materialInfo.anisotropicT,materialInfo.anisotropicB);l_specular_dielectric=l_specular_metal;\n#else\nl_specular_metal=intensity*NdotL*BRDF_specularGGX(materialInfo.alphaRoughness,NdotL,NdotV,NdotH);l_specular_dielectric=l_specular_metal;\n#endif\nl_metal_brdf=metal_fresnel*l_specular_metal;l_dielectric_brdf=mix(l_diffuse,l_specular_dielectric,dielectric_fresnel);\n#ifdef MATERIAL_IRIDESCENCE\nl_metal_brdf=mix(l_metal_brdf,l_specular_metal*iridescenceFresnel_metallic,materialInfo.iridescenceFactor);l_dielectric_brdf=mix(l_dielectric_brdf,rgb_mix(l_diffuse,l_specular_dielectric,iridescenceFresnel_dielectric),materialInfo.iridescenceFactor);\n#endif\n#ifdef MATERIAL_CLEARCOAT\nl_clearcoat_brdf=intensity*getPunctualRadianceClearCoat(materialInfo.clearcoatNormal,v,l,h,VdotH,materialInfo.clearcoatF0,materialInfo.clearcoatF90,materialInfo.clearcoatRoughness);\n#endif\n#ifdef MATERIAL_SHEEN\nl_sheen=intensity*getPunctualRadianceSheen(materialInfo.sheenColorFactor,materialInfo.sheenRoughnessFactor,NdotL,NdotV,NdotH);l_albedoSheenScaling=min(1.0-max3(materialInfo.sheenColorFactor)*albedoSheenScalingLUT(NdotV,materialInfo.sheenRoughnessFactor),1.0-max3(materialInfo.sheenColorFactor)*albedoSheenScalingLUT(NdotL,materialInfo.sheenRoughnessFactor));\n#endif\nvec3 l_color=mix(l_dielectric_brdf,l_metal_brdf,materialInfo.metallic);l_color=l_sheen+l_color*l_albedoSheenScaling;l_color=mix(l_color,l_clearcoat_brdf,clearcoatFactor*clearcoatFresnel);color+=l_color;}\n#endif\n#ifdef MATERIAL_VOLUME_SCATTER\nvec3 l_color=getSubsurfaceScattering(v_Position,u_ProjectionMatrix,materialInfo.attenuationDistance,u_ScatterFramebufferSampler,materialInfo.diffuseTransmissionColorFactor);color+=l_color*(1.0-materialInfo.metallic)*(1.0-clearcoatFactor*clearcoatFresnel)*(1.0-materialInfo.iridescenceFactor)*(1.0-materialInfo.transmissionFactor);\n#endif\nf_emissive=u_EmissiveFactor;\n#ifdef MATERIAL_EMISSIVE_STRENGTH\nf_emissive*=u_EmissiveStrength;\n#endif\n#ifdef HAS_EMISSIVE_MAP\nf_emissive*=texture(u_EmissiveSampler,getEmissiveUV()).rgb;\n#endif\n#ifdef MATERIAL_UNLIT\ncolor=baseColor.rgb;\n#elif defined(NOT_TRIANGLE) && !defined(HAS_NORMAL_VEC3)\ncolor=f_emissive+baseColor.rgb;\n#else\ncolor=f_emissive*(1.0-clearcoatFactor*clearcoatFresnel)+color;\n#endif\n#if DEBUG == DEBUG_NONE\n#if ALPHAMODE == ALPHAMODE_MASK\nif(baseColor.a<u_AlphaCutoff){discard;}baseColor.a=1.0;\n#endif\n#ifdef LINEAR_OUTPUT\ng_finalColor=vec4(color.rgb,baseColor.a);\n#else\ng_finalColor=vec4(toneMap(color),baseColor.a);\n#endif\n#else\ng_finalColor=vec4(1.0);{float frequency=0.02;float gray=0.9;vec2 v1=step(0.5,fract(frequency*gl_FragCoord.xy));vec2 v2=step(0.5,vec2(1.0)-fract(frequency*gl_FragCoord.xy));g_finalColor.rgb*=gray+v1.x*v1.y+v2.x*v2.y;}\n#endif\n#if DEBUG == DEBUG_UV_0 && defined(HAS_TEXCOORD_0_VEC2)\ng_finalColor.rgb=vec3(v_texcoord_0,0);\n#endif\n#if DEBUG == DEBUG_UV_1 && defined(HAS_TEXCOORD_1_VEC2)\ng_finalColor.rgb=vec3(v_texcoord_1,0);\n#endif\n#if DEBUG == DEBUG_NORMAL_TEXTURE && defined(HAS_NORMAL_MAP)\ng_finalColor.rgb=(normalInfo.ntex+1.0)/2.0;\n#endif\n#if DEBUG == DEBUG_NORMAL_SHADING\ng_finalColor.rgb=(n+1.0)/2.0;\n#endif\n#if DEBUG == DEBUG_NORMAL_GEOMETRY\ng_finalColor.rgb=(normalInfo.ng+1.0)/2.0;\n#endif\n#if DEBUG == DEBUG_TANGENT\ng_finalColor.rgb=(normalInfo.t+1.0)/2.0;\n#endif\n#if DEBUG == DEBUG_BITANGENT\ng_finalColor.rgb=(normalInfo.b+1.0)/2.0;\n#endif\n#if DEBUG == DEBUG_ALPHA\ng_finalColor.rgb=vec3(baseColor.a);\n#endif\n#if DEBUG == DEBUG_OCCLUSION && defined(HAS_OCCLUSION_MAP)\ng_finalColor.rgb=vec3(ao);\n#endif\n#if DEBUG == DEBUG_EMISSIVE\ng_finalColor.rgb=linearTosRGB(f_emissive);\n#endif\n#if DEBUG == DEBUG_METALLIC\ng_finalColor.rgb=vec3(materialInfo.metallic);\n#endif\n#if DEBUG == DEBUG_ROUGHNESS\ng_finalColor.rgb=vec3(materialInfo.perceptualRoughness);\n#endif\n#if DEBUG == DEBUG_BASE_COLOR\ng_finalColor.rgb=linearTosRGB(materialInfo.baseColor);\n#endif\n#ifdef MATERIAL_CLEARCOAT\n#if DEBUG == DEBUG_CLEARCOAT_FACTOR\ng_finalColor.rgb=vec3(materialInfo.clearcoatFactor);\n#endif\n#if DEBUG == DEBUG_CLEARCOAT_ROUGHNESS\ng_finalColor.rgb=vec3(materialInfo.clearcoatRoughness);\n#endif\n#if DEBUG == DEBUG_CLEARCOAT_NORMAL\ng_finalColor.rgb=(materialInfo.clearcoatNormal+vec3(1))/2.0;\n#endif\n#endif\n#ifdef MATERIAL_SHEEN\n#if DEBUG == DEBUG_SHEEN_COLOR\ng_finalColor.rgb=materialInfo.sheenColorFactor;\n#endif\n#if DEBUG == DEBUG_SHEEN_ROUGHNESS\ng_finalColor.rgb=vec3(materialInfo.sheenRoughnessFactor);\n#endif\n#endif\n#ifdef MATERIAL_SPECULAR\n#if DEBUG == DEBUG_SPECULAR_FACTOR\ng_finalColor.rgb=vec3(materialInfo.specularWeight);\n#endif\n#if DEBUG == DEBUG_SPECULAR_COLOR\nvec3 specularTexture=vec3(1.0);\n#ifdef HAS_SPECULAR_COLOR_MAP\nspecularTexture.rgb=texture(u_SpecularColorSampler,getSpecularColorUV()).rgb;\n#endif\ng_finalColor.rgb=u_KHR_materials_specular_specularColorFactor*specularTexture.rgb;\n#endif\n#endif\n#ifdef MATERIAL_TRANSMISSION\n#if DEBUG == DEBUG_TRANSMISSION_FACTOR\ng_finalColor.rgb=vec3(materialInfo.transmissionFactor);\n#endif\n#endif\n#ifdef MATERIAL_VOLUME\n#if DEBUG == DEBUG_VOLUME_THICKNESS\ng_finalColor.rgb=vec3(materialInfo.thickness/u_ThicknessFactor);\n#endif\n#endif\n#ifdef MATERIAL_IRIDESCENCE\n#if DEBUG == DEBUG_IRIDESCENCE_FACTOR\ng_finalColor.rgb=vec3(materialInfo.iridescenceFactor);\n#endif\n#if DEBUG == DEBUG_IRIDESCENCE_THICKNESS\ng_finalColor.rgb=vec3(materialInfo.iridescenceThickness/1200.0);\n#endif\n#endif\n#ifdef MATERIAL_ANISOTROPY\n#if DEBUG == DEBUG_ANISOTROPIC_STRENGTH\ng_finalColor.rgb=vec3(materialInfo.anisotropyStrength);\n#endif\n#if DEBUG == DEBUG_ANISOTROPIC_DIRECTION\nvec2 direction=vec2(1.0,0.0);\n#ifdef HAS_ANISOTROPY_MAP\ndirection=texture(u_AnisotropySampler,getAnisotropyUV()).xy;direction=direction*2.0-vec2(1.0);\n#endif\nvec2 directionRotation=u_Anisotropy.xy;mat2 rotationMatrix=mat2(directionRotation.x,directionRotation.y,-directionRotation.y,directionRotation.x);direction=(direction+vec2(1.0))*0.5;g_finalColor.rgb=vec3(direction,0.0);\n#endif\n#endif\n#ifdef MATERIAL_DIFFUSE_TRANSMISSION\n#if DEBUG == DEBUG_DIFFUSE_TRANSMISSION_FACTOR\ng_finalColor.rgb=linearTosRGB(vec3(materialInfo.diffuseTransmissionFactor));\n#endif\n#if DEBUG == DEBUG_DIFFUSE_TRANSMISSION_COLOR_FACTOR\ng_finalColor.rgb=linearTosRGB(materialInfo.diffuseTransmissionColorFactor);\n#endif\n#ifdef MATERIAL_VOLUME_SCATTER\n#if DEBUG == DEBUG_VOLUME_SCATTER_MULTI_SCATTER_COLOR\ng_finalColor.rgb=u_MultiScatterColor;\n#endif\n#if DEBUG == DEBUG_VOLUME_SCATTER_SINGLE_SCATTER_COLOR\ng_finalColor.rgb=singleScatter;\n#endif\n#endif\n#endif\n}"; // eslint-disable-line
 
 var pickingShader = "precision highp float;\n#define GLSLIFY 1\nlayout(location=0)out uint id_color;layout(location=1)out uint position;uniform uint u_PickingColor;void main(){id_color=u_PickingColor;position=uint(gl_FragCoord.z*4294967295.0);}"; // eslint-disable-line
 
@@ -12753,11 +12792,11 @@ var materialInfoShader = "#define GLSLIFY 1\nuniform float u_MetallicFactor;unif
 
 var iblShader = "#define GLSLIFY 1\nuniform float u_EnvIntensity;vec3 getDiffuseLight(vec3 n){vec4 textureSample=texture(u_LambertianEnvSampler,u_EnvRotation*n);textureSample.rgb*=u_EnvIntensity;return textureSample.rgb;}vec4 getSpecularSample(vec3 reflection,float lod){vec4 textureSample=textureLod(u_GGXEnvSampler,u_EnvRotation*reflection,lod);textureSample.rgb*=u_EnvIntensity;return textureSample;}vec4 getSheenSample(vec3 reflection,float lod){vec4 textureSample=textureLod(u_CharlieEnvSampler,u_EnvRotation*reflection,lod);textureSample.rgb*=u_EnvIntensity;return textureSample;}vec3 getIBLGGXFresnel(vec3 n,vec3 v,float roughness,vec3 F0,float specularWeight){float NdotV=clampedDot(n,v);vec2 brdfSamplePoint=clamp(vec2(NdotV,roughness),vec2(0.0,0.0),vec2(1.0,1.0));vec2 f_ab=texture(u_GGXLUT,brdfSamplePoint).rg;vec3 Fr=max(vec3(1.0-roughness),F0)-F0;vec3 k_S=F0+Fr*pow(1.0-NdotV,5.0);vec3 FssEss=specularWeight*(k_S*f_ab.x+f_ab.y);float Ems=(1.0-(f_ab.x+f_ab.y));vec3 F_avg=specularWeight*(F0+(1.0-F0)/21.0);vec3 FmsEms=Ems*FssEss*F_avg/(1.0-F_avg*Ems);return FssEss+FmsEms;}vec3 getIBLRadianceGGX(vec3 n,vec3 v,float roughness){float NdotV=clampedDot(n,v);float lod=roughness*float(u_MipCount-1);vec3 reflection=normalize(reflect(-v,n));vec4 specularSample=getSpecularSample(reflection,lod);vec3 specularLight=specularSample.rgb;return specularLight;}\n#ifdef MATERIAL_TRANSMISSION\nvec3 getTransmissionSample(vec2 fragCoord,float roughness,float ior){float framebufferLod=log2(float(u_TransmissionFramebufferSize.x))*applyIorToRoughness(roughness,ior);vec3 transmittedLight=textureLod(u_TransmissionFramebufferSampler,fragCoord.xy,framebufferLod).rgb;return transmittedLight;}\n#endif\n#ifdef MATERIAL_TRANSMISSION\nvec3 getIBLVolumeRefraction(vec3 n,vec3 v,float perceptualRoughness,vec3 baseColor,vec3 position,mat4 modelMatrix,mat4 viewMatrix,mat4 projMatrix,float ior,float thickness,vec3 attenuationColor,float attenuationDistance,float dispersion){\n#ifdef MATERIAL_DISPERSION\nfloat halfSpread=(ior-1.0)*0.025*dispersion;vec3 iors=vec3(ior-halfSpread,ior,ior+halfSpread);vec3 transmittedLight;float transmissionRayLength;for(int i=0;i<3;i++){vec3 transmissionRay=getVolumeTransmissionRay(n,v,thickness,iors[i],modelMatrix);transmissionRayLength=length(transmissionRay);vec3 refractedRayExit=position+transmissionRay;vec4 ndcPos=projMatrix*viewMatrix*vec4(refractedRayExit,1.0);vec2 refractionCoords=ndcPos.xy/ndcPos.w;refractionCoords+=1.0;refractionCoords/=2.0;transmittedLight[i]=getTransmissionSample(refractionCoords,perceptualRoughness,iors[i])[i];}\n#else\nvec3 transmissionRay=getVolumeTransmissionRay(n,v,thickness,ior,modelMatrix);float transmissionRayLength=length(transmissionRay);vec3 refractedRayExit=position+transmissionRay;vec4 ndcPos=projMatrix*viewMatrix*vec4(refractedRayExit,1.0);vec2 refractionCoords=ndcPos.xy/ndcPos.w;refractionCoords+=1.0;refractionCoords/=2.0;vec3 transmittedLight=getTransmissionSample(refractionCoords,perceptualRoughness,ior);\n#endif\nvec3 attenuatedColor=applyVolumeAttenuation(transmittedLight,transmissionRayLength,attenuationColor,attenuationDistance);return attenuatedColor*baseColor;}\n#endif\n#ifdef MATERIAL_ANISOTROPY\nvec3 getIBLRadianceAnisotropy(vec3 n,vec3 v,float roughness,float anisotropy,vec3 anisotropyDirection){float NdotV=clampedDot(n,v);float tangentRoughness=mix(roughness,1.0,anisotropy*anisotropy);vec3 anisotropicTangent=cross(anisotropyDirection,v);vec3 anisotropicNormal=cross(anisotropicTangent,anisotropyDirection);float bendFactor=1.0-anisotropy*(1.0-roughness);float bendFactorPow4=bendFactor*bendFactor*bendFactor*bendFactor;vec3 bentNormal=normalize(mix(anisotropicNormal,n,bendFactorPow4));float lod=roughness*float(u_MipCount-1);vec3 reflection=normalize(reflect(-v,bentNormal));vec4 specularSample=getSpecularSample(reflection,lod);vec3 specularLight=specularSample.rgb;return specularLight;}\n#endif\nvec3 getIBLRadianceCharlie(vec3 n,vec3 v,float sheenRoughness,vec3 sheenColor){float NdotV=clampedDot(n,v);float lod=sheenRoughness*float(u_MipCount-1);vec3 reflection=normalize(reflect(-v,n));vec2 brdfSamplePoint=clamp(vec2(NdotV,sheenRoughness),vec2(0.0,0.0),vec2(1.0,1.0));float brdf=texture(u_CharlieLUT,brdfSamplePoint).b;vec4 sheenSample=getSheenSample(reflection,lod);vec3 sheenLight=sheenSample.rgb;return sheenLight*sheenColor*brdf;}"; // eslint-disable-line
 
-var punctualShader = "#define GLSLIFY 1\nstruct Light{vec3 direction;float range;vec3 color;float intensity;vec3 position;float innerConeCos;float outerConeCos;int type;};const int LightType_Directional=0;const int LightType_Point=1;const int LightType_Spot=2;\n#ifdef USE_PUNCTUAL\nuniform Light u_Lights[LIGHT_COUNT+1];\n#endif\nfloat getRangeAttenuation(float range,float distance){if(range<=0.0){return 1.0/pow(distance,2.0);}return max(min(1.0-pow(distance/range,4.0),1.0),0.0)/pow(distance,2.0);}float getSpotAttenuation(vec3 pointToLight,vec3 spotDirection,float outerConeCos,float innerConeCos){float actualCos=dot(normalize(spotDirection),normalize(-pointToLight));if(actualCos>outerConeCos){if(actualCos<innerConeCos){float angularAttenuation=(actualCos-outerConeCos)/(innerConeCos-outerConeCos);return angularAttenuation*angularAttenuation;}return 1.0;}return 0.0;}vec3 getLighIntensity(Light light,vec3 pointToLight){float rangeAttenuation=1.0;float spotAttenuation=1.0;if(light.type!=LightType_Directional){rangeAttenuation=getRangeAttenuation(light.range,length(pointToLight));}if(light.type==LightType_Spot){spotAttenuation=getSpotAttenuation(pointToLight,light.direction,light.outerConeCos,light.innerConeCos);}return rangeAttenuation*spotAttenuation*light.intensity*light.color;}vec3 getPunctualRadianceTransmission(vec3 normal,vec3 view,vec3 pointToLight,float alphaRoughness,vec3 baseColor,float ior){float transmissionRougness=applyIorToRoughness(alphaRoughness,ior);vec3 n=normalize(normal);vec3 v=normalize(view);vec3 l=normalize(pointToLight);vec3 l_mirror=normalize(l+2.0*n*dot(-l,n));vec3 h=normalize(l_mirror+v);float D=D_GGX(clamp(dot(n,h),0.0,1.0),transmissionRougness);float Vis=V_GGX(clamp(dot(n,l_mirror),0.0,1.0),clamp(dot(n,v),0.0,1.0),transmissionRougness);return baseColor*D*Vis;}vec3 getPunctualRadianceClearCoat(vec3 clearcoatNormal,vec3 v,vec3 l,vec3 h,float VdotH,vec3 f0,vec3 f90,float clearcoatRoughness){float NdotL=clampedDot(clearcoatNormal,l);float NdotV=clampedDot(clearcoatNormal,v);float NdotH=clampedDot(clearcoatNormal,h);return NdotL*BRDF_specularGGX(clearcoatRoughness*clearcoatRoughness,NdotL,NdotV,NdotH);}vec3 getPunctualRadianceSheen(vec3 sheenColor,float sheenRoughness,float NdotL,float NdotV,float NdotH){return NdotL*BRDF_specularSheen(sheenColor,sheenRoughness,NdotL,NdotV,NdotH);}vec3 applyVolumeAttenuation(vec3 radiance,float transmissionDistance,vec3 attenuationColor,float attenuationDistance){if(attenuationDistance==0.0){return radiance;}else{vec3 transmittance=pow(attenuationColor,vec3(transmissionDistance/attenuationDistance));return transmittance*radiance;}}vec3 getVolumeTransmissionRay(vec3 n,vec3 v,float thickness,float ior,mat4 modelMatrix){vec3 refractionVector=refract(-v,normalize(n),1.0/ior);vec3 modelScale;modelScale.x=length(vec3(modelMatrix[0].xyz));modelScale.y=length(vec3(modelMatrix[1].xyz));modelScale.z=length(vec3(modelMatrix[2].xyz));return normalize(refractionVector)*thickness*modelScale;}"; // eslint-disable-line
+var punctualShader = "#define GLSLIFY 1\nstruct Light{vec3 direction;float range;vec3 color;float intensity;vec3 position;float innerConeCos;float outerConeCos;int type;};const int LightType_Directional=0;const int LightType_Point=1;const int LightType_Spot=2;\n#ifdef USE_PUNCTUAL\nuniform Light u_Lights[LIGHT_COUNT+1];\n#endif\n#ifdef MATERIAL_VOLUME_SCATTER\nuniform vec3 u_ScatterSamples[SCATTER_SAMPLES_COUNT];uniform vec3 u_MultiScatterColor;uniform float u_MinRadius;uniform ivec2 u_FramebufferSize;\n#endif\nfloat getRangeAttenuation(float range,float distance){if(range<=0.0){return 1.0/pow(distance,2.0);}return max(min(1.0-pow(distance/range,4.0),1.0),0.0)/pow(distance,2.0);}float getSpotAttenuation(vec3 pointToLight,vec3 spotDirection,float outerConeCos,float innerConeCos){float actualCos=dot(normalize(spotDirection),normalize(-pointToLight));if(actualCos>outerConeCos){if(actualCos<innerConeCos){float angularAttenuation=(actualCos-outerConeCos)/(innerConeCos-outerConeCos);return angularAttenuation*angularAttenuation;}return 1.0;}return 0.0;}vec3 getLighIntensity(Light light,vec3 pointToLight){float rangeAttenuation=1.0;float spotAttenuation=1.0;if(light.type!=LightType_Directional){rangeAttenuation=getRangeAttenuation(light.range,length(pointToLight));}if(light.type==LightType_Spot){spotAttenuation=getSpotAttenuation(pointToLight,light.direction,light.outerConeCos,light.innerConeCos);}return rangeAttenuation*spotAttenuation*light.intensity*light.color;}vec3 getPunctualRadianceTransmission(vec3 normal,vec3 view,vec3 pointToLight,float alphaRoughness,vec3 baseColor,float ior){float transmissionRougness=applyIorToRoughness(alphaRoughness,ior);vec3 n=normalize(normal);vec3 v=normalize(view);vec3 l=normalize(pointToLight);vec3 l_mirror=normalize(l+2.0*n*dot(-l,n));vec3 h=normalize(l_mirror+v);float D=D_GGX(clamp(dot(n,h),0.0,1.0),transmissionRougness);float Vis=V_GGX(clamp(dot(n,l_mirror),0.0,1.0),clamp(dot(n,v),0.0,1.0),transmissionRougness);return baseColor*D*Vis;}vec3 getPunctualRadianceClearCoat(vec3 clearcoatNormal,vec3 v,vec3 l,vec3 h,float VdotH,vec3 f0,vec3 f90,float clearcoatRoughness){float NdotL=clampedDot(clearcoatNormal,l);float NdotV=clampedDot(clearcoatNormal,v);float NdotH=clampedDot(clearcoatNormal,h);return NdotL*BRDF_specularGGX(clearcoatRoughness*clearcoatRoughness,NdotL,NdotV,NdotH);}vec3 getPunctualRadianceSheen(vec3 sheenColor,float sheenRoughness,float NdotL,float NdotV,float NdotH){return NdotL*BRDF_specularSheen(sheenColor,sheenRoughness,NdotL,NdotV,NdotH);}vec3 applyVolumeAttenuation(vec3 radiance,float transmissionDistance,vec3 attenuationColor,float attenuationDistance){if(attenuationDistance==0.0){return radiance;}else{vec3 transmittance=pow(attenuationColor,vec3(transmissionDistance/attenuationDistance));return transmittance*radiance;}}vec3 getVolumeTransmissionRay(vec3 n,vec3 v,float thickness,float ior,mat4 modelMatrix){vec3 refractionVector=refract(-v,normalize(n),1.0/ior);vec3 modelScale;modelScale.x=length(vec3(modelMatrix[0].xyz));modelScale.y=length(vec3(modelMatrix[1].xyz));modelScale.z=length(vec3(modelMatrix[2].xyz));return normalize(refractionVector)*thickness*modelScale;}\n#ifdef MATERIAL_VOLUME_SCATTER\nvec3 multiToSingleScatter(){vec3 s=4.09712+4.20863*u_MultiScatterColor-sqrt(9.59217+41.6808*u_MultiScatterColor+17.7126*u_MultiScatterColor*u_MultiScatterColor);return 1.0-s*s;}vec3 burley_setup(vec3 radius,vec3 albedo){float m_1_pi=0.318309886183790671538;vec3 s=1.9-albedo+3.5*((albedo-0.8)*(albedo-0.8));vec3 l=0.25*m_1_pi*radius;return l/s;}vec3 burley_eval(vec3 d,float r){vec3 exp_r_3_d=exp(-r/(3.0*d));vec3 exp_r_d=exp_r_3_d*exp_r_3_d*exp_r_3_d;return(exp_r_d+exp_r_3_d)/(4.0*d);}vec3 getSubsurfaceScattering(vec3 position,mat4 projectionMatrix,float attenuationDistance,sampler2D scatterLUT,vec3 diffuseColor){vec3 scatterDistance=attenuationDistance*u_MultiScatterColor;float maxColor=max3(scatterDistance);vec3 vMaxColor=max(vec3(maxColor),vec3(0.00001));vec2 texelSize=1.0/vec2(textureSize(u_ScatterDepthFramebufferSampler,0));mat4 inverseProjectionMatrix=inverse(projectionMatrix);vec2 uv=gl_FragCoord.xy*(1.0/vec2(u_FramebufferSize));vec4 centerSample=textureLod(scatterLUT,uv,0.0);float centerDepth=textureLod(u_ScatterDepthFramebufferSampler,uv,0.0).r;centerDepth=centerDepth*2.0-1.0;vec2 clipUV=uv*2.0-1.0;vec4 clipSpacePosition=vec4(clipUV.x,clipUV.y,centerDepth,1.0);vec4 upos=inverseProjectionMatrix*clipSpacePosition;vec3 fragViewPosition=upos.xyz/upos.w;upos=inverseProjectionMatrix*vec4(clipUV.x+texelSize.x,clipUV.y,centerDepth,1.0);vec3 offsetViewPosition=upos.xyz/upos.w;float mPerPixel=distance(fragViewPosition,offsetViewPosition);float maxRadiusPixels=maxColor/mPerPixel;if(maxRadiusPixels<=1.0){return centerSample.rgb;}centerDepth=fragViewPosition.z;vec3 totalWeight=vec3(0.0);vec3 totalDiffuse=vec3(0.0);vec3 clampedScatterDistance=max(vec3(u_MinRadius),scatterDistance/maxColor)*maxColor;vec3 d=burley_setup(clampedScatterDistance,vec3(1.0));for(int i=0;i<SCATTER_SAMPLES_COUNT;i++){vec3 scatterSample=u_ScatterSamples[i];float fabAngle=scatterSample.x;float r=scatterSample.y*maxRadiusPixels*texelSize.x;float rcpPdf=scatterSample.z;vec2 sampleCoords=vec2(cos(fabAngle)*r,sin(fabAngle)*r);vec2 sampleUV=uv+sampleCoords;vec4 textureSample=textureLod(scatterLUT,sampleUV,0.0);if(centerSample.w==textureSample.w){float sampleDepth=textureLod(u_ScatterDepthFramebufferSampler,sampleUV,0.0).r;sampleDepth=sampleDepth*2.0-1.0;vec2 sampleClipUV=sampleUV*2.0-1.0;vec4 sampleUpos=inverseProjectionMatrix*vec4(sampleClipUV.x,sampleClipUV.y,sampleDepth,1.0);vec3 sampleViewPosition=sampleUpos.xyz/sampleUpos.w;float sampleDistance=distance(sampleViewPosition,fragViewPosition);vec3 weight=burley_eval(d,sampleDistance)*rcpPdf;totalWeight+=weight;totalDiffuse+=weight*textureSample.rgb;}}totalWeight=max(totalWeight,vec3(0.0001));return totalDiffuse/totalWeight*diffuseColor;}\n#endif\n"; // eslint-disable-line
 
 var primitiveShader = "#define GLSLIFY 1\n#include <animation.glsl>\nuniform mat4 u_ViewProjectionMatrix;uniform mat4 u_ModelMatrix;uniform mat4 u_NormalMatrix;in vec3 a_position;out vec3 v_Position;\n#ifdef HAS_NORMAL_VEC3\nin vec3 a_normal;\n#endif\n#ifdef HAS_NORMAL_VEC3\n#ifdef HAS_TANGENT_VEC4\nin vec4 a_tangent;out mat3 v_TBN;\n#else\nout vec3 v_Normal;\n#endif\n#endif\n#ifdef HAS_TEXCOORD_0_VEC2\nin vec2 a_texcoord_0;\n#endif\n#ifdef HAS_TEXCOORD_1_VEC2\nin vec2 a_texcoord_1;\n#endif\nout vec2 v_texcoord_0;out vec2 v_texcoord_1;\n#ifdef HAS_COLOR_0_VEC3\nin vec3 a_color_0;out vec3 v_Color;\n#endif\n#ifdef HAS_COLOR_0_VEC4\nin vec4 a_color_0;out vec4 v_Color;\n#endif\n#ifdef USE_INSTANCING\nin mat4 a_instance_model_matrix;\n#endif\n#ifdef HAS_VERT_NORMAL_UV_TRANSFORM\nuniform mat3 u_vertNormalUVTransform;\n#endif\nvec4 getPosition(){vec4 pos=vec4(a_position,1.0);\n#ifdef USE_MORPHING\npos+=getTargetPosition(gl_VertexID);\n#endif\n#ifdef USE_SKINNING\npos=getSkinningMatrix()*pos;\n#endif\nreturn pos;}\n#ifdef HAS_NORMAL_VEC3\nvec3 getNormal(){vec3 normal=a_normal;\n#ifdef USE_MORPHING\nnormal+=getTargetNormal(gl_VertexID);\n#endif\n#ifdef USE_SKINNING\nnormal=mat3(getSkinningNormalMatrix())*normal;\n#endif\nreturn normalize(normal);}\n#endif\n#ifdef HAS_NORMAL_VEC3\n#ifdef HAS_TANGENT_VEC4\nvec3 getTangent(){vec3 tangent=a_tangent.xyz;\n#ifdef USE_MORPHING\ntangent+=getTargetTangent(gl_VertexID);\n#endif\n#ifdef USE_SKINNING\ntangent=mat3(getSkinningMatrix())*tangent;\n#endif\nreturn normalize(tangent);}\n#endif\n#endif\nvoid main(){gl_PointSize=1.0f;\n#ifdef USE_INSTANCING\nmat4 modelMatrix=a_instance_model_matrix;mat4 normalMatrix=transpose(inverse(modelMatrix));\n#else\nmat4 modelMatrix=u_ModelMatrix;mat4 normalMatrix=u_NormalMatrix;\n#endif\n#ifdef USE_SKINNING\nvec4 pos=getPosition();\n#else\nvec4 pos=modelMatrix*getPosition();\n#endif\nv_Position=vec3(pos.xyz)/pos.w;\n#ifdef HAS_NORMAL_VEC3\n#ifdef HAS_TANGENT_VEC4\nvec3 tangent=getTangent();vec3 normalW=normalize(vec3(normalMatrix*vec4(getNormal(),0.0)));vec3 tangentW=vec3(modelMatrix*vec4(tangent,0.0));vec3 bitangentW=cross(normalW,tangentW)*a_tangent.w;\n#ifdef HAS_VERT_NORMAL_UV_TRANSFORM\ntangentW=u_vertNormalUVTransform*tangentW;bitangentW=u_vertNormalUVTransform*bitangentW;\n#endif\nbitangentW=normalize(bitangentW);tangentW=normalize(tangentW);v_TBN=mat3(tangentW,bitangentW,normalW);\n#else\nv_Normal=normalize(vec3(normalMatrix*vec4(getNormal(),0.0)));\n#endif\n#endif\nv_texcoord_0=vec2(0.0,0.0);v_texcoord_1=vec2(0.0,0.0);\n#ifdef HAS_TEXCOORD_0_VEC2\nv_texcoord_0=a_texcoord_0;\n#endif\n#ifdef HAS_TEXCOORD_1_VEC2\nv_texcoord_1=a_texcoord_1;\n#endif\n#ifdef USE_MORPHING\nv_texcoord_0+=getTargetTexCoord0(gl_VertexID);v_texcoord_1+=getTargetTexCoord1(gl_VertexID);\n#endif\n#if defined(HAS_COLOR_0_VEC3)\nv_Color=a_color_0;\n#if defined(USE_MORPHING)\nv_Color=clamp(v_Color+getTargetColor0(gl_VertexID).xyz,0.0f,1.0f);\n#endif\n#endif\n#if defined(HAS_COLOR_0_VEC4)\nv_Color=a_color_0;\n#if defined(USE_MORPHING)\nv_Color=clamp(v_Color+getTargetColor0(gl_VertexID),0.0f,1.0f);\n#endif\n#endif\ngl_Position=u_ViewProjectionMatrix*pos;}"; // eslint-disable-line
 
-var texturesShader = "#define GLSLIFY 1\nuniform int u_MipCount;uniform samplerCube u_LambertianEnvSampler;uniform samplerCube u_GGXEnvSampler;uniform sampler2D u_GGXLUT;uniform samplerCube u_CharlieEnvSampler;uniform sampler2D u_CharlieLUT;uniform sampler2D u_SheenELUT;uniform mat3 u_EnvRotation;uniform sampler2D u_NormalSampler;uniform float u_NormalScale;uniform int u_NormalUVSet;uniform mat3 u_NormalUVTransform;uniform vec3 u_EmissiveFactor;uniform sampler2D u_EmissiveSampler;uniform int u_EmissiveUVSet;uniform mat3 u_EmissiveUVTransform;uniform sampler2D u_OcclusionSampler;uniform int u_OcclusionUVSet;uniform float u_OcclusionStrength;uniform mat3 u_OcclusionUVTransform;in vec2 v_texcoord_0;in vec2 v_texcoord_1;vec2 getNormalUV(){vec3 uv=vec3(u_NormalUVSet<1 ? v_texcoord_0 : v_texcoord_1,1.0);\n#ifdef HAS_NORMAL_UV_TRANSFORM\nuv=u_NormalUVTransform*uv;\n#endif\nreturn uv.xy;}vec2 getEmissiveUV(){vec3 uv=vec3(u_EmissiveUVSet<1 ? v_texcoord_0 : v_texcoord_1,1.0);\n#ifdef HAS_EMISSIVE_UV_TRANSFORM\nuv=u_EmissiveUVTransform*uv;\n#endif\nreturn uv.xy;}vec2 getOcclusionUV(){vec3 uv=vec3(u_OcclusionUVSet<1 ? v_texcoord_0 : v_texcoord_1,1.0);\n#ifdef HAS_OCCLUSION_UV_TRANSFORM\nuv=u_OcclusionUVTransform*uv;\n#endif\nreturn uv.xy;}\n#ifdef MATERIAL_METALLICROUGHNESS\nuniform sampler2D u_BaseColorSampler;uniform int u_BaseColorUVSet;uniform mat3 u_BaseColorUVTransform;uniform sampler2D u_MetallicRoughnessSampler;uniform int u_MetallicRoughnessUVSet;uniform mat3 u_MetallicRoughnessUVTransform;vec2 getBaseColorUV(){vec3 uv=vec3(u_BaseColorUVSet<1 ? v_texcoord_0 : v_texcoord_1,1.0);\n#ifdef HAS_BASECOLOR_UV_TRANSFORM\nuv=u_BaseColorUVTransform*uv;\n#endif\nreturn uv.xy;}vec2 getMetallicRoughnessUV(){vec3 uv=vec3(u_MetallicRoughnessUVSet<1 ? v_texcoord_0 : v_texcoord_1,1.0);\n#ifdef HAS_METALLICROUGHNESS_UV_TRANSFORM\nuv=u_MetallicRoughnessUVTransform*uv;\n#endif\nreturn uv.xy;}\n#endif\n#ifdef MATERIAL_SPECULARGLOSSINESS\nuniform sampler2D u_DiffuseSampler;uniform int u_DiffuseUVSet;uniform mat3 u_DiffuseUVTransform;uniform sampler2D u_SpecularGlossinessSampler;uniform int u_SpecularGlossinessUVSet;uniform mat3 u_SpecularGlossinessUVTransform;vec2 getSpecularGlossinessUV(){vec3 uv=vec3(u_SpecularGlossinessUVSet<1 ? v_texcoord_0 : v_texcoord_1,1.0);\n#ifdef HAS_SPECULARGLOSSINESS_UV_TRANSFORM\nuv=u_SpecularGlossinessUVTransform*uv;\n#endif\nreturn uv.xy;}vec2 getDiffuseUV(){vec3 uv=vec3(u_DiffuseUVSet<1 ? v_texcoord_0 : v_texcoord_1,1.0);\n#ifdef HAS_DIFFUSE_UV_TRANSFORM\nuv=u_DiffuseUVTransform*uv;\n#endif\nreturn uv.xy;}\n#endif\n#ifdef MATERIAL_CLEARCOAT\nuniform sampler2D u_ClearcoatSampler;uniform int u_ClearcoatUVSet;uniform mat3 u_ClearcoatUVTransform;uniform sampler2D u_ClearcoatRoughnessSampler;uniform int u_ClearcoatRoughnessUVSet;uniform mat3 u_ClearcoatRoughnessUVTransform;uniform sampler2D u_ClearcoatNormalSampler;uniform int u_ClearcoatNormalUVSet;uniform mat3 u_ClearcoatNormalUVTransform;uniform float u_ClearcoatNormalScale;vec2 getClearcoatUV(){vec3 uv=vec3(u_ClearcoatUVSet<1 ? v_texcoord_0 : v_texcoord_1,1.0);\n#ifdef HAS_CLEARCOAT_UV_TRANSFORM\nuv=u_ClearcoatUVTransform*uv;\n#endif\nreturn uv.xy;}vec2 getClearcoatRoughnessUV(){vec3 uv=vec3(u_ClearcoatRoughnessUVSet<1 ? v_texcoord_0 : v_texcoord_1,1.0);\n#ifdef HAS_CLEARCOATROUGHNESS_UV_TRANSFORM\nuv=u_ClearcoatRoughnessUVTransform*uv;\n#endif\nreturn uv.xy;}vec2 getClearcoatNormalUV(){vec3 uv=vec3(u_ClearcoatNormalUVSet<1 ? v_texcoord_0 : v_texcoord_1,1.0);\n#ifdef HAS_CLEARCOATNORMAL_UV_TRANSFORM\nuv=u_ClearcoatNormalUVTransform*uv;\n#endif\nreturn uv.xy;}\n#endif\n#ifdef MATERIAL_SHEEN\nuniform sampler2D u_SheenColorSampler;uniform int u_SheenColorUVSet;uniform mat3 u_SheenColorUVTransform;uniform sampler2D u_SheenRoughnessSampler;uniform int u_SheenRoughnessUVSet;uniform mat3 u_SheenRoughnessUVTransform;vec2 getSheenColorUV(){vec3 uv=vec3(u_SheenColorUVSet<1 ? v_texcoord_0 : v_texcoord_1,1.0);\n#ifdef HAS_SHEENCOLOR_UV_TRANSFORM\nuv=u_SheenColorUVTransform*uv;\n#endif\nreturn uv.xy;}vec2 getSheenRoughnessUV(){vec3 uv=vec3(u_SheenRoughnessUVSet<1 ? v_texcoord_0 : v_texcoord_1,1.0);\n#ifdef HAS_SHEENROUGHNESS_UV_TRANSFORM\nuv=u_SheenRoughnessUVTransform*uv;\n#endif\nreturn uv.xy;}\n#endif\n#ifdef MATERIAL_SPECULAR\nuniform sampler2D u_SpecularSampler;uniform int u_SpecularUVSet;uniform mat3 u_SpecularUVTransform;uniform sampler2D u_SpecularColorSampler;uniform int u_SpecularColorUVSet;uniform mat3 u_SpecularColorUVTransform;vec2 getSpecularUV(){vec3 uv=vec3(u_SpecularUVSet<1 ? v_texcoord_0 : v_texcoord_1,1.0);\n#ifdef HAS_SPECULAR_UV_TRANSFORM\nuv=u_SpecularUVTransform*uv;\n#endif\nreturn uv.xy;}vec2 getSpecularColorUV(){vec3 uv=vec3(u_SpecularColorUVSet<1 ? v_texcoord_0 : v_texcoord_1,1.0);\n#ifdef HAS_SPECULARCOLOR_UV_TRANSFORM\nuv=u_SpecularColorUVTransform*uv;\n#endif\nreturn uv.xy;}\n#endif\n#ifdef MATERIAL_TRANSMISSION\nuniform sampler2D u_TransmissionSampler;uniform int u_TransmissionUVSet;uniform mat3 u_TransmissionUVTransform;uniform sampler2D u_TransmissionFramebufferSampler;uniform ivec2 u_TransmissionFramebufferSize;vec2 getTransmissionUV(){vec3 uv=vec3(u_TransmissionUVSet<1 ? v_texcoord_0 : v_texcoord_1,1.0);\n#ifdef HAS_TRANSMISSION_UV_TRANSFORM\nuv=u_TransmissionUVTransform*uv;\n#endif\nreturn uv.xy;}\n#endif\n#ifdef MATERIAL_VOLUME\nuniform sampler2D u_ThicknessSampler;uniform int u_ThicknessUVSet;uniform mat3 u_ThicknessUVTransform;vec2 getThicknessUV(){vec3 uv=vec3(u_ThicknessUVSet<1 ? v_texcoord_0 : v_texcoord_1,1.0);\n#ifdef HAS_THICKNESS_UV_TRANSFORM\nuv=u_ThicknessUVTransform*uv;\n#endif\nreturn uv.xy;}\n#endif\n#ifdef MATERIAL_IRIDESCENCE\nuniform sampler2D u_IridescenceSampler;uniform int u_IridescenceUVSet;uniform mat3 u_IridescenceUVTransform;uniform sampler2D u_IridescenceThicknessSampler;uniform int u_IridescenceThicknessUVSet;uniform mat3 u_IridescenceThicknessUVTransform;vec2 getIridescenceUV(){vec3 uv=vec3(u_IridescenceUVSet<1 ? v_texcoord_0 : v_texcoord_1,1.0);\n#ifdef HAS_IRIDESCENCE_UV_TRANSFORM\nuv=u_IridescenceUVTransform*uv;\n#endif\nreturn uv.xy;}vec2 getIridescenceThicknessUV(){vec3 uv=vec3(u_IridescenceThicknessUVSet<1 ? v_texcoord_0 : v_texcoord_1,1.0);\n#ifdef HAS_IRIDESCENCETHICKNESS_UV_TRANSFORM\nuv=u_IridescenceThicknessUVTransform*uv;\n#endif\nreturn uv.xy;}\n#endif\n#ifdef MATERIAL_DIFFUSE_TRANSMISSION\nuniform sampler2D u_DiffuseTransmissionSampler;uniform int u_DiffuseTransmissionUVSet;uniform mat3 u_DiffuseTransmissionUVTransform;uniform sampler2D u_DiffuseTransmissionColorSampler;uniform int u_DiffuseTransmissionColorUVSet;uniform mat3 u_DiffuseTransmissionColorUVTransform;vec2 getDiffuseTransmissionUV(){vec3 uv=vec3(u_DiffuseTransmissionUVSet<1 ? v_texcoord_0 : v_texcoord_1,1.0);\n#ifdef HAS_DIFFUSETRANSMISSION_UV_TRANSFORM\nuv=u_DiffuseTransmissionUVTransform*uv;\n#endif\nreturn uv.xy;}vec2 getDiffuseTransmissionColorUV(){vec3 uv=vec3(u_DiffuseTransmissionColorUVSet<1 ? v_texcoord_0 : v_texcoord_1,1.0);\n#ifdef HAS_DIFFUSETRANSMISSIONCOLOR_UV_TRANSFORM\nuv=u_DiffuseTransmissionColorUVTransform*uv;\n#endif\nreturn uv.xy;}\n#endif\n#ifdef MATERIAL_ANISOTROPY\nuniform sampler2D u_AnisotropySampler;uniform int u_AnisotropyUVSet;uniform mat3 u_AnisotropyUVTransform;vec2 getAnisotropyUV(){vec3 uv=vec3(u_AnisotropyUVSet<1 ? v_texcoord_0 : v_texcoord_1,1.0);\n#ifdef HAS_ANISOTROPY_UV_TRANSFORM\nuv=u_AnisotropyUVTransform*uv;\n#endif\nreturn uv.xy;}\n#endif\n"; // eslint-disable-line
+var texturesShader = "#define GLSLIFY 1\nuniform int u_MipCount;uniform samplerCube u_LambertianEnvSampler;uniform samplerCube u_GGXEnvSampler;uniform sampler2D u_GGXLUT;uniform samplerCube u_CharlieEnvSampler;uniform sampler2D u_CharlieLUT;uniform sampler2D u_SheenELUT;uniform mat3 u_EnvRotation;uniform sampler2D u_NormalSampler;uniform float u_NormalScale;uniform int u_NormalUVSet;uniform mat3 u_NormalUVTransform;uniform vec3 u_EmissiveFactor;uniform sampler2D u_EmissiveSampler;uniform int u_EmissiveUVSet;uniform mat3 u_EmissiveUVTransform;uniform sampler2D u_OcclusionSampler;uniform int u_OcclusionUVSet;uniform float u_OcclusionStrength;uniform mat3 u_OcclusionUVTransform;in vec2 v_texcoord_0;in vec2 v_texcoord_1;vec2 getNormalUV(){vec3 uv=vec3(u_NormalUVSet<1 ? v_texcoord_0 : v_texcoord_1,1.0);\n#ifdef HAS_NORMAL_UV_TRANSFORM\nuv=u_NormalUVTransform*uv;\n#endif\nreturn uv.xy;}vec2 getEmissiveUV(){vec3 uv=vec3(u_EmissiveUVSet<1 ? v_texcoord_0 : v_texcoord_1,1.0);\n#ifdef HAS_EMISSIVE_UV_TRANSFORM\nuv=u_EmissiveUVTransform*uv;\n#endif\nreturn uv.xy;}vec2 getOcclusionUV(){vec3 uv=vec3(u_OcclusionUVSet<1 ? v_texcoord_0 : v_texcoord_1,1.0);\n#ifdef HAS_OCCLUSION_UV_TRANSFORM\nuv=u_OcclusionUVTransform*uv;\n#endif\nreturn uv.xy;}\n#ifdef MATERIAL_METALLICROUGHNESS\nuniform sampler2D u_BaseColorSampler;uniform int u_BaseColorUVSet;uniform mat3 u_BaseColorUVTransform;uniform sampler2D u_MetallicRoughnessSampler;uniform int u_MetallicRoughnessUVSet;uniform mat3 u_MetallicRoughnessUVTransform;vec2 getBaseColorUV(){vec3 uv=vec3(u_BaseColorUVSet<1 ? v_texcoord_0 : v_texcoord_1,1.0);\n#ifdef HAS_BASECOLOR_UV_TRANSFORM\nuv=u_BaseColorUVTransform*uv;\n#endif\nreturn uv.xy;}vec2 getMetallicRoughnessUV(){vec3 uv=vec3(u_MetallicRoughnessUVSet<1 ? v_texcoord_0 : v_texcoord_1,1.0);\n#ifdef HAS_METALLICROUGHNESS_UV_TRANSFORM\nuv=u_MetallicRoughnessUVTransform*uv;\n#endif\nreturn uv.xy;}\n#endif\n#ifdef MATERIAL_SPECULARGLOSSINESS\nuniform sampler2D u_DiffuseSampler;uniform int u_DiffuseUVSet;uniform mat3 u_DiffuseUVTransform;uniform sampler2D u_SpecularGlossinessSampler;uniform int u_SpecularGlossinessUVSet;uniform mat3 u_SpecularGlossinessUVTransform;vec2 getSpecularGlossinessUV(){vec3 uv=vec3(u_SpecularGlossinessUVSet<1 ? v_texcoord_0 : v_texcoord_1,1.0);\n#ifdef HAS_SPECULARGLOSSINESS_UV_TRANSFORM\nuv=u_SpecularGlossinessUVTransform*uv;\n#endif\nreturn uv.xy;}vec2 getDiffuseUV(){vec3 uv=vec3(u_DiffuseUVSet<1 ? v_texcoord_0 : v_texcoord_1,1.0);\n#ifdef HAS_DIFFUSE_UV_TRANSFORM\nuv=u_DiffuseUVTransform*uv;\n#endif\nreturn uv.xy;}\n#endif\n#ifdef MATERIAL_CLEARCOAT\nuniform sampler2D u_ClearcoatSampler;uniform int u_ClearcoatUVSet;uniform mat3 u_ClearcoatUVTransform;uniform sampler2D u_ClearcoatRoughnessSampler;uniform int u_ClearcoatRoughnessUVSet;uniform mat3 u_ClearcoatRoughnessUVTransform;uniform sampler2D u_ClearcoatNormalSampler;uniform int u_ClearcoatNormalUVSet;uniform mat3 u_ClearcoatNormalUVTransform;uniform float u_ClearcoatNormalScale;vec2 getClearcoatUV(){vec3 uv=vec3(u_ClearcoatUVSet<1 ? v_texcoord_0 : v_texcoord_1,1.0);\n#ifdef HAS_CLEARCOAT_UV_TRANSFORM\nuv=u_ClearcoatUVTransform*uv;\n#endif\nreturn uv.xy;}vec2 getClearcoatRoughnessUV(){vec3 uv=vec3(u_ClearcoatRoughnessUVSet<1 ? v_texcoord_0 : v_texcoord_1,1.0);\n#ifdef HAS_CLEARCOATROUGHNESS_UV_TRANSFORM\nuv=u_ClearcoatRoughnessUVTransform*uv;\n#endif\nreturn uv.xy;}vec2 getClearcoatNormalUV(){vec3 uv=vec3(u_ClearcoatNormalUVSet<1 ? v_texcoord_0 : v_texcoord_1,1.0);\n#ifdef HAS_CLEARCOATNORMAL_UV_TRANSFORM\nuv=u_ClearcoatNormalUVTransform*uv;\n#endif\nreturn uv.xy;}\n#endif\n#ifdef MATERIAL_SHEEN\nuniform sampler2D u_SheenColorSampler;uniform int u_SheenColorUVSet;uniform mat3 u_SheenColorUVTransform;uniform sampler2D u_SheenRoughnessSampler;uniform int u_SheenRoughnessUVSet;uniform mat3 u_SheenRoughnessUVTransform;vec2 getSheenColorUV(){vec3 uv=vec3(u_SheenColorUVSet<1 ? v_texcoord_0 : v_texcoord_1,1.0);\n#ifdef HAS_SHEENCOLOR_UV_TRANSFORM\nuv=u_SheenColorUVTransform*uv;\n#endif\nreturn uv.xy;}vec2 getSheenRoughnessUV(){vec3 uv=vec3(u_SheenRoughnessUVSet<1 ? v_texcoord_0 : v_texcoord_1,1.0);\n#ifdef HAS_SHEENROUGHNESS_UV_TRANSFORM\nuv=u_SheenRoughnessUVTransform*uv;\n#endif\nreturn uv.xy;}\n#endif\n#ifdef MATERIAL_SPECULAR\nuniform sampler2D u_SpecularSampler;uniform int u_SpecularUVSet;uniform mat3 u_SpecularUVTransform;uniform sampler2D u_SpecularColorSampler;uniform int u_SpecularColorUVSet;uniform mat3 u_SpecularColorUVTransform;vec2 getSpecularUV(){vec3 uv=vec3(u_SpecularUVSet<1 ? v_texcoord_0 : v_texcoord_1,1.0);\n#ifdef HAS_SPECULAR_UV_TRANSFORM\nuv=u_SpecularUVTransform*uv;\n#endif\nreturn uv.xy;}vec2 getSpecularColorUV(){vec3 uv=vec3(u_SpecularColorUVSet<1 ? v_texcoord_0 : v_texcoord_1,1.0);\n#ifdef HAS_SPECULARCOLOR_UV_TRANSFORM\nuv=u_SpecularColorUVTransform*uv;\n#endif\nreturn uv.xy;}\n#endif\n#ifdef MATERIAL_TRANSMISSION\nuniform sampler2D u_TransmissionSampler;uniform int u_TransmissionUVSet;uniform mat3 u_TransmissionUVTransform;uniform sampler2D u_TransmissionFramebufferSampler;uniform ivec2 u_TransmissionFramebufferSize;vec2 getTransmissionUV(){vec3 uv=vec3(u_TransmissionUVSet<1 ? v_texcoord_0 : v_texcoord_1,1.0);\n#ifdef HAS_TRANSMISSION_UV_TRANSFORM\nuv=u_TransmissionUVTransform*uv;\n#endif\nreturn uv.xy;}\n#endif\n#ifdef MATERIAL_VOLUME\nuniform sampler2D u_ThicknessSampler;uniform int u_ThicknessUVSet;uniform mat3 u_ThicknessUVTransform;vec2 getThicknessUV(){vec3 uv=vec3(u_ThicknessUVSet<1 ? v_texcoord_0 : v_texcoord_1,1.0);\n#ifdef HAS_THICKNESS_UV_TRANSFORM\nuv=u_ThicknessUVTransform*uv;\n#endif\nreturn uv.xy;}\n#endif\n#ifdef MATERIAL_VOLUME_SCATTER\nuniform sampler2D u_ScatterFramebufferSampler;uniform sampler2D u_ScatterDepthFramebufferSampler;\n#endif\n#ifdef MATERIAL_IRIDESCENCE\nuniform sampler2D u_IridescenceSampler;uniform int u_IridescenceUVSet;uniform mat3 u_IridescenceUVTransform;uniform sampler2D u_IridescenceThicknessSampler;uniform int u_IridescenceThicknessUVSet;uniform mat3 u_IridescenceThicknessUVTransform;vec2 getIridescenceUV(){vec3 uv=vec3(u_IridescenceUVSet<1 ? v_texcoord_0 : v_texcoord_1,1.0);\n#ifdef HAS_IRIDESCENCE_UV_TRANSFORM\nuv=u_IridescenceUVTransform*uv;\n#endif\nreturn uv.xy;}vec2 getIridescenceThicknessUV(){vec3 uv=vec3(u_IridescenceThicknessUVSet<1 ? v_texcoord_0 : v_texcoord_1,1.0);\n#ifdef HAS_IRIDESCENCETHICKNESS_UV_TRANSFORM\nuv=u_IridescenceThicknessUVTransform*uv;\n#endif\nreturn uv.xy;}\n#endif\n#ifdef MATERIAL_DIFFUSE_TRANSMISSION\nuniform sampler2D u_DiffuseTransmissionSampler;uniform int u_DiffuseTransmissionUVSet;uniform mat3 u_DiffuseTransmissionUVTransform;uniform sampler2D u_DiffuseTransmissionColorSampler;uniform int u_DiffuseTransmissionColorUVSet;uniform mat3 u_DiffuseTransmissionColorUVTransform;vec2 getDiffuseTransmissionUV(){vec3 uv=vec3(u_DiffuseTransmissionUVSet<1 ? v_texcoord_0 : v_texcoord_1,1.0);\n#ifdef HAS_DIFFUSETRANSMISSION_UV_TRANSFORM\nuv=u_DiffuseTransmissionUVTransform*uv;\n#endif\nreturn uv.xy;}vec2 getDiffuseTransmissionColorUV(){vec3 uv=vec3(u_DiffuseTransmissionColorUVSet<1 ? v_texcoord_0 : v_texcoord_1,1.0);\n#ifdef HAS_DIFFUSETRANSMISSIONCOLOR_UV_TRANSFORM\nuv=u_DiffuseTransmissionColorUVTransform*uv;\n#endif\nreturn uv.xy;}\n#endif\n#ifdef MATERIAL_ANISOTROPY\nuniform sampler2D u_AnisotropySampler;uniform int u_AnisotropyUVSet;uniform mat3 u_AnisotropyUVTransform;vec2 getAnisotropyUV(){vec3 uv=vec3(u_AnisotropyUVSet<1 ? v_texcoord_0 : v_texcoord_1,1.0);\n#ifdef HAS_ANISOTROPY_UV_TRANSFORM\nuv=u_AnisotropyUVTransform*uv;\n#endif\nreturn uv.xy;}\n#endif\n"; // eslint-disable-line
 
 var tonemappingShader = "#define GLSLIFY 1\nuniform float u_Exposure;const float GAMMA=2.2;const float INV_GAMMA=1.0/GAMMA;const mat3 ACESInputMat=mat3(0.59719,0.07600,0.02840,0.35458,0.90834,0.13383,0.04823,0.01566,0.83777);const mat3 ACESOutputMat=mat3(1.60475,-0.10208,-0.00327,-0.53108,1.10813,-0.07276,-0.07367,-0.00605,1.07602);vec3 linearTosRGB(vec3 color){return pow(color,vec3(INV_GAMMA));}vec3 sRGBToLinear(vec3 srgbIn){return vec3(pow(srgbIn.xyz,vec3(GAMMA)));}vec4 sRGBToLinear(vec4 srgbIn){return vec4(sRGBToLinear(srgbIn.xyz),srgbIn.w);}vec3 toneMapACES_Narkowicz(vec3 color){const float A=2.51;const float B=0.03;const float C=2.43;const float D=0.59;const float E=0.14;return clamp((color*(A*color+B))/(color*(C*color+D)+E),0.0,1.0);}vec3 RRTAndODTFit(vec3 color){vec3 a=color*(color+0.0245786)-0.000090537;vec3 b=color*(0.983729*color+0.4329510)+0.238081;return a/b;}vec3 toneMapACES_Hill(vec3 color){color=ACESInputMat*color;color=RRTAndODTFit(color);color=ACESOutputMat*color;color=clamp(color,0.0,1.0);return color;}\n#ifdef TONEMAP_KHR_PBR_NEUTRAL\nvec3 toneMap_KhronosPbrNeutral(vec3 color){const float startCompression=0.8-0.04;const float desaturation=0.15;float x=min(color.r,min(color.g,color.b));float offset=x<0.08 ? x-6.25*x*x : 0.04;color-=offset;float peak=max(color.r,max(color.g,color.b));if(peak<startCompression)return color;const float d=1.-startCompression;float newPeak=1.-d*d/(peak+d-startCompression);color*=newPeak/peak;float g=1.-1./(desaturation*(peak-newPeak)+1.);return mix(color,newPeak*vec3(1,1,1),g);}\n#endif\nvec3 toneMap(vec3 color){color*=u_Exposure;\n#ifdef TONEMAP_ACES_NARKOWICZ\ncolor=toneMapACES_Narkowicz(color);\n#endif\n#ifdef TONEMAP_ACES_HILL\ncolor=toneMapACES_Hill(color);\n#endif\n#ifdef TONEMAP_ACES_HILL_EXPOSURE_BOOST\ncolor/=0.6;color=toneMapACES_Hill(color);\n#endif\n#ifdef TONEMAP_KHR_PBR_NEUTRAL\ncolor=toneMap_KhronosPbrNeutral(color);\n#endif\nreturn linearTosRGB(color);}"; // eslint-disable-line
 
@@ -12768,6 +12807,8 @@ var animationShader = "#define GLSLIFY 1\n#ifdef HAS_MORPH_TARGETS\nuniform high
 var cubemapVertShader = "#define GLSLIFY 1\nuniform mat4 u_ViewProjectionMatrix;uniform mat3 u_EnvRotation;in vec3 a_position;out vec3 v_TexCoords;void main(){v_TexCoords=u_EnvRotation*a_position;mat4 mat=u_ViewProjectionMatrix;mat[3]=vec4(0.0,0.0,0.0,0.1);vec4 pos=mat*vec4(a_position,1.0);gl_Position=pos.xyww;}"; // eslint-disable-line
 
 var cubemapFragShader = "precision highp float;\n#define GLSLIFY 1\n#include <tonemapping.glsl>\nuniform float u_EnvIntensity;uniform float u_EnvBlurNormalized;uniform int u_MipCount;uniform samplerCube u_GGXEnvSampler;out vec4 FragColor;in vec3 v_TexCoords;void main(){vec4 color=textureLod(u_GGXEnvSampler,v_TexCoords,u_EnvBlurNormalized*float(u_MipCount-1));color.rgb*=u_EnvIntensity;color.a=1.0;\n#ifdef LINEAR_OUTPUT\nFragColor=color.rgba;\n#else\nFragColor=vec4(toneMap(color.rgb),color.a);\n#endif\n}"; // eslint-disable-line
+
+var scatterShader = "precision highp float;\n#define GLSLIFY 1\n#include <textures.glsl>\n#include <functions.glsl>\n#include <brdf.glsl>\n#include <punctual.glsl>\n#include <ibl.glsl>\n#include <material_info.glsl>\nlayout(location=0)out vec4 frontColor;uniform int u_MaterialID;void main(){frontColor=vec4(0.0,0.0,0.0,float(u_MaterialID)/255.0);\n#ifdef MATERIAL_VOLUME_SCATTER\nvec3 singleScatter=multiToSingleScatter();\n#endif\nvec4 baseColor=getBaseColor();baseColor.a=1.0;vec3 color=vec3(0);vec3 v=normalize(u_Camera-v_Position);NormalInfo normalInfo=getNormalInfo(v);vec3 n=normalInfo.n;vec3 t=normalInfo.t;vec3 b=normalInfo.b;float NdotV=clampedDot(n,v);float TdotV=clampedDot(t,v);float BdotV=clampedDot(b,v);MaterialInfo materialInfo;materialInfo.baseColor=baseColor.rgb;materialInfo.ior=1.5;materialInfo.f0_dielectric=vec3(0.04);materialInfo.specularWeight=1.0;materialInfo.f90=vec3(1.0);materialInfo.f90_dielectric=materialInfo.f90;\n#ifdef MATERIAL_IOR\nmaterialInfo=getIorInfo(materialInfo);\n#endif\n#ifdef MATERIAL_METALLICROUGHNESS\nmaterialInfo=getMetallicRoughnessInfo(materialInfo);\n#endif\n#ifdef MATERIAL_SHEEN\nmaterialInfo=getSheenInfo(materialInfo);\n#endif\n#ifdef MATERIAL_SPECULAR\nmaterialInfo=getSpecularInfo(materialInfo);\n#endif\n#ifdef MATERIAL_TRANSMISSION\nmaterialInfo=getTransmissionInfo(materialInfo);\n#endif\n#ifdef MATERIAL_VOLUME\nmaterialInfo=getVolumeInfo(materialInfo);\n#endif\n#ifdef MATERIAL_DIFFUSE_TRANSMISSION\nmaterialInfo=getDiffuseTransmissionInfo(materialInfo);\n#endif\nmaterialInfo.perceptualRoughness=clamp(materialInfo.perceptualRoughness,0.0,1.0);materialInfo.alphaRoughness=materialInfo.perceptualRoughness*materialInfo.perceptualRoughness;vec3 f_specular_dielectric=vec3(0.0);vec3 f_diffuse=vec3(0.0);vec3 f_dielectric_brdf_ibl=vec3(0.0);float albedoSheenScaling=1.0;float diffuseTransmissionThickness=1.0;\n#ifdef MATERIAL_DIFFUSE_TRANSMISSION\n#ifdef MATERIAL_VOLUME\ndiffuseTransmissionThickness=materialInfo.thickness*(length(vec3(u_ModelMatrix[0].xyz))+length(vec3(u_ModelMatrix[1].xyz))+length(vec3(u_ModelMatrix[2].xyz)))/3.0;\n#endif\n#endif\n#if defined(USE_IBL) || defined(MATERIAL_TRANSMISSION)\n#ifdef MATERIAL_DIFFUSE_TRANSMISSION\nf_diffuse=getDiffuseLight(n)*materialInfo.diffuseTransmissionColorFactor*singleScatter;vec3 diffuseTransmissionIBL=getDiffuseLight(-n)*materialInfo.diffuseTransmissionColorFactor;\n#ifdef MATERIAL_VOLUME\ndiffuseTransmissionIBL=applyVolumeAttenuation(diffuseTransmissionIBL,diffuseTransmissionThickness,materialInfo.attenuationColor,materialInfo.attenuationDistance);\n#endif\nf_diffuse+=diffuseTransmissionIBL*(1.0-singleScatter)*singleScatter;f_diffuse*=materialInfo.diffuseTransmissionFactor;\n#endif\n#ifdef MATERIAL_SHEEN\nalbedoSheenScaling=1.0-max3(materialInfo.sheenColorFactor)*albedoSheenScalingLUT(NdotV,materialInfo.sheenRoughnessFactor);\n#endif\nvec3 f_dielectric_fresnel_ibl=getIBLGGXFresnel(n,v,materialInfo.perceptualRoughness,materialInfo.f0_dielectric,materialInfo.specularWeight);frontColor+=vec4(mix(f_diffuse,f_specular_dielectric,f_dielectric_fresnel_ibl),0.0)*albedoSheenScaling;\n#endif\n#ifdef USE_PUNCTUAL\nfor(int i=0;i<LIGHT_COUNT;++i){Light light=u_Lights[i];vec3 pointToLight;if(light.type!=LightType_Directional){pointToLight=light.position-v_Position;}else{pointToLight=-light.direction;}vec3 l=normalize(pointToLight);vec3 h=normalize(l+v);float NdotL=clampedDot(n,l);float NdotV=clampedDot(n,v);float NdotH=clampedDot(n,h);float LdotH=clampedDot(l,h);float VdotH=clampedDot(v,h);vec3 dielectric_fresnel=F_Schlick(materialInfo.f0_dielectric*materialInfo.specularWeight,materialInfo.f90_dielectric,abs(VdotH));vec3 lightIntensity=getLighIntensity(light,pointToLight);vec3 l_diffuse=vec3(0.0);vec3 l_specular_dielectric=vec3(0.0);vec3 l_dielectric_brdf=vec3(0.0);\n#ifdef MATERIAL_DIFFUSE_TRANSMISSION\nl_diffuse=lightIntensity*NdotL*BRDF_lambertian(materialInfo.diffuseTransmissionColorFactor)*singleScatter;if(dot(n,l)<0.0){float diffuseNdotL=clampedDot(-n,l);vec3 diffuse_btdf=lightIntensity*diffuseNdotL*BRDF_lambertian(materialInfo.diffuseTransmissionColorFactor);vec3 l_mirror=normalize(l+2.0*n*dot(-l,n));float diffuseVdotH=clampedDot(v,normalize(l_mirror+v));dielectric_fresnel=F_Schlick(materialInfo.f0_dielectric*materialInfo.specularWeight,materialInfo.f90_dielectric,abs(diffuseVdotH));\n#ifdef MATERIAL_VOLUME\ndiffuse_btdf=applyVolumeAttenuation(diffuse_btdf,diffuseTransmissionThickness,materialInfo.attenuationColor,materialInfo.attenuationDistance);\n#endif\nl_diffuse+=diffuse_btdf*(1.0-singleScatter)*singleScatter;}l_diffuse*=materialInfo.diffuseTransmissionFactor;\n#endif\n#ifdef MATERIAL_SHEEN\nalbedoSheenScaling=min(1.0-max3(materialInfo.sheenColorFactor)*albedoSheenScalingLUT(NdotV,materialInfo.sheenRoughnessFactor),1.0-max3(materialInfo.sheenColorFactor)*albedoSheenScalingLUT(NdotL,materialInfo.sheenRoughnessFactor));\n#endif\nl_dielectric_brdf=mix(l_diffuse,l_specular_dielectric,dielectric_fresnel);color+=l_dielectric_brdf*albedoSheenScaling;}frontColor+=vec4(color.rgb,0.0);\n#endif\n}"; // eslint-disable-line
 
 var specularGlossinesShader = "precision highp float;\n#define GLSLIFY 1\n#include <tonemapping.glsl>\n#include <textures.glsl>\n#include <functions.glsl>\n#include <brdf.glsl>\n#include <punctual.glsl>\n#include <ibl.glsl>\n#include <material_info.glsl>\nout vec4 g_finalColor;uniform vec3 u_SpecularFactor;uniform vec4 u_DiffuseFactor;uniform float u_GlossinessFactor;void main(){vec4 baseColor=u_DiffuseFactor;\n#if defined(HAS_DIFFUSE_MAP)\nbaseColor*=texture(u_DiffuseSampler,getDiffuseUV());\n#endif\nbaseColor*=getVertexColor();\n#if ALPHAMODE == ALPHAMODE_OPAQUE\nbaseColor.a=1.0;\n#endif\nvec3 color=vec3(0);vec3 v=normalize(u_Camera-v_Position);NormalInfo normalInfo=getNormalInfo(v);vec3 n=normalInfo.n;float NdotV=clampedDot(n,v);MaterialInfo materialInfo;materialInfo.baseColor=baseColor.rgb;materialInfo.f90_dielectric=vec3(1.0);materialInfo.metallic=0.0;vec3 specular=u_SpecularFactor;float glossiness=u_GlossinessFactor;\n#ifdef HAS_SPECULAR_GLOSSINESS_MAP\nvec4 sgSample=texture(u_SpecularGlossinessSampler,getSpecularGlossinessUV());glossiness*=sgSample.a;specular*=sgSample.rgb;\n#endif\nmaterialInfo.perceptualRoughness=1.0-glossiness;materialInfo.f0_dielectric=min(specular,vec3(1.0));materialInfo.perceptualRoughness=clamp(materialInfo.perceptualRoughness,0.0,1.0);materialInfo.alphaRoughness=materialInfo.perceptualRoughness*materialInfo.perceptualRoughness;vec3 f_emissive=vec3(0.0);\n#ifdef USE_IBL\nvec3 f_diffuse=getDiffuseLight(n)*baseColor.rgb;vec3 f_specular_dielectric=getIBLRadianceGGX(n,v,materialInfo.perceptualRoughness);vec3 f_dielectric_fresnel_ibl=getIBLGGXFresnel(n,v,materialInfo.perceptualRoughness,materialInfo.f0_dielectric,1.0);vec3 f_dielectric_brdf_ibl=mix(f_diffuse,f_specular_dielectric,f_dielectric_fresnel_ibl);color=f_dielectric_brdf_ibl;\n#ifdef HAS_OCCLUSION_MAP\nfloat ao=1.0;ao=texture(u_OcclusionSampler,getOcclusionUV()).r;color=color*(1.0+u_OcclusionStrength*(ao-1.0));\n#endif\n#endif\n#ifdef USE_PUNCTUAL\nfor(int i=0;i<LIGHT_COUNT;++i){Light light=u_Lights[i];vec3 pointToLight;if(light.type!=LightType_Directional){pointToLight=light.position-v_Position;}else{pointToLight=-light.direction;}vec3 l=normalize(pointToLight);vec3 h=normalize(l+v);float NdotL=clampedDot(n,l);float NdotV=clampedDot(n,v);float NdotH=clampedDot(n,h);float VdotH=clampedDot(v,h);vec3 dielectric_fresnel=F_Schlick(materialInfo.f0_dielectric,materialInfo.f90_dielectric,abs(VdotH));vec3 lightIntensity=getLighIntensity(light,pointToLight);vec3 l_diffuse=lightIntensity*NdotL*BRDF_lambertian(baseColor.rgb);vec3 intensity=getLighIntensity(light,pointToLight);vec3 l_specular_dielectric=intensity*NdotL*BRDF_specularGGX(materialInfo.alphaRoughness,NdotL,NdotV,NdotH);vec3 l_dielectric_brdf=mix(l_diffuse,l_specular_dielectric,dielectric_fresnel);color+=l_dielectric_brdf;}\n#endif\nf_emissive=u_EmissiveFactor;\n#ifdef MATERIAL_EMISSIVE_STRENGTH\nf_emissive*=u_EmissiveStrength;\n#endif\n#ifdef HAS_EMISSIVE_MAP\nf_emissive*=texture(u_EmissiveSampler,getEmissiveUV()).rgb;\n#endif\n#ifdef MATERIAL_UNLIT\ncolor=baseColor.rgb;\n#elif defined(NOT_TRIANGLE) && !defined(HAS_NORMAL_VEC3)\ncolor=f_emissive+baseColor.rgb;\n#else\ncolor=f_emissive+color;\n#endif\n#if DEBUG == DEBUG_NONE\n#if ALPHAMODE == ALPHAMODE_MASK\nif(baseColor.a<u_AlphaCutoff){discard;}baseColor.a=1.0;\n#endif\n#ifdef LINEAR_OUTPUT\ng_finalColor=vec4(color.rgb,baseColor.a);\n#else\ng_finalColor=vec4(toneMap(color),baseColor.a);\n#endif\n#else\ng_finalColor=vec4(1.0);{float frequency=0.02;float gray=0.9;vec2 v1=step(0.5,fract(frequency*gl_FragCoord.xy));vec2 v2=step(0.5,vec2(1.0)-fract(frequency*gl_FragCoord.xy));g_finalColor.rgb*=gray+v1.x*v1.y+v2.x*v2.y;}\n#endif\n#if DEBUG == DEBUG_UV_0 && defined(HAS_TEXCOORD_0_VEC2)\ng_finalColor.rgb=vec3(v_texcoord_0,0);\n#endif\n#if DEBUG == DEBUG_UV_1 && defined(HAS_TEXCOORD_1_VEC2)\ng_finalColor.rgb=vec3(v_texcoord_1,0);\n#endif\n#if DEBUG == DEBUG_NORMAL_TEXTURE && defined(HAS_NORMAL_MAP)\ng_finalColor.rgb=(normalInfo.ntex+1.0)/2.0;\n#endif\n#if DEBUG == DEBUG_NORMAL_SHADING\ng_finalColor.rgb=(n+1.0)/2.0;\n#endif\n#if DEBUG == DEBUG_NORMAL_GEOMETRY\ng_finalColor.rgb=(normalInfo.ng+1.0)/2.0;\n#endif\n#if DEBUG == DEBUG_TANGENT\ng_finalColor.rgb=(normalInfo.t+1.0)/2.0;\n#endif\n#if DEBUG == DEBUG_BITANGENT\ng_finalColor.rgb=(normalInfo.b+1.0)/2.0;\n#endif\n#if DEBUG == DEBUG_ALPHA\ng_finalColor.rgb=vec3(baseColor.a);\n#endif\n#if DEBUG == DEBUG_OCCLUSION && defined(HAS_OCCLUSION_MAP)\ng_finalColor.rgb=vec3(ao);\n#endif\n#if DEBUG == DEBUG_EMISSIVE\ng_finalColor.rgb=linearTosRGB(f_emissive);\n#endif\n#if DEBUG == DEBUG_METALLIC\ng_finalColor.rgb=vec3(materialInfo.metallic);\n#endif\n#if DEBUG == DEBUG_ROUGHNESS\ng_finalColor.rgb=vec3(materialInfo.perceptualRoughness);\n#endif\n#if DEBUG == DEBUG_BASE_COLOR\ng_finalColor.rgb=linearTosRGB(materialInfo.baseColor);\n#endif\n}"; // eslint-disable-line
 
@@ -12891,6 +12932,1114 @@ class gltfLightSpot extends GltfObject
     }
 }
 
+/* globals WebGl */
+
+
+class gltfTexture extends GltfObject
+{
+    static animatedProperties = [];
+    constructor(sampler = undefined, source = undefined, type = GL.TEXTURE_2D)
+    {
+        super();
+        this.sampler = sampler; // index to gltfSampler, default sampler ?
+        this.source = source; // index to gltfImage
+
+        // non gltf
+        this.glTexture = undefined;
+        this.glTextureSRGB = undefined; // for sRGB textures
+        this.type = type;
+        this.initialized = false;
+        this.initializedSRGB = false; // for sRGB textures
+        this.mipLevelCount = 0;
+    }
+
+    initGl(gltf, webGlContext)
+    {
+        if (this.sampler === undefined)
+        {
+            this.sampler = gltf.samplers.length - 1;
+        }
+
+        initGlForMembers(this, gltf, webGlContext);
+    }
+
+    fromJson(jsonTexture)
+    {
+        super.fromJson(jsonTexture);
+        if (jsonTexture.extensions !== undefined &&
+            jsonTexture.extensions.EXT_texture_webp !== undefined &&
+            jsonTexture.extensions.EXT_texture_webp.source !== undefined)
+        {
+            this.source = jsonTexture.extensions.EXT_texture_webp.source;
+        }
+        if (jsonTexture.extensions !== undefined &&
+            jsonTexture.extensions.KHR_texture_basisu !== undefined &&
+            jsonTexture.extensions.KHR_texture_basisu.source !== undefined)
+        {
+            this.source = jsonTexture.extensions.KHR_texture_basisu.source;
+        }
+    }
+
+    destroy()
+    {
+        if (this.glTexture !== undefined)
+        {
+            // TODO: this breaks the dependency direction
+            WebGl.context.deleteTexture(this.glTexture);
+        }
+        if (this.glTextureSRGB !== undefined)
+        {
+            WebGl.context.deleteTexture(this.glTextureSRGB);
+        }
+        this.glTextureSRGB = undefined;
+        this.glTexture = undefined;
+    }
+}
+
+class gltfTextureInfo extends GltfObject
+{
+    static animatedProperties = ["strength", "scale"];
+    constructor(index = undefined, texCoord = 0, linear = true, samplerName = "", generateMips = true) // linear by default
+    {
+        super();
+        this.index = index; // reference to gltfTexture
+        this.texCoord = texCoord; // which UV set to use
+        this.linear = linear;
+        this.samplerName = samplerName;
+        this.strength = 1.0; // occlusion
+        this.scale = 1.0; // normal
+        this.generateMips = generateMips;
+
+        this.extensions = undefined;
+    }
+
+    initGl(gltf, webGlContext)
+    {
+        initGlForMembers(this, gltf, webGlContext);
+    }
+
+    fromJson(jsonTextureInfo)
+    {
+        fromKeys(this, jsonTextureInfo);
+
+        if (jsonTextureInfo?.extensions?.KHR_texture_transform !== undefined)
+        {
+            this.extensions.KHR_texture_transform = new KHR_texture_transform();
+            this.extensions.KHR_texture_transform.fromJson(jsonTextureInfo.extensions.KHR_texture_transform);
+        }
+    }
+}
+
+class KHR_texture_transform extends GltfObject {
+    static animatedProperties = ["offset", "scale", "rotation"];
+    constructor() {
+        super();
+        this.offset = fromValues$5(0, 0);
+        this.scale = fromValues$5(1, 1);
+        this.rotation = 0;
+    }
+}
+
+class gltfMaterial extends GltfObject
+{
+    static animatedProperties = ["alphaCutoff", "emissiveFactor"];
+    static readOnlyAnimatedProperties = ["doubleSided"];
+    static scatterSampleCount = 55;
+    static scatterSamples = undefined;
+    static scatterMinRadius = 1.0;
+    constructor()
+    {
+        super();
+        this.name = undefined;
+        this.pbrMetallicRoughness = new PbrMetallicRoughness();
+        this.normalTexture = undefined;
+        this.occlusionTexture = undefined;
+        this.emissiveTexture = undefined;
+        this.emissiveFactor = fromValues$3(0, 0, 0);
+        this.alphaMode = "OPAQUE";
+        this.alphaCutoff = 0.5;
+        this.doubleSided = false;
+
+        // pbr next extension toggles
+        this.hasClearcoat = false;
+        this.hasSheen = false;
+        this.hasTransmission = false;
+        this.hasDiffuseTransmission = false;
+        this.hasIOR = false;
+        this.hasEmissiveStrength = false;
+        this.hasVolume = false;
+        this.hasVolumeScatter = false;
+        this.hasIridescence = false;
+        this.hasAnisotropy = false;
+        this.hasDispersion = false;
+
+        // non gltf properties
+        this.type = "unlit";
+        this.textures = [];
+        this.textureTransforms = [];
+        this.defines = [];
+    }
+
+    static createDefault()
+    {
+        const defaultMaterial = new gltfMaterial();
+        defaultMaterial.type = "MR";
+        defaultMaterial.name = "Default Material";
+        defaultMaterial.defines.push("MATERIAL_METALLICROUGHNESS 1");
+
+        return defaultMaterial;
+    }
+
+    getDefines(renderingParameters)
+    {
+        const defines = Array.from(this.defines);
+
+        if (this.hasClearcoat && renderingParameters.enabledExtensions.KHR_materials_clearcoat)
+        {
+            defines.push("MATERIAL_CLEARCOAT 1");
+        }
+        if (this.hasSheen && renderingParameters.enabledExtensions.KHR_materials_sheen)
+        {
+            defines.push("MATERIAL_SHEEN 1");
+        }
+        if (this.hasTransmission && renderingParameters.enabledExtensions.KHR_materials_transmission)
+        {
+            defines.push("MATERIAL_TRANSMISSION 1");
+        }
+        if(this.hasDiffuseTransmission && renderingParameters.enabledExtensions.KHR_materials_diffuse_transmission)
+        {
+            defines.push("MATERIAL_DIFFUSE_TRANSMISSION 1");
+        }
+        if (this.hasVolume && renderingParameters.enabledExtensions.KHR_materials_volume)
+        {
+            defines.push("MATERIAL_VOLUME 1");
+        }
+        if (this.hasVolumeScatter && renderingParameters.enabledExtensions.KHR_materials_volume_scatter 
+            && renderingParameters.enabledExtensions.KHR_materials_volume) {
+            defines.push("MATERIAL_VOLUME_SCATTER 1");
+            defines.push(`SCATTER_SAMPLES_COUNT ${gltfMaterial.scatterSampleCount}`);
+        }
+        if(this.hasIOR && renderingParameters.enabledExtensions.KHR_materials_ior)
+        {
+            defines.push("MATERIAL_IOR 1");
+        }
+        if(this.hasSpecular && renderingParameters.enabledExtensions.KHR_materials_specular)
+        {
+            defines.push("MATERIAL_SPECULAR 1");
+        }
+        if(this.hasIridescence && renderingParameters.enabledExtensions.KHR_materials_iridescence)
+        {
+            defines.push("MATERIAL_IRIDESCENCE 1");
+        }
+        if(this.hasEmissiveStrength && renderingParameters.enabledExtensions.KHR_materials_emissive_strength)
+        {
+            defines.push("MATERIAL_EMISSIVE_STRENGTH 1");
+        }
+        if(this.hasAnisotropy && renderingParameters.enabledExtensions.KHR_materials_anisotropy)
+        {
+            defines.push("MATERIAL_ANISOTROPY 1");
+        }
+        if(this.hasDispersion && renderingParameters.enabledExtensions.KHR_materials_dispersion)
+        {
+            defines.push("MATERIAL_DISPERSION 1");
+        }
+
+        return defines;
+    }
+
+    updateTextureTransforms(shader)
+    {
+        for (const { key, uv } of this.textureTransforms) {
+            let rotation = create$5();
+            let scale = create$5();
+            let translation = create$5();
+
+            if (uv.rotation !== undefined)
+            {
+                const s =  Math.sin(uv.rotation);
+                const c =  Math.cos(uv.rotation);
+                rotation = jsToGl([
+                    c, -s, 0.0,
+                    s, c, 0.0,
+                    0.0, 0.0, 1.0]);
+            }
+
+            if (uv.scale !== undefined)
+            {
+                scale = jsToGl([
+                    uv.scale[0], 0, 0, 
+                    0, uv.scale[1], 0, 
+                    0, 0, 1
+                ]);
+            }
+
+            if (uv.offset !== undefined)
+            {
+                translation = jsToGl([
+                    1, 0, 0, 
+                    0, 1, 0, 
+                    uv.offset[0], uv.offset[1], 1
+                ]);
+            }
+
+            let uvMatrix = create$5();
+            multiply$2(uvMatrix, translation, rotation);
+            multiply$2(uvMatrix, uvMatrix, scale);
+            shader.updateUniform("u_" + key + "UVTransform", jsToGl(uvMatrix));
+            
+            if(key === "Normal") {
+                shader.updateUniform("u_vertNormalUVTransform", jsToGl(uvMatrix));
+            }
+        }
+    }
+
+    parseTextureInfoExtensions(textureInfo, textureKey)
+    {
+        if (textureInfo.extensions?.KHR_texture_transform === undefined)
+        {
+            return;
+        }
+
+        const uv = textureInfo.extensions.KHR_texture_transform;
+
+        this.textureTransforms.push({
+            key: textureKey,
+            uv: uv
+        });
+
+        if(uv.texCoord !== undefined)
+        {
+            textureInfo.texCoord = uv.texCoord;
+        }
+
+        this.defines.push("HAS_" + textureKey.toUpperCase() + "_UV_TRANSFORM 1");
+    }
+
+    initGl(gltf, webGlContext)
+    {
+        if (this.normalTexture !== undefined)
+        {
+            this.normalTexture.samplerName = "u_NormalSampler";
+            this.parseTextureInfoExtensions(this.normalTexture, "Normal");
+            this.textures.push(this.normalTexture);
+            this.defines.push("HAS_NORMAL_MAP 1");
+        }
+
+        if (this.occlusionTexture !== undefined)
+        {
+            this.occlusionTexture.samplerName = "u_OcclusionSampler";
+            this.parseTextureInfoExtensions(this.occlusionTexture, "Occlusion");
+            this.textures.push(this.occlusionTexture);
+            this.defines.push("HAS_OCCLUSION_MAP 1");
+        }
+
+        if (this.emissiveTexture !== undefined)
+        {
+            this.emissiveTexture.samplerName = "u_EmissiveSampler";
+            this.parseTextureInfoExtensions(this.emissiveTexture, "Emissive");
+            this.textures.push(this.emissiveTexture);
+            this.defines.push("HAS_EMISSIVE_MAP 1");
+        }
+
+        if (this.pbrMetallicRoughness.baseColorTexture !== undefined)
+        {
+            this.pbrMetallicRoughness.baseColorTexture.samplerName = "u_BaseColorSampler";
+            this.parseTextureInfoExtensions(this.pbrMetallicRoughness.baseColorTexture, "BaseColor");
+            this.textures.push(this.pbrMetallicRoughness.baseColorTexture);
+            this.defines.push("HAS_BASE_COLOR_MAP 1");
+        }
+
+        if (this.pbrMetallicRoughness.metallicRoughnessTexture !== undefined)
+        {
+            this.pbrMetallicRoughness.metallicRoughnessTexture.samplerName = "u_MetallicRoughnessSampler";
+            this.parseTextureInfoExtensions(this.pbrMetallicRoughness.metallicRoughnessTexture, "MetallicRoughness");
+            this.textures.push(this.pbrMetallicRoughness.metallicRoughnessTexture);
+            this.defines.push("HAS_METALLIC_ROUGHNESS_MAP 1");
+        }
+
+        if (this.extensions?.KHR_materials_pbrSpecularGlossiness?.diffuseTexture !== undefined)
+        {
+            const diffuseTexture = this.extensions.KHR_materials_pbrSpecularGlossiness.diffuseTexture;
+            diffuseTexture.samplerName = "u_DiffuseSampler";
+            this.parseTextureInfoExtensions(diffuseTexture, "Diffuse");
+            this.textures.push(diffuseTexture);
+            this.defines.push("HAS_DIFFUSE_MAP 1");
+        }
+
+        if (this.extensions?.KHR_materials_pbrSpecularGlossiness?.specularGlossinessTexture !== undefined)
+        {
+            const specularGlossinessTexture = this.extensions.KHR_materials_pbrSpecularGlossiness.specularGlossinessTexture;
+            specularGlossinessTexture.samplerName = "u_SpecularGlossinessSampler";
+            this.parseTextureInfoExtensions(specularGlossinessTexture, "SpecularGlossiness");
+            this.textures.push(specularGlossinessTexture);
+            this.defines.push("HAS_SPECULAR_GLOSSINESS_MAP 1");
+        }
+
+        this.defines.push("ALPHAMODE_OPAQUE 0");
+        this.defines.push("ALPHAMODE_MASK 1");
+        this.defines.push("ALPHAMODE_BLEND 2");
+        if(this.alphaMode === 'MASK') // only set cutoff value for mask material
+        {
+            this.defines.push("ALPHAMODE ALPHAMODE_MASK");
+        }
+        else if (this.alphaMode === 'OPAQUE')
+        {
+            this.defines.push("ALPHAMODE ALPHAMODE_OPAQUE");
+        }
+        else
+        {
+            this.defines.push("ALPHAMODE ALPHAMODE_BLEND");
+        }
+
+        // if we have SG, we prefer SG (best practice) but if we have neither objects we use MR default values
+        if (this.type !== "SG")
+        {
+            this.defines.push("MATERIAL_METALLICROUGHNESS 1");
+        }
+
+        if (this.extensions !== undefined)
+        {
+            if (this.extensions.KHR_materials_unlit !== undefined)
+            {
+                this.defines.push("MATERIAL_UNLIT 1");
+            }
+
+            if (this.extensions.KHR_materials_pbrSpecularGlossiness !== undefined)
+            {
+                this.defines.push("MATERIAL_SPECULARGLOSSINESS 1");
+            }
+
+            // Clearcoat is part of the default metallic-roughness shader
+            if(this.extensions.KHR_materials_clearcoat !== undefined)
+            {
+                this.hasClearcoat = true;
+
+                const clearcoatTexture = this.extensions.KHR_materials_clearcoat.clearcoatTexture;
+                if (clearcoatTexture !== undefined)
+                {
+                    clearcoatTexture.samplerName = "u_ClearcoatSampler";
+                    this.parseTextureInfoExtensions(clearcoatTexture, "Clearcoat");
+                    this.textures.push(clearcoatTexture);
+                    this.defines.push("HAS_CLEARCOAT_MAP 1");
+                }
+
+                const clearcoatRoughnessTexture = this.extensions.KHR_materials_clearcoat.clearcoatRoughnessTexture;
+                if (clearcoatRoughnessTexture !== undefined)
+                {
+                    clearcoatRoughnessTexture.samplerName = "u_ClearcoatRoughnessSampler";
+                    this.parseTextureInfoExtensions(clearcoatRoughnessTexture, "ClearcoatRoughness");
+                    this.textures.push(clearcoatRoughnessTexture);
+                    this.defines.push("HAS_CLEARCOAT_ROUGHNESS_MAP 1");
+                }
+
+                const clearcoatNormalTexture = this.extensions.KHR_materials_clearcoat.clearcoatNormalTexture;
+                if (clearcoatNormalTexture !== undefined)
+                {
+                    clearcoatNormalTexture.samplerName = "u_ClearcoatNormalSampler";
+                    this.parseTextureInfoExtensions(clearcoatNormalTexture, "ClearcoatNormal");
+                    this.textures.push(clearcoatNormalTexture);
+                    this.defines.push("HAS_CLEARCOAT_NORMAL_MAP 1");
+                }
+            }
+
+            // Sheen material extension
+            // https://github.com/sebavan/glTF/tree/KHR_materials_sheen/extensions/2.0/Khronos/KHR_materials_sheen
+            if(this.extensions.KHR_materials_sheen !== undefined)
+            {
+                this.hasSheen = true;
+     
+                if (this.extensions.KHR_materials_sheen.sheenRoughnessTexture !== undefined)
+                {
+                    this.extensions.KHR_materials_sheen.sheenRoughnessTexture.samplerName = "u_SheenRoughnessSampler";
+                    this.parseTextureInfoExtensions(this.extensions.KHR_materials_sheen.sheenRoughnessTexture, "SheenRoughness");
+                    this.textures.push(this.extensions.KHR_materials_sheen.sheenRoughnessTexture);
+                    this.defines.push("HAS_SHEEN_ROUGHNESS_MAP 1");
+                }
+                
+                const sheenColorTexture = this.extensions.KHR_materials_sheen.sheenColorTexture;
+                if (sheenColorTexture !== undefined)
+                {
+                    sheenColorTexture.samplerName = "u_SheenColorSampler";
+                    this.parseTextureInfoExtensions(sheenColorTexture, "SheenColor");
+                    this.textures.push(sheenColorTexture);
+                    this.defines.push("HAS_SHEEN_COLOR_MAP 1");
+                }
+            }
+
+            // KHR Extension: Specular
+            if (this.extensions.KHR_materials_specular !== undefined)
+            {
+                this.hasSpecular = true;
+
+                if (this.extensions.KHR_materials_specular?.specularTexture !== undefined)
+                {
+                    this.extensions.KHR_materials_specular.specularTexture.samplerName = "u_SpecularSampler";
+                    this.parseTextureInfoExtensions(this.extensions?.KHR_materials_specular?.specularTexture, "Specular");
+                    this.textures.push(this.extensions?.KHR_materials_specular?.specularTexture);
+                    this.defines.push("HAS_SPECULAR_MAP 1");
+                }
+
+                if (this.extensions.KHR_materials_specular?.specularColorTexture !== undefined)
+                {
+                    this.extensions.KHR_materials_specular.specularColorTexture.samplerName = "u_SpecularColorSampler";
+                    this.parseTextureInfoExtensions(this.extensions?.KHR_materials_specular.specularColorTexture, "SpecularColor");
+                    this.textures.push(this.extensions.KHR_materials_specular.specularColorTexture);
+                    this.defines.push("HAS_SPECULAR_COLOR_MAP 1");
+                }
+            }
+
+            // KHR Extension: Emissive strength
+            if (this.extensions.KHR_materials_emissive_strength !== undefined)
+            {
+                this.hasEmissiveStrength = true;
+            }
+
+            // KHR Extension: Transmission
+            if (this.extensions.KHR_materials_transmission !== undefined)
+            {
+                this.hasTransmission = true;
+
+                if (this.extensions?.KHR_materials_transmission?.transmissionTexture !== undefined)
+                {
+                    this.extensions.KHR_materials_transmission.transmissionTexture.samplerName = "u_TransmissionSampler";
+                    this.parseTextureInfoExtensions(this.extensions?.KHR_materials_transmission?.transmissionTexture, "Transmission");
+                    this.textures.push(this.extensions?.KHR_materials_transmission?.transmissionTexture);
+                    this.defines.push("HAS_TRANSMISSION_MAP 1");
+                }
+            }
+
+            // KHR Extension: Diffuse Transmission
+            if(this.extensions.KHR_materials_diffuse_transmission !== undefined)
+            {
+                const extension = this.extensions.KHR_materials_diffuse_transmission;
+
+                this.hasDiffuseTransmission = true;
+
+                if (extension.diffuseTransmissionTexture !== undefined)
+                {
+                    extension.diffuseTransmissionTexture.samplerName = "u_DiffuseTransmissionSampler";
+                    this.parseTextureInfoExtensions(extension.diffuseTransmissionTexture, "DiffuseTransmission");
+                    this.textures.push(extension.diffuseTransmissionTexture);
+                    this.defines.push("HAS_DIFFUSE_TRANSMISSION_MAP 1");
+                }
+
+                if (extension.diffuseTransmissionColorTexture !== undefined)
+                {
+                    extension.diffuseTransmissionColorTexture.samplerName = "u_DiffuseTransmissionColorSampler";
+                    this.parseTextureInfoExtensions(extension.diffuseTransmissionColorTexture, "DiffuseTransmissionColor");
+                    this.textures.push(extension.diffuseTransmissionColorTexture);
+                    this.defines.push("HAS_DIFFUSE_TRANSMISSION_COLOR_MAP 1");
+                }
+            }
+
+            // KHR Extension: IOR
+            //https://github.com/DassaultSystemes-Technology/glTF/tree/KHR_materials_ior/extensions/2.0/Khronos/KHR_materials_ior
+            if (this.extensions.KHR_materials_ior !== undefined)
+            {
+                this.hasIOR = true;
+            }
+
+            // KHR Extension: Volume
+            if (this.extensions.KHR_materials_volume !== undefined)
+            {
+                this.hasVolume = true;
+
+                if (this.extensions?.KHR_materials_volume?.thicknessTexture !== undefined)
+                {
+                    this.extensions.KHR_materials_volume.thicknessTexture.samplerName = "u_ThicknessSampler";
+                    this.parseTextureInfoExtensions(this.extensions.KHR_materials_volume.thicknessTexture, "Thickness");
+                    this.textures.push(this.extensions.KHR_materials_volume.thicknessTexture);
+                    this.defines.push("HAS_THICKNESS_MAP 1");
+                }
+            }
+
+            if (this.extensions.KHR_materials_volume_scatter !== undefined)
+            {
+                this.hasVolumeScatter = true;
+                this.defines.push("HAS_VOLUME_SCATTER 1");
+                if (!gltfMaterial.scatterSamples) {
+                    gltfMaterial.scatterSamples = gltfMaterial.computeScatterSamples();
+                }
+            }
+
+            // KHR Extension: Iridescence
+            // See https://github.com/ux3d/glTF/tree/extensions/KHR_materials_iridescence/extensions/2.0/Khronos/KHR_materials_iridescence
+            if(this.extensions.KHR_materials_iridescence !== undefined)
+            {
+                this.hasIridescence = true;
+
+                const extension = this.extensions.KHR_materials_iridescence;
+
+                if (extension.iridescenceTexture !== undefined)
+                {
+                    extension.iridescenceTexture.samplerName = "u_IridescenceSampler";
+                    this.parseTextureInfoExtensions(extension.iridescenceTexture, "Iridescence");
+                    this.textures.push(extension.iridescenceTexture);
+                    this.defines.push("HAS_IRIDESCENCE_MAP 1");
+                }
+
+                if (extension.iridescenceThicknessTexture !== undefined)
+                {
+                    extension.iridescenceThicknessTexture.samplerName = "u_IridescenceThicknessSampler";
+                    this.parseTextureInfoExtensions(extension.iridescenceThicknessTexture, "IridescenceThickness");
+                    this.textures.push(extension.iridescenceThicknessTexture);
+                    this.defines.push("HAS_IRIDESCENCE_THICKNESS_MAP 1");
+                }
+            }
+
+            // KHR Extension: Anisotropy
+            // See https://github.com/KhronosGroup/glTF/tree/main/extensions/2.0/Khronos/KHR_materials_anisotropy
+            if(this.extensions.KHR_materials_anisotropy !== undefined)
+            {
+                this.hasAnisotropy = true;
+
+                const anisotropyTexture = this.extensions.KHR_materials_anisotropy.anisotropyTexture;
+
+                if (anisotropyTexture !== undefined)
+                {
+                    anisotropyTexture.samplerName = "u_AnisotropySampler";
+                    this.parseTextureInfoExtensions(anisotropyTexture, "Anisotropy");
+                    this.textures.push(anisotropyTexture);
+                    this.defines.push("HAS_ANISOTROPY_MAP 1");
+                }
+            }
+
+            // KHR Extension: Dispersion
+            // See https://github.com/KhronosGroup/glTF/tree/main/extensions/2.0/Khronos/KHR_materials_dispersion
+            if (this.extensions.KHR_materials_dispersion !== undefined)
+            {
+                this.hasDispersion = true;
+            }
+        }
+
+        initGlForMembers(this, gltf, webGlContext);
+    }
+
+
+
+    /**
+     * Using blender implementation of Burley diffusion profile.
+     */
+    static computeScatterSamples()
+    {
+        /* Precompute sample position with white albedo. */
+        const d = this.burleySetup(1.0, 1.0);
+
+        const randU = 0.5; // Random value between 0 and 1, fixed here for determinism.
+        const randV = 0.5; 
+
+        /* Find minimum radius that we can represent because we are only sampling the largest radius. */
+        let min_radius = 1.0;
+
+        const goldenAngle = Math.PI * (3.0 - Math.sqrt(5.0));
+        const uniformArray = [];
+        for (let i = 0; i < this.scatterSampleCount; i++) {
+            const theta = goldenAngle * i + Math.PI * 2.0 * randU;
+            const x = (randV + i) / this.scatterSampleCount;
+            const r = this.burleySample(d, x);
+            min_radius = Math.min(min_radius, r);
+            uniformArray.push(theta, r , 1.0 / this.burleyPdf(d, r));
+        }
+        /* Avoid float imprecision. */
+        min_radius = Math.max(min_radius, 0.00001);
+        this.scatterMinRadius = min_radius;
+        return uniformArray;
+    }
+
+    static burleySample(d, xRand)
+    {
+        xRand *= 0.9963790093708328;
+
+        const tolerance = 1e-6;
+        const maxIterationCount = 10;
+        let r;
+        if (xRand <= 0.9) {
+            r = Math.exp(xRand * xRand * 2.4) - 1.0;
+        }
+        else {
+            r = 15.0;
+        }
+        /* Solve against scaled radius. */
+        for (let i = 0; i < maxIterationCount; i++) {
+            const exp_r_3 = Math.exp(-r / 3.0);
+            const exp_r = exp_r_3 * exp_r_3 * exp_r_3;
+            const f = 1.0 - 0.25 * exp_r - 0.75 * exp_r_3 - xRand;
+            const f_ = 0.25 * exp_r + 0.25 * exp_r_3;
+
+            if (Math.abs(f) < tolerance || f_ == 0.0) {
+                break;
+            }
+
+            r = r - f / f_;
+            r = Math.max(r, 0.0);
+        }
+
+        return r * d;
+    }
+
+    static burleyEval(d, r)
+    {
+        if (r >= 16 * d) {
+            return 0.0;
+        }
+
+        const exp_r_3_d = Math.exp(-r / (3.0 * d));
+        const exp_r_d = exp_r_3_d * exp_r_3_d * exp_r_3_d;
+        return (exp_r_d + exp_r_3_d) / (8.0 * Math.PI * d);
+    }
+
+    static burleyPdf(d, r)
+    {
+        return this.burleyEval(d, r) / 0.9963790093708328;
+    }
+
+    static burleySetup(radius, albedo) {
+        const m_1_pi = 0.318309886183790671538;
+        const s = 1.9 - albedo + 3.5 * ((albedo - 0.8) * (albedo - 0.8));
+        const l = 0.25 * m_1_pi * radius;
+        return l / s;
+    }
+
+    fromJson(jsonMaterial)
+    {
+        super.fromJson(jsonMaterial);
+
+        if (jsonMaterial.normalTexture !== undefined)
+        {
+            const normalTexture = new gltfTextureInfo();
+            normalTexture.fromJson(jsonMaterial.normalTexture);
+            this.normalTexture = normalTexture;
+        }
+
+        if (jsonMaterial.occlusionTexture !== undefined)
+        {
+            const occlusionTexture = new gltfTextureInfo();
+            occlusionTexture.fromJson(jsonMaterial.occlusionTexture);
+            this.occlusionTexture = occlusionTexture;
+        }
+
+        if (jsonMaterial.emissiveTexture !== undefined)
+        {
+            const emissiveTexture = new gltfTextureInfo(undefined, 0, false);
+            emissiveTexture.fromJson(jsonMaterial.emissiveTexture);
+            this.emissiveTexture = emissiveTexture;
+        }
+
+        if(jsonMaterial.extensions !== undefined)
+        {
+            this.fromJsonMaterialExtensions(jsonMaterial.extensions);
+        }
+        this.pbrMetallicRoughness = new PbrMetallicRoughness();
+        if (jsonMaterial.pbrMetallicRoughness !== undefined && this.type !== "SG")
+        {
+            this.type = "MR";
+            this.pbrMetallicRoughness.fromJson(jsonMaterial.pbrMetallicRoughness);
+        }
+    }
+
+    fromJsonMaterialExtensions(jsonExtensions)
+    {
+        if (jsonExtensions.KHR_materials_pbrSpecularGlossiness !== undefined)
+        {
+            this.type = "SG";
+            this.extensions.KHR_materials_pbrSpecularGlossiness = new KHR_materials_pbrSpecularGlossiness();
+            this.extensions.KHR_materials_pbrSpecularGlossiness.fromJson(jsonExtensions.KHR_materials_pbrSpecularGlossiness);
+        }
+
+        if(jsonExtensions.KHR_materials_unlit !== undefined)
+        {
+            this.type = "unlit";
+        }
+
+        if(jsonExtensions.KHR_materials_clearcoat !== undefined)
+        {
+            this.extensions.KHR_materials_clearcoat = new KHR_materials_clearcoat();
+            this.extensions.KHR_materials_clearcoat.fromJson(jsonExtensions.KHR_materials_clearcoat);
+        }
+
+        if(jsonExtensions.KHR_materials_sheen !== undefined)
+        {
+            this.extensions.KHR_materials_sheen = new KHR_materials_sheen();
+            this.extensions.KHR_materials_sheen.fromJson(jsonExtensions.KHR_materials_sheen);
+        }
+
+        if(jsonExtensions.KHR_materials_transmission !== undefined)
+        {
+            this.extensions.KHR_materials_transmission = new KHR_materials_transmission();
+            this.extensions.KHR_materials_transmission.fromJson(jsonExtensions.KHR_materials_transmission);
+        }
+
+        if(jsonExtensions.KHR_materials_diffuse_transmission !== undefined)
+        {
+            this.extensions.KHR_materials_diffuse_transmission = new KHR_materials_diffuse_transmission();
+            this.extensions.KHR_materials_diffuse_transmission.fromJson(jsonExtensions.KHR_materials_diffuse_transmission);
+        }
+
+        if(jsonExtensions.KHR_materials_specular !== undefined)
+        {
+            this.extensions.KHR_materials_specular = new KHR_materials_specular();
+            this.extensions.KHR_materials_specular.fromJson(jsonExtensions.KHR_materials_specular);
+        }
+
+        if(jsonExtensions.KHR_materials_volume !== undefined)
+        {
+            this.extensions.KHR_materials_volume = new KHR_materials_volume();
+            this.extensions.KHR_materials_volume.fromJson(jsonExtensions.KHR_materials_volume);
+        }
+
+        if(jsonExtensions.KHR_materials_volume_scatter !== undefined)
+        {
+            this.extensions.KHR_materials_volume_scatter = new KHR_materials_volume_scatter();
+            this.extensions.KHR_materials_volume_scatter.fromJson(jsonExtensions.KHR_materials_volume_scatter);
+        }
+
+        if(jsonExtensions.KHR_materials_iridescence !== undefined)
+        {
+            this.extensions.KHR_materials_iridescence = new KHR_materials_iridescence();
+            this.extensions.KHR_materials_iridescence.fromJson(jsonExtensions.KHR_materials_iridescence);
+        }
+
+        if(jsonExtensions.KHR_materials_anisotropy !== undefined)
+        {
+            this.extensions.KHR_materials_anisotropy = new KHR_materials_anisotropy();
+            this.extensions.KHR_materials_anisotropy.fromJson(jsonExtensions.KHR_materials_anisotropy);
+        }
+        
+        if(jsonExtensions.KHR_materials_emissive_strength !== undefined)
+        {
+            this.extensions.KHR_materials_emissive_strength = new KHR_materials_emissive_strength();
+            this.extensions.KHR_materials_emissive_strength.fromJson(jsonExtensions.KHR_materials_emissive_strength);
+        }
+
+        if(jsonExtensions.KHR_materials_dispersion !== undefined) {
+            this.extensions.KHR_materials_dispersion = new KHR_materials_dispersion();
+            this.extensions.KHR_materials_dispersion.fromJson(jsonExtensions.KHR_materials_dispersion);
+        }
+
+        if(jsonExtensions.KHR_materials_ior !== undefined) {
+            this.extensions.KHR_materials_ior = new KHR_materials_ior();
+            this.extensions.KHR_materials_ior.fromJson(jsonExtensions.KHR_materials_ior);
+        }
+    }
+}
+
+class PbrMetallicRoughness extends GltfObject {
+    static animatedProperties = ["baseColorFactor", "metallicFactor", "roughnessFactor"];
+    constructor()
+    {
+        super();
+        this.baseColorFactor = fromValues$2(1, 1, 1, 1);
+        this.baseColorTexture = undefined;
+        this.metallicFactor = 1;
+        this.roughnessFactor = 1;
+        this.metallicRoughnessTexture = undefined;
+    }
+
+    fromJson(json) {
+        super.fromJson(json);
+        if (json.baseColorTexture !== undefined)
+        {
+            const baseColorTexture = new gltfTextureInfo(undefined, 0, false);
+            baseColorTexture.fromJson(json.baseColorTexture);
+            this.baseColorTexture = baseColorTexture;
+        }
+
+        if (json.metallicRoughnessTexture !== undefined)
+        {
+            const metallicRoughnessTexture = new gltfTextureInfo();
+            metallicRoughnessTexture.fromJson(json.metallicRoughnessTexture);
+            this.metallicRoughnessTexture = metallicRoughnessTexture;
+        }
+    }
+}
+
+class KHR_materials_anisotropy extends GltfObject {
+    static animatedProperties = ["anisotropyStrength", "anisotropyRotation"];
+    constructor()
+    {
+        super();
+        this.anisotropyStrength = 0;
+        this.anisotropyRotation = 0;
+        this.anisotropyTexture = undefined;
+    }
+
+    fromJson(json) {
+        super.fromJson(json);
+        if (json.anisotropyTexture !== undefined)
+        {
+            const anisotropyTexture = new gltfTextureInfo();
+            anisotropyTexture.fromJson(json.anisotropyTexture);
+            this.anisotropyTexture = anisotropyTexture;
+        }
+    }
+}
+
+class KHR_materials_clearcoat extends GltfObject {
+    static animatedProperties = ["clearcoatFactor", "clearcoatRoughnessFactor"];
+    constructor()
+    {
+        super();
+        this.clearcoatFactor = 0;
+        this.clearcoatTexture = undefined;
+        this.clearcoatRoughnessFactor = 0;
+        this.clearcoatRoughnessTexture = undefined;
+        this.clearcoatNormalTexture = undefined;
+    }
+
+    fromJson(jsonClearcoat) {
+        super.fromJson(jsonClearcoat);
+        if(jsonClearcoat.clearcoatTexture !== undefined)
+        {
+            const clearcoatTexture = new gltfTextureInfo();
+            clearcoatTexture.fromJson(jsonClearcoat.clearcoatTexture);
+            this.clearcoatTexture = clearcoatTexture;
+        }
+
+        if(jsonClearcoat.clearcoatRoughnessTexture !== undefined)
+        {
+            const clearcoatRoughnessTexture =  new gltfTextureInfo();
+            clearcoatRoughnessTexture.fromJson(jsonClearcoat.clearcoatRoughnessTexture);
+            this.clearcoatRoughnessTexture = clearcoatRoughnessTexture;
+        }
+
+        if(jsonClearcoat.clearcoatNormalTexture !== undefined)
+        {
+            const clearcoatNormalTexture =  new gltfTextureInfo();
+            clearcoatNormalTexture.fromJson(jsonClearcoat.clearcoatNormalTexture);
+            this.clearcoatNormalTexture = clearcoatNormalTexture;
+        }
+    }
+}
+
+class KHR_materials_dispersion extends GltfObject {
+    static animatedProperties = ["dispersion"];
+    constructor()
+    {
+        super();
+        this.dispersion = 0;
+    }
+}
+
+class KHR_materials_emissive_strength extends GltfObject {
+    static animatedProperties = ["emissiveStrength"];
+    constructor()
+    {
+        super();
+        this.emissiveStrength = 1.0;
+    }
+}
+
+class KHR_materials_ior extends GltfObject {
+    static animatedProperties = ["ior"];
+    constructor()
+    {
+        super();
+        this.ior = 1.5;
+    }
+}
+
+class KHR_materials_iridescence extends GltfObject {
+    static animatedProperties = ["iridescenceFactor", "iridescenceIor", "iridescenceThicknessMinimum", "iridescenceThicknessMaximum"];
+    constructor()
+    {
+        super();
+        this.iridescenceFactor = 0;
+        this.iridescenceIor = 1.3;
+        this.iridescenceThicknessMinimum = 100;
+        this.iridescenceThicknessMaximum = 400;
+        this.iridescenceTexture = undefined;
+        this.iridescenceThicknessTexture = undefined;
+    }
+
+    fromJson(jsonIridescence) {
+        super.fromJson(jsonIridescence);
+        if(jsonIridescence.iridescenceTexture !== undefined)
+        {
+            const iridescenceTexture = new gltfTextureInfo();
+            iridescenceTexture.fromJson(jsonIridescence.iridescenceTexture);
+            this.iridescenceTexture = iridescenceTexture;
+        }
+
+        if(jsonIridescence.iridescenceThicknessTexture !== undefined)
+        {
+            const iridescenceThicknessTexture = new gltfTextureInfo();
+            iridescenceThicknessTexture.fromJson(jsonIridescence.iridescenceThicknessTexture);
+            this.iridescenceThicknessTexture = iridescenceThicknessTexture;
+        }
+    }
+}
+
+class KHR_materials_sheen extends GltfObject {
+    static animatedProperties = ["sheenRoughnessFactor", "sheenColorFactor"];
+    constructor()
+    {
+        super();
+        this.sheenRoughnessFactor = 0;
+        this.sheenColorFactor = fromValues$3(0, 0, 0);
+        this.sheenColorTexture = undefined;
+        this.sheenRoughnessTexture = undefined;
+    }
+
+    fromJson(jsonSheen) {
+        super.fromJson(jsonSheen);
+        if(jsonSheen.sheenColorTexture !== undefined)
+        {
+            const sheenColorTexture = new gltfTextureInfo(undefined, 0, false);
+            sheenColorTexture.fromJson(jsonSheen.sheenColorTexture);
+            this.sheenColorTexture = sheenColorTexture;
+        }
+
+        if(jsonSheen.sheenRoughnessTexture !== undefined)
+        {
+            const sheenRoughnessTexture = new gltfTextureInfo();
+            sheenRoughnessTexture.fromJson(jsonSheen.sheenRoughnessTexture);
+            this.sheenRoughnessTexture = sheenRoughnessTexture;
+        }
+    }
+}
+
+class KHR_materials_specular extends GltfObject {
+    static animatedProperties = ["specularFactor", "specularColorFactor"];
+    constructor()
+    {
+        super();
+        this.specularFactor = 1;
+        this.specularColorFactor = fromValues$3(1, 1, 1);
+        this.specularTexture = undefined;
+        this.specularColorTexture = undefined;
+    }
+
+    fromJson(jsonSpecular) {
+        super.fromJson(jsonSpecular);
+        if(jsonSpecular.specularTexture !== undefined)
+        {
+            const specularTexture = new gltfTextureInfo();
+            specularTexture.fromJson(jsonSpecular.specularTexture);
+            this.specularTexture = specularTexture;
+        }
+
+        if(jsonSpecular.specularColorTexture !== undefined)
+        {
+            const specularColorTexture = new gltfTextureInfo(undefined, 0, false);
+            specularColorTexture.fromJson(jsonSpecular.specularColorTexture);
+            this.specularColorTexture = specularColorTexture;
+        }
+    }
+}
+
+class KHR_materials_transmission extends GltfObject {
+    static animatedProperties = ["transmissionFactor"];
+    constructor()
+    {
+        super();
+        this.transmissionFactor = 0;
+        this.transmissionTexture = undefined;
+    }
+
+    fromJson(jsonTransmission) {
+        super.fromJson(jsonTransmission);
+        if(jsonTransmission.transmissionTexture !== undefined)
+        {
+            const transmissionTexture = new gltfTextureInfo();
+            transmissionTexture.fromJson(jsonTransmission.transmissionTexture);
+            this.transmissionTexture = transmissionTexture;
+        }
+    }
+}
+
+class KHR_materials_volume extends GltfObject {
+    static animatedProperties = ["thicknessFactor", "attenuationDistance", "attenuationColor"];
+    constructor()
+    {
+        super();
+        this.thicknessFactor = 0;
+        this.thicknessTexture = undefined;
+        this.attenuationDistance = 0; // 0 means infinite distance
+        this.attenuationColor = fromValues$3(1, 1, 1);
+    }
+
+    fromJson(jsonVolume) {
+        super.fromJson(jsonVolume);
+        if(jsonVolume.thicknessTexture !== undefined)
+        {
+            const thicknessTexture = new gltfTextureInfo();
+            thicknessTexture.fromJson(jsonVolume.thicknessTexture);
+            this.thicknessTexture = thicknessTexture;
+        }
+    }
+}
+
+class KHR_materials_volume_scatter extends GltfObject {
+    static animatedProperties = ["multiscatterColor", "scatterAnisotropy"];
+    constructor()
+    {
+        super();
+        this.multiscatterColor = fromValues$3(0, 0, 0);
+        this.scatterAnisotropy = 0;
+    }
+}
+
+class KHR_materials_diffuse_transmission extends GltfObject {
+
+    //TODO: define animated properties
+    static animatedProperties = [];
+    constructor()
+    {
+        super();
+        this.diffuseTransmissionFactor = 0;
+        this.diffuseTransmissionColorFactor = fromValues$3(1, 1, 1);
+        this.diffuseTransmissionTexture = undefined;
+        this.diffuseTransmissionColorTexture = undefined;
+    }
+
+    fromJson(jsonDiffuseTransmission) {
+        super.fromJson(jsonDiffuseTransmission);
+        if(jsonDiffuseTransmission.diffuseTransmissionTexture !== undefined)
+        {
+            const diffuseTransmissionTexture = new gltfTextureInfo();
+            diffuseTransmissionTexture.fromJson(jsonDiffuseTransmission.diffuseTransmissionTexture);
+            this.diffuseTransmissionTexture = diffuseTransmissionTexture;
+        }
+
+        if(jsonDiffuseTransmission.diffuseTransmissionColorTexture !== undefined)
+        {
+            const diffuseTransmissionColorTexture = new gltfTextureInfo(undefined, 0, false);
+            diffuseTransmissionColorTexture.fromJson(jsonDiffuseTransmission.diffuseTransmissionColorTexture);
+            this.diffuseTransmissionColorTexture = diffuseTransmissionColorTexture;
+        }
+    }
+}
+
+class KHR_materials_pbrSpecularGlossiness extends GltfObject {
+    static animatedProperties = [];
+    constructor()
+    {
+        super();
+        this.diffuseFactor = fromValues$2(1, 1, 1, 1);
+        this.diffuseTexture = undefined;
+        this.specularFactor = fromValues$3(1, 1, 1);
+        this.specularGlossinessTexture = undefined;
+        this.glossinessFactor = 1;
+    }
+
+    fromJson(jsonSpecularGlossiness) {
+        super.fromJson(jsonSpecularGlossiness);
+        if(jsonSpecularGlossiness.diffuseTexture !== undefined)
+        {
+            const diffuseTexture = new gltfTextureInfo(undefined, 0, false);
+            diffuseTexture.fromJson(jsonSpecularGlossiness.diffuseTexture);
+            this.diffuseTexture = diffuseTexture;
+        }
+
+        if(jsonSpecularGlossiness.specularGlossinessTexture !== undefined)
+        {
+            const specularGlossinessTexture = new gltfTextureInfo();
+            specularGlossinessTexture.fromJson(jsonSpecularGlossiness.specularGlossinessTexture);
+            this.specularGlossinessTexture = specularGlossinessTexture;
+        }
+    }
+}
+
 class gltfRenderer
 {
     constructor(context)
@@ -12916,6 +14065,10 @@ class gltfRenderer
         this.opaqueFramebufferWidth = 1024;
         this.opaqueFramebufferHeight = 1024;
 
+        // create render target for subsurface scattering
+        this.scatterFrontTexture = 0;
+        this.scatterDepthTexture = 0;
+
         const shaderSources = new Map();
         shaderSources.set("primitive.vert", primitiveShader);
         shaderSources.set("pbr.frag", pbrShader);
@@ -12930,6 +14083,7 @@ class gltfRenderer
         shaderSources.set("textures.glsl", texturesShader);
         shaderSources.set("functions.glsl", shaderFunctions);
         shaderSources.set("animation.glsl", animationShader);
+        shaderSources.set("scatter.frag", scatterShader);
         shaderSources.set("cubemap.vert", cubemapVertShader);
         shaderSources.set("cubemap.frag", cubemapFragShader);
         shaderSources.set("specular_glossiness.frag", specularGlossinesShader);
@@ -13004,6 +14158,33 @@ class gltfRenderer
             context.texImage2D( context.TEXTURE_2D, 0, context.DEPTH_COMPONENT24, this.opaqueFramebufferWidth, this.opaqueFramebufferHeight, 0, context.DEPTH_COMPONENT, context.UNSIGNED_INT, null);
             context.bindTexture(context.TEXTURE_2D, null);
 
+            this.scatterDepthTexture = context.createTexture();
+            context.bindTexture(context.TEXTURE_2D, this.scatterDepthTexture);
+            context.texParameteri(context.TEXTURE_2D, context.TEXTURE_MIN_FILTER, context.NEAREST);
+            context.texParameteri(context.TEXTURE_2D, context.TEXTURE_WRAP_S, context.CLAMP_TO_EDGE);
+            context.texParameteri(context.TEXTURE_2D, context.TEXTURE_WRAP_T, context.CLAMP_TO_EDGE);
+            context.texParameteri(context.TEXTURE_2D, context.TEXTURE_MAG_FILTER, context.NEAREST);
+            context.texImage2D( context.TEXTURE_2D, 0, context.DEPTH_COMPONENT24, this.opaqueFramebufferWidth, this.opaqueFramebufferHeight, 0, context.DEPTH_COMPONENT, context.UNSIGNED_INT, null);
+            context.bindTexture(context.TEXTURE_2D, null);
+
+            this.scatterInternalFormat = context.supports_EXT_color_buffer_half_float ? context.RGBA16F : context.RGBA;
+            this.scatterType = context.supports_EXT_color_buffer_half_float ? context.HALF_FLOAT : context.UNSIGNED_BYTE;
+            
+            this.scatterFrontTexture = context.createTexture();
+            context.bindTexture(context.TEXTURE_2D, this.scatterFrontTexture);
+            context.texParameteri(context.TEXTURE_2D, context.TEXTURE_MIN_FILTER, context.NEAREST);
+            context.texParameteri(context.TEXTURE_2D, context.TEXTURE_MAG_FILTER, context.NEAREST);
+            context.texParameteri(context.TEXTURE_2D, context.TEXTURE_WRAP_S, context.CLAMP_TO_EDGE);
+            context.texParameteri(context.TEXTURE_2D, context.TEXTURE_WRAP_T, context.CLAMP_TO_EDGE);
+            context.texImage2D(context.TEXTURE_2D, 0, this.scatterInternalFormat, this.opaqueFramebufferWidth, this.opaqueFramebufferHeight, 0, context.RGBA, this.scatterType, null);
+            context.bindTexture(context.TEXTURE_2D, null);
+
+            this.scatterFramebuffer = context.createFramebuffer();
+            context.bindFramebuffer(context.FRAMEBUFFER, this.scatterFramebuffer);
+            context.framebufferTexture2D(context.FRAMEBUFFER, context.COLOR_ATTACHMENT0, context.TEXTURE_2D, this.scatterFrontTexture, 0);
+            context.framebufferTexture2D(context.FRAMEBUFFER, context.DEPTH_ATTACHMENT, context.TEXTURE_2D, this.scatterDepthTexture, 0);
+            context.drawBuffers([context.COLOR_ATTACHMENT0]);
+            
             this.pickingIDTexture = context.createTexture();
             context.bindTexture(context.TEXTURE_2D, this.pickingIDTexture);
             context.texParameteri(context.TEXTURE_2D, context.TEXTURE_MIN_FILTER, context.NEAREST);
@@ -13122,20 +14303,31 @@ class gltfRenderer
             this.currentHeight = height;
             this.currentWidth = width;
             this.webGl.context.viewport(0, 0, width, height);
+            if (this.initialized) {
+                this.webGl.context.bindFramebuffer(this.webGl.context.FRAMEBUFFER, this.scatterFramebuffer);
+                this.webGl.context.bindTexture(this.webGl.context.TEXTURE_2D, this.scatterFrontTexture);
+                this.webGl.context.texImage2D(this.webGl.context.TEXTURE_2D, 0, this.scatterInternalFormat, this.currentWidth, this.currentHeight, 0, this.webGl.context.RGBA, this.scatterType, null);
+                this.webGl.context.bindTexture(this.webGl.context.TEXTURE_2D, this.scatterDepthTexture);
+                this.webGl.context.texImage2D(this.webGl.context.TEXTURE_2D, 0, this.webGl.context.DEPTH_COMPONENT24, this.currentWidth, this.currentHeight, 0, this.webGl.context.DEPTH_COMPONENT, this.webGl.context.UNSIGNED_INT, null);
+                this.webGl.context.bindTexture(this.webGl.context.TEXTURE_2D, null);
+                this.webGl.context.bindFramebuffer(this.webGl.context.FRAMEBUFFER, null);
+            }
         }
     }
 
     // frame state
     clearFrame(clearColor)
     {
-        this.webGl.context.bindFramebuffer(this.webGl.context.FRAMEBUFFER, null);
-        this.webGl.context.clearColor(...clearColor);
-        this.webGl.context.clear(GL.COLOR_BUFFER_BIT | GL.DEPTH_BUFFER_BIT);
         this.webGl.context.bindFramebuffer(this.webGl.context.FRAMEBUFFER, this.opaqueFramebuffer);
         this.webGl.context.clearColor(...clearColor);
         this.webGl.context.clear(GL.COLOR_BUFFER_BIT | GL.DEPTH_BUFFER_BIT);
-        this.webGl.context.bindFramebuffer(this.webGl.context.FRAMEBUFFER, null);
         this.webGl.context.bindFramebuffer(this.webGl.context.FRAMEBUFFER, this.opaqueFramebufferMSAA);
+        this.webGl.context.clearColor(...clearColor);
+        this.webGl.context.clear(GL.COLOR_BUFFER_BIT | GL.DEPTH_BUFFER_BIT);
+        this.webGl.context.bindFramebuffer(this.webGl.context.FRAMEBUFFER, this.scatterFramebuffer);
+        this.webGl.context.clearColor(0, 0, 0, 0);
+        this.webGl.context.clear(GL.COLOR_BUFFER_BIT | GL.DEPTH_BUFFER_BIT);
+        this.webGl.context.bindFramebuffer(this.webGl.context.FRAMEBUFFER, null);
         this.webGl.context.clearColor(...clearColor);
         this.webGl.context.clear(GL.COLOR_BUFFER_BIT | GL.DEPTH_BUFFER_BIT);
         this.webGl.context.bindFramebuffer(this.webGl.context.FRAMEBUFFER, null);
@@ -13185,6 +14377,7 @@ class gltfRenderer
                 && (state.gltf.materials[primitive.material].extensions === undefined
                     || state.gltf.materials[primitive.material].extensions.KHR_materials_transmission === undefined));
         
+                    
         let counter = 0;
         this.opaqueDrawables = Object.groupBy(this.opaqueDrawables, (a) => {
             const winding = Math.sign(determinant(a.node.worldTransform));
@@ -13210,6 +14403,11 @@ class gltfRenderer
         this.transmissionDrawables = drawables
             .filter(({primitive}) => state.gltf.materials[primitive.material].extensions !== undefined
                 && state.gltf.materials[primitive.material].extensions.KHR_materials_transmission !== undefined);
+        
+        this.scatterDrawables = drawables
+            .filter(({primitive}) => state.gltf.materials[primitive.material].extensions !== undefined
+                && state.gltf.materials[primitive.material].extensions.KHR_materials_volume_scatter !== undefined
+                && state.gltf.materials[primitive.material].extensions.KHR_materials_volume !== undefined);
     }
 
     // render complete gltf scene with given camera
@@ -13301,6 +14499,31 @@ class gltfRenderer
             }
             instanceWorldTransforms.push(instanceOffset);
         }
+        const scatterEnabled = this.scatterDrawables.length > 0 && state.renderingParameters.enabledExtensions.KHR_materials_volume_scatter && state.renderingParameters.enabledExtensions.KHR_materials_volume;
+
+        if (scatterEnabled) {
+            this.webGl.context.bindFramebuffer(this.webGl.context.FRAMEBUFFER, this.scatterFramebuffer);
+            if (state.renderingParameters.debugOutput === GltfState.DebugOutput.volumeScatter.PRE_SCATTER_PASS) {
+                this.webGl.context.bindFramebuffer(this.webGl.context.FRAMEBUFFER, null);
+            }
+            this.webGl.context.viewport(aspectOffsetX, aspectOffsetY,  aspectWidth, aspectHeight);
+
+            let counter = 1;
+            for (const drawable of this.scatterDrawables)
+            {
+                let renderpassConfiguration = {};
+                renderpassConfiguration.linearOutput = true;
+                renderpassConfiguration.scatter = true;
+                renderpassConfiguration.drawID = counter;
+                renderpassConfiguration.frameBufferSize = [this.currentWidth, this.currentHeight];
+                this.drawPrimitive(state, renderpassConfiguration, drawable.primitive, drawable.node, this.viewProjectionMatrix);
+                ++counter;
+            }
+            this.webGl.context.bindFramebuffer(this.webGl.context.FRAMEBUFFER, null);
+        }
+        if (state.renderingParameters.debugOutput === GltfState.DebugOutput.volumeScatter.PRE_SCATTER_PASS) {
+            return;
+        }
 
         let pickingProjection = undefined;
         let pickingViewProjection = create$4();
@@ -13357,9 +14580,16 @@ class gltfRenderer
                 const drawable = instance[0];
                 let renderpassConfiguration = {};
                 renderpassConfiguration.linearOutput = true;
+                renderpassConfiguration.frameBufferSize = [this.opaqueFramebufferWidth, this.opaqueFramebufferHeight];
                 const instanceOffset = instanceWorldTransforms[drawableCounter];
                 drawableCounter++;
-                this.drawPrimitive(state, renderpassConfiguration, drawable.primitive, drawable.node, this.viewProjectionMatrix, undefined, instanceOffset);
+
+                let sampledTextures = {};
+                if (scatterEnabled) {
+                    sampledTextures.scatterSampleTexture = this.scatterFrontTexture;
+                    sampledTextures.scatterDepthSampleTexture = this.scatterDepthTexture;
+                }
+                this.drawPrimitive(state, renderpassConfiguration, drawable.primitive, drawable.node, this.viewProjectionMatrix, sampledTextures, instanceOffset);
             }
 
             this.transparentDrawables = currentCamera.sortPrimitivesByDepth(state.gltf, this.transparentDrawables);
@@ -13367,6 +14597,7 @@ class gltfRenderer
             {
                 let renderpassConfiguration = {};
                 renderpassConfiguration.linearOutput = true;
+                renderpassConfiguration.frameBufferSize = [this.opaqueFramebufferWidth, this.opaqueFramebufferHeight];
                 this.drawPrimitive(state, renderpassConfiguration, drawable.primitive, drawable.node, this.viewProjectionMatrix);
             }
 
@@ -13396,9 +14627,15 @@ class gltfRenderer
             const drawable = instance[0];
             let renderpassConfiguration = {};
             renderpassConfiguration.linearOutput = false;
+            renderpassConfiguration.frameBufferSize = [this.currentWidth, this.currentHeight];
             const instanceOffset = instanceWorldTransforms[drawableCounter];
             drawableCounter++;
-            this.drawPrimitive(state, renderpassConfiguration, drawable.primitive, drawable.node, this.viewProjectionMatrix, undefined, instanceOffset);
+            let sampledTextures = {};
+            if (scatterEnabled) {
+                sampledTextures.scatterSampleTexture = this.scatterFrontTexture;
+                sampledTextures.scatterDepthSampleTexture = this.scatterDepthTexture;
+            }
+            this.drawPrimitive(state, renderpassConfiguration, drawable.primitive, drawable.node, this.viewProjectionMatrix, sampledTextures, instanceOffset);
         }
 
         // filter materials with transmission extension
@@ -13407,7 +14644,14 @@ class gltfRenderer
         {
             let renderpassConfiguration = {};
             renderpassConfiguration.linearOutput = false;
-            this.drawPrimitive(state, renderpassConfiguration, drawable.primitive, drawable.node, this.viewProjectionMatrix, this.opaqueRenderTexture);
+            renderpassConfiguration.frameBufferSize = [this.currentWidth, this.currentHeight];
+            let sampledTextures = {};
+            sampledTextures.transmissionSampleTexture = this.opaqueRenderTexture;
+            if (scatterEnabled) {
+                sampledTextures.scatterSampleTexture = this.scatterFrontTexture;
+                sampledTextures.scatterDepthSampleTexture = this.scatterDepthTexture;
+            }
+            this.drawPrimitive(state, renderpassConfiguration, drawable.primitive, drawable.node, this.viewProjectionMatrix, sampledTextures);
         }
 
 
@@ -13416,6 +14660,7 @@ class gltfRenderer
         {
             let renderpassConfiguration = {};
             renderpassConfiguration.linearOutput = false;
+            renderpassConfiguration.frameBufferSize = [this.currentWidth, this.currentHeight];
             this.drawPrimitive(state, renderpassConfiguration, drawable.primitive, drawable.node, this.viewProjectionMatrix);
         }
 
@@ -13503,7 +14748,7 @@ class gltfRenderer
     }
 
     // vertices with given material
-    drawPrimitive(state, renderpassConfiguration, primitive, node, viewProjectionMatrix, transmissionSampleTexture, instanceOffset = undefined)
+    drawPrimitive(state, renderpassConfiguration, primitive, node, viewProjectionMatrix, sampledTextures, instanceOffset = undefined)
     {
         if (primitive.skip) return;
 
@@ -13559,11 +14804,15 @@ class gltfRenderer
         }
 
         this.pushFragParameterDefines(fragDefines, state);
-
+        
         const vertexShader = renderpassConfiguration.picking ? "picking.vert" : "primitive.vert";
-        let fragmentShader = material.type === "SG" ? "specular_glossiness.frag" : "pbr.frag";
-        if (renderpassConfiguration.picking) {
-            fragmentShader = "picking.frag";
+        let fragmentShader = "pbr.frag";
+        if (material.type === "SG") {
+            fragmentShader = "specular_glossiness.frag";
+        } else if (renderpassConfiguration.scatter) {
+            fragmentShader = "scatter.frag";
+        } else if (renderpassConfiguration.picking) {
+        	fragmentShader = "picking.frag";
         }
 
         const fragmentHash = this.shaderCache.selectShader(fragmentShader, fragDefines);
@@ -13584,6 +14833,10 @@ class gltfRenderer
         if (state.renderingParameters.usePunctual && !renderpassConfiguration.picking)
         {
             this.applyLights();
+        }
+
+        if (renderpassConfiguration.scatter) {
+            this.webGl.context.uniform1i(this.shader.getUniformLocation("u_MaterialID"), renderpassConfiguration.drawID);
         }
 
         // update model dependant matrices once per node
@@ -13763,6 +15016,8 @@ class gltfRenderer
         this.shader.updateUniform("u_GlossinessFactor", material.extensions?.KHR_materials_pbrSpecularGlossiness?.glossinessFactor);
         this.shader.updateUniform("u_SpecularGlossinessUVSet", material.extensions?.KHR_materials_pbrSpecularGlossiness?.specularGlossinessTexture?.texCoord);
         this.shader.updateUniform("u_DiffuseUVSet", material.extensions?.KHR_materials_pbrSpecularGlossiness?.diffuseTexture?.texCoord);
+
+        this.shader.updateUniform("u_MultiScatterColor", jsToGl(material.extensions?.KHR_materials_volume_scatter?.multiscatterColor));
     
         let textureIndex = 0;
         for (; textureIndex < material.textures.length; ++textureIndex)
@@ -13804,22 +15059,42 @@ class gltfRenderer
                 this.webGl.setTexture(this.shader.getUniformLocation("u_SheenELUT"), state.environment, state.environment.sheenELUT, textureCount++);
             }
 
-            if(transmissionSampleTexture !== undefined &&
-                state.environment &&
-                state.renderingParameters.enabledExtensions.KHR_materials_transmission)
-            {
-                this.webGl.context.activeTexture(GL.TEXTURE0 + textureCount);
-                this.webGl.context.bindTexture(this.webGl.context.TEXTURE_2D, this.opaqueRenderTexture);
-                this.webGl.context.uniform1i(this.shader.getUniformLocation("u_TransmissionFramebufferSampler"), textureCount);
-                textureCount++;
-
-                this.webGl.context.uniform2i(this.shader.getUniformLocation("u_TransmissionFramebufferSize"), this.opaqueFramebufferWidth, this.opaqueFramebufferHeight);
-
-                this.webGl.context.uniformMatrix4fv(this.shader.getUniformLocation("u_ModelMatrix"),false, node.worldTransform);
-                this.webGl.context.uniformMatrix4fv(this.shader.getUniformLocation("u_ViewMatrix"),false, this.viewMatrix);
-                this.webGl.context.uniformMatrix4fv(this.shader.getUniformLocation("u_ProjectionMatrix"),false, this.projMatrix);
-            }
-        }
+	        if (material.hasVolumeScatter && sampledTextures?.scatterSampleTexture !== undefined)
+	        {
+	            this.webGl.context.activeTexture(GL.TEXTURE0 + textureCount);
+	            this.webGl.context.bindTexture(this.webGl.context.TEXTURE_2D, sampledTextures.scatterSampleTexture);
+	            this.webGl.context.uniform1i(this.shader.getUniformLocation("u_ScatterFramebufferSampler"), textureCount);
+	            textureCount++;
+	
+	            this.webGl.context.activeTexture(GL.TEXTURE0 + textureCount);
+	            this.webGl.context.bindTexture(this.webGl.context.TEXTURE_2D, sampledTextures.scatterDepthSampleTexture);
+	            this.webGl.context.uniform1i(this.shader.getUniformLocation("u_ScatterDepthFramebufferSampler"), textureCount);
+	            textureCount++;
+	
+	            this.webGl.context.uniform1f(this.shader.getUniformLocation("u_MinRadius"), gltfMaterial.scatterMinRadius);
+	            this.webGl.context.uniform2i(this.shader.getUniformLocation("u_FramebufferSize"), renderpassConfiguration.frameBufferSize[0], renderpassConfiguration.frameBufferSize[1]);
+	            this.webGl.context.uniformMatrix4fv(this.shader.getUniformLocation("u_ProjectionMatrix"),false, this.projMatrix);
+	
+	            this.shader.updateUniformArray("u_ScatterSamples", gltfMaterial.scatterSamples);
+	        }
+	
+	        if(sampledTextures?.transmissionSampleTexture !== undefined &&
+	            state.environment &&
+	            state.renderingParameters.enabledExtensions.KHR_materials_transmission)
+	        {
+	            this.webGl.context.activeTexture(GL.TEXTURE0 + textureCount);
+	            this.webGl.context.bindTexture(this.webGl.context.TEXTURE_2D, this.opaqueRenderTexture);
+	            this.webGl.context.uniform1i(this.shader.getUniformLocation("u_TransmissionFramebufferSampler"), textureCount);
+	            textureCount++;
+	
+	            this.webGl.context.uniform2i(this.shader.getUniformLocation("u_TransmissionFramebufferSize"), this.opaqueFramebufferWidth, this.opaqueFramebufferHeight);
+	
+	            this.webGl.context.uniformMatrix4fv(this.shader.getUniformLocation("u_ModelMatrix"),false, node.worldTransform);
+	            this.webGl.context.uniformMatrix4fv(this.shader.getUniformLocation("u_ViewMatrix"),false, this.viewMatrix);
+	            this.webGl.context.uniformMatrix4fv(this.shader.getUniformLocation("u_ProjectionMatrix"),false, this.projMatrix);
+	        }
+	    }
+	    
         if (drawIndexed)
         {
             const indexAccessor = state.gltf.accessors[primitive.indices];
@@ -13996,6 +15271,9 @@ class gltfRenderer
 
             {debugOutput: GltfState.DebugOutput.anisotropy.ANISOTROPIC_STRENGTH, shaderDefine: "DEBUG_ANISOTROPIC_STRENGTH"},
             {debugOutput: GltfState.DebugOutput.anisotropy.ANISOTROPIC_DIRECTION, shaderDefine: "DEBUG_ANISOTROPIC_DIRECTION"},
+
+            {debugOutput: GltfState.DebugOutput.volumeScatter.MULTI_SCATTER_COLOR, shaderDefine: "DEBUG_VOLUME_SCATTER_MULTI_SCATTER_COLOR"},
+            {debugOutput: GltfState.DebugOutput.volumeScatter.SINGLE_SCATTER_COLOR, shaderDefine: "DEBUG_VOLUME_SCATTER_SINGLE_SCATTER_COLOR"},
         ];
 
         let mappingCount = 0;
@@ -20875,997 +22153,6 @@ class gltfImage extends GltfObject
     }
 }
 
-/* globals WebGl */
-
-
-class gltfTexture extends GltfObject
-{
-    static animatedProperties = [];
-    constructor(sampler = undefined, source = undefined, type = GL.TEXTURE_2D)
-    {
-        super();
-        this.sampler = sampler; // index to gltfSampler, default sampler ?
-        this.source = source; // index to gltfImage
-
-        // non gltf
-        this.glTexture = undefined;
-        this.type = type;
-        this.initialized = false;
-        this.mipLevelCount = 0;
-        this.linear = true;
-    }
-
-    initGl(gltf, webGlContext)
-    {
-        if (this.sampler === undefined)
-        {
-            this.sampler = gltf.samplers.length - 1;
-        }
-
-        initGlForMembers(this, gltf, webGlContext);
-    }
-
-    fromJson(jsonTexture)
-    {
-        super.fromJson(jsonTexture);
-        if (jsonTexture.extensions !== undefined &&
-            jsonTexture.extensions.EXT_texture_webp !== undefined &&
-            jsonTexture.extensions.EXT_texture_webp.source !== undefined)
-        {
-            this.source = jsonTexture.extensions.EXT_texture_webp.source;
-        }
-        if (jsonTexture.extensions !== undefined &&
-            jsonTexture.extensions.KHR_texture_basisu !== undefined &&
-            jsonTexture.extensions.KHR_texture_basisu.source !== undefined)
-        {
-            this.source = jsonTexture.extensions.KHR_texture_basisu.source;
-        }
-    }
-
-    destroy()
-    {
-        if (this.glTexture !== undefined)
-        {
-            // TODO: this breaks the dependency direction
-            WebGl.context.deleteTexture(this.glTexture);
-        }
-
-        this.glTexture = undefined;
-    }
-}
-
-class gltfTextureInfo extends GltfObject
-{
-    static animatedProperties = ["strength", "scale"];
-    constructor(index = undefined, texCoord = 0, linear = true, samplerName = "", generateMips = true) // linear by default
-    {
-        super();
-        this.index = index; // reference to gltfTexture
-        this.texCoord = texCoord; // which UV set to use
-        this.linear = linear;
-        this.samplerName = samplerName;
-        this.strength = 1.0; // occlusion
-        this.scale = 1.0; // normal
-        this.generateMips = generateMips;
-
-        this.extensions = undefined;
-    }
-
-    initGl(gltf, webGlContext)
-    {
-        if (!this.linear) {
-            gltf.textures[this.index].linear = false;
-        }
-        initGlForMembers(this, gltf, webGlContext);
-    }
-
-    fromJson(jsonTextureInfo)
-    {
-        fromKeys(this, jsonTextureInfo);
-
-        if (jsonTextureInfo?.extensions?.KHR_texture_transform !== undefined)
-        {
-            this.extensions.KHR_texture_transform = new KHR_texture_transform();
-            this.extensions.KHR_texture_transform.fromJson(jsonTextureInfo.extensions.KHR_texture_transform);
-        }
-    }
-}
-
-class KHR_texture_transform extends GltfObject {
-    static animatedProperties = ["offset", "scale", "rotation"];
-    constructor() {
-        super();
-        this.offset = fromValues$5(0, 0);
-        this.scale = fromValues$5(1, 1);
-        this.rotation = 0;
-    }
-}
-
-class gltfMaterial extends GltfObject
-{
-    static animatedProperties = ["alphaCutoff", "emissiveFactor"];
-    static readOnlyAnimatedProperties = ["doubleSided"];
-    constructor()
-    {
-        super();
-        this.name = undefined;
-        this.pbrMetallicRoughness = new PbrMetallicRoughness();
-        this.normalTexture = undefined;
-        this.occlusionTexture = undefined;
-        this.emissiveTexture = undefined;
-        this.emissiveFactor = fromValues$3(0, 0, 0);
-        this.alphaMode = "OPAQUE";
-        this.alphaCutoff = 0.5;
-        this.doubleSided = false;
-
-        // pbr next extension toggles
-        this.hasClearcoat = false;
-        this.hasSheen = false;
-        this.hasTransmission = false;
-        this.hasDiffuseTransmission = false;
-        this.hasIOR = false;
-        this.hasEmissiveStrength = false;
-        this.hasVolume = false;
-        this.hasIridescence = false;
-        this.hasAnisotropy = false;
-        this.hasDispersion = false;
-
-        // non gltf properties
-        this.type = "unlit";
-        this.textures = [];
-        this.textureTransforms = [];
-        this.defines = [];
-    }
-
-    static createDefault()
-    {
-        const defaultMaterial = new gltfMaterial();
-        defaultMaterial.type = "MR";
-        defaultMaterial.name = "Default Material";
-        defaultMaterial.defines.push("MATERIAL_METALLICROUGHNESS 1");
-
-        return defaultMaterial;
-    }
-
-    getDefines(renderingParameters)
-    {
-        const defines = Array.from(this.defines);
-
-        if (this.hasClearcoat && renderingParameters.enabledExtensions.KHR_materials_clearcoat)
-        {
-            defines.push("MATERIAL_CLEARCOAT 1");
-        }
-        if (this.hasSheen && renderingParameters.enabledExtensions.KHR_materials_sheen)
-        {
-            defines.push("MATERIAL_SHEEN 1");
-        }
-        if (this.hasTransmission && renderingParameters.enabledExtensions.KHR_materials_transmission)
-        {
-            defines.push("MATERIAL_TRANSMISSION 1");
-        }
-        if(this.hasDiffuseTransmission && renderingParameters.enabledExtensions.KHR_materials_diffuse_transmission)
-        {
-            defines.push("MATERIAL_DIFFUSE_TRANSMISSION 1");
-        }
-        if (this.hasVolume && renderingParameters.enabledExtensions.KHR_materials_volume)
-        {
-            defines.push("MATERIAL_VOLUME 1");
-        }
-        if(this.hasIOR && renderingParameters.enabledExtensions.KHR_materials_ior)
-        {
-            defines.push("MATERIAL_IOR 1");
-        }
-        if(this.hasSpecular && renderingParameters.enabledExtensions.KHR_materials_specular)
-        {
-            defines.push("MATERIAL_SPECULAR 1");
-        }
-        if(this.hasIridescence && renderingParameters.enabledExtensions.KHR_materials_iridescence)
-        {
-            defines.push("MATERIAL_IRIDESCENCE 1");
-        }
-        if(this.hasEmissiveStrength && renderingParameters.enabledExtensions.KHR_materials_emissive_strength)
-        {
-            defines.push("MATERIAL_EMISSIVE_STRENGTH 1");
-        }
-        if(this.hasAnisotropy && renderingParameters.enabledExtensions.KHR_materials_anisotropy)
-        {
-            defines.push("MATERIAL_ANISOTROPY 1");
-        }
-        if(this.hasDispersion && renderingParameters.enabledExtensions.KHR_materials_dispersion)
-        {
-            defines.push("MATERIAL_DISPERSION 1");
-        }
-
-        return defines;
-    }
-
-    updateTextureTransforms(shader)
-    {
-        for (const { key, uv } of this.textureTransforms) {
-            let rotation = create$5();
-            let scale = create$5();
-            let translation = create$5();
-
-            if (uv.rotation !== undefined)
-            {
-                const s =  Math.sin(uv.rotation);
-                const c =  Math.cos(uv.rotation);
-                rotation = jsToGl([
-                    c, -s, 0.0,
-                    s, c, 0.0,
-                    0.0, 0.0, 1.0]);
-            }
-
-            if (uv.scale !== undefined)
-            {
-                scale = jsToGl([
-                    uv.scale[0], 0, 0, 
-                    0, uv.scale[1], 0, 
-                    0, 0, 1
-                ]);
-            }
-
-            if (uv.offset !== undefined)
-            {
-                translation = jsToGl([
-                    1, 0, 0, 
-                    0, 1, 0, 
-                    uv.offset[0], uv.offset[1], 1
-                ]);
-            }
-
-            let uvMatrix = create$5();
-            multiply$2(uvMatrix, translation, rotation);
-            multiply$2(uvMatrix, uvMatrix, scale);
-            shader.updateUniform("u_" + key + "UVTransform", jsToGl(uvMatrix));
-            
-            if(key === "Normal") {
-                shader.updateUniform("u_vertNormalUVTransform", jsToGl(uvMatrix));
-            }
-        }
-    }
-
-    parseTextureInfoExtensions(textureInfo, textureKey)
-    {
-        if (textureInfo.extensions?.KHR_texture_transform === undefined)
-        {
-            return;
-        }
-
-        const uv = textureInfo.extensions.KHR_texture_transform;
-
-        this.textureTransforms.push({
-            key: textureKey,
-            uv: uv
-        });
-
-        if(uv.texCoord !== undefined)
-        {
-            textureInfo.texCoord = uv.texCoord;
-        }
-
-        this.defines.push("HAS_" + textureKey.toUpperCase() + "_UV_TRANSFORM 1");
-    }
-
-    initGl(gltf, webGlContext)
-    {
-        if (this.normalTexture !== undefined)
-        {
-            this.normalTexture.samplerName = "u_NormalSampler";
-            this.parseTextureInfoExtensions(this.normalTexture, "Normal");
-            this.textures.push(this.normalTexture);
-            this.defines.push("HAS_NORMAL_MAP 1");
-        }
-
-        if (this.occlusionTexture !== undefined)
-        {
-            this.occlusionTexture.samplerName = "u_OcclusionSampler";
-            this.parseTextureInfoExtensions(this.occlusionTexture, "Occlusion");
-            this.textures.push(this.occlusionTexture);
-            this.defines.push("HAS_OCCLUSION_MAP 1");
-        }
-
-        if (this.emissiveTexture !== undefined)
-        {
-            this.emissiveTexture.samplerName = "u_EmissiveSampler";
-            this.parseTextureInfoExtensions(this.emissiveTexture, "Emissive");
-            this.textures.push(this.emissiveTexture);
-            this.defines.push("HAS_EMISSIVE_MAP 1");
-        }
-
-        if (this.pbrMetallicRoughness.baseColorTexture !== undefined)
-        {
-            this.pbrMetallicRoughness.baseColorTexture.samplerName = "u_BaseColorSampler";
-            this.parseTextureInfoExtensions(this.pbrMetallicRoughness.baseColorTexture, "BaseColor");
-            this.textures.push(this.pbrMetallicRoughness.baseColorTexture);
-            this.defines.push("HAS_BASE_COLOR_MAP 1");
-        }
-
-        if (this.pbrMetallicRoughness.metallicRoughnessTexture !== undefined)
-        {
-            this.pbrMetallicRoughness.metallicRoughnessTexture.samplerName = "u_MetallicRoughnessSampler";
-            this.parseTextureInfoExtensions(this.pbrMetallicRoughness.metallicRoughnessTexture, "MetallicRoughness");
-            this.textures.push(this.pbrMetallicRoughness.metallicRoughnessTexture);
-            this.defines.push("HAS_METALLIC_ROUGHNESS_MAP 1");
-        }
-
-        if (this.extensions?.KHR_materials_pbrSpecularGlossiness?.diffuseTexture !== undefined)
-        {
-            const diffuseTexture = this.extensions.KHR_materials_pbrSpecularGlossiness.diffuseTexture;
-            diffuseTexture.samplerName = "u_DiffuseSampler";
-            diffuseTexture.linear = false;
-            this.parseTextureInfoExtensions(diffuseTexture, "Diffuse");
-            this.textures.push(diffuseTexture);
-            this.defines.push("HAS_DIFFUSE_MAP 1");
-        }
-
-        if (this.extensions?.KHR_materials_pbrSpecularGlossiness?.specularGlossinessTexture !== undefined)
-        {
-            const specularGlossinessTexture = this.extensions.KHR_materials_pbrSpecularGlossiness.specularGlossinessTexture;
-            specularGlossinessTexture.samplerName = "u_SpecularGlossinessSampler";
-            specularGlossinessTexture.linear = false;
-            this.parseTextureInfoExtensions(specularGlossinessTexture, "SpecularGlossiness");
-            this.textures.push(specularGlossinessTexture);
-            this.defines.push("HAS_SPECULAR_GLOSSINESS_MAP 1");
-        }
-
-        this.defines.push("ALPHAMODE_OPAQUE 0");
-        this.defines.push("ALPHAMODE_MASK 1");
-        this.defines.push("ALPHAMODE_BLEND 2");
-        if(this.alphaMode === 'MASK') // only set cutoff value for mask material
-        {
-            this.defines.push("ALPHAMODE ALPHAMODE_MASK");
-        }
-        else if (this.alphaMode === 'OPAQUE')
-        {
-            this.defines.push("ALPHAMODE ALPHAMODE_OPAQUE");
-        }
-        else
-        {
-            this.defines.push("ALPHAMODE ALPHAMODE_BLEND");
-        }
-
-        // if we have SG, we prefer SG (best practice) but if we have neither objects we use MR default values
-        if (this.type !== "SG")
-        {
-            this.defines.push("MATERIAL_METALLICROUGHNESS 1");
-        }
-
-        if (this.extensions !== undefined)
-        {
-            if (this.extensions.KHR_materials_unlit !== undefined)
-            {
-                this.defines.push("MATERIAL_UNLIT 1");
-            }
-
-            if (this.extensions.KHR_materials_pbrSpecularGlossiness !== undefined)
-            {
-                this.defines.push("MATERIAL_SPECULARGLOSSINESS 1");
-            }
-
-            // Clearcoat is part of the default metallic-roughness shader
-            if(this.extensions.KHR_materials_clearcoat !== undefined)
-            {
-                this.hasClearcoat = true;
-
-                const clearcoatTexture = this.extensions.KHR_materials_clearcoat.clearcoatTexture;
-                if (clearcoatTexture !== undefined)
-                {
-                    clearcoatTexture.samplerName = "u_ClearcoatSampler";
-                    this.parseTextureInfoExtensions(clearcoatTexture, "Clearcoat");
-                    this.textures.push(clearcoatTexture);
-                    this.defines.push("HAS_CLEARCOAT_MAP 1");
-                }
-
-                const clearcoatRoughnessTexture = this.extensions.KHR_materials_clearcoat.clearcoatRoughnessTexture;
-                if (clearcoatRoughnessTexture !== undefined)
-                {
-                    clearcoatRoughnessTexture.samplerName = "u_ClearcoatRoughnessSampler";
-                    this.parseTextureInfoExtensions(clearcoatRoughnessTexture, "ClearcoatRoughness");
-                    this.textures.push(clearcoatRoughnessTexture);
-                    this.defines.push("HAS_CLEARCOAT_ROUGHNESS_MAP 1");
-                }
-
-                const clearcoatNormalTexture = this.extensions.KHR_materials_clearcoat.clearcoatNormalTexture;
-                if (clearcoatNormalTexture !== undefined)
-                {
-                    clearcoatNormalTexture.samplerName = "u_ClearcoatNormalSampler";
-                    this.parseTextureInfoExtensions(clearcoatNormalTexture, "ClearcoatNormal");
-                    this.textures.push(clearcoatNormalTexture);
-                    this.defines.push("HAS_CLEARCOAT_NORMAL_MAP 1");
-                }
-            }
-
-            // Sheen material extension
-            // https://github.com/sebavan/glTF/tree/KHR_materials_sheen/extensions/2.0/Khronos/KHR_materials_sheen
-            if(this.extensions.KHR_materials_sheen !== undefined)
-            {
-                this.hasSheen = true;
-     
-                if (this.extensions.KHR_materials_sheen.sheenRoughnessTexture !== undefined)
-                {
-                    this.extensions.KHR_materials_sheen.sheenRoughnessTexture.samplerName = "u_SheenRoughnessSampler";
-                    this.parseTextureInfoExtensions(this.extensions.KHR_materials_sheen.sheenRoughnessTexture, "SheenRoughness");
-                    this.textures.push(this.extensions.KHR_materials_sheen.sheenRoughnessTexture);
-                    this.defines.push("HAS_SHEEN_ROUGHNESS_MAP 1");
-                }
-                
-                const sheenColorTexture = this.extensions.KHR_materials_sheen.sheenColorTexture;
-                if (sheenColorTexture !== undefined)
-                {
-                    sheenColorTexture.samplerName = "u_SheenColorSampler";
-                    this.parseTextureInfoExtensions(sheenColorTexture, "SheenColor");
-                    sheenColorTexture.linear = false;
-                    this.textures.push(sheenColorTexture);
-                    this.defines.push("HAS_SHEEN_COLOR_MAP 1");
-                }
-            }
-
-            // KHR Extension: Specular
-            if (this.extensions.KHR_materials_specular !== undefined)
-            {
-                this.hasSpecular = true;
-
-                if (this.extensions.KHR_materials_specular?.specularTexture !== undefined)
-                {
-                    this.extensions.KHR_materials_specular.specularTexture.samplerName = "u_SpecularSampler";
-                    this.parseTextureInfoExtensions(this.extensions?.KHR_materials_specular?.specularTexture, "Specular");
-                    this.textures.push(this.extensions?.KHR_materials_specular?.specularTexture);
-                    this.defines.push("HAS_SPECULAR_MAP 1");
-                }
-
-                if (this.extensions.KHR_materials_specular?.specularColorTexture !== undefined)
-                {
-                    this.extensions.KHR_materials_specular.specularColorTexture.samplerName = "u_SpecularColorSampler";
-                    this.parseTextureInfoExtensions(this.extensions?.KHR_materials_specular.specularColorTexture, "SpecularColor");
-                    this.extensions.KHR_materials_specular.specularColorTexture.linear = false;
-                    this.textures.push(this.extensions.KHR_materials_specular.specularColorTexture);
-                    this.defines.push("HAS_SPECULAR_COLOR_MAP 1");
-                }
-            }
-
-            // KHR Extension: Emissive strength
-            if (this.extensions.KHR_materials_emissive_strength !== undefined)
-            {
-                this.hasEmissiveStrength = true;
-            }
-
-            // KHR Extension: Transmission
-            if (this.extensions.KHR_materials_transmission !== undefined)
-            {
-                this.hasTransmission = true;
-
-                if (this.extensions?.KHR_materials_transmission?.transmissionTexture !== undefined)
-                {
-                    this.extensions.KHR_materials_transmission.transmissionTexture.samplerName = "u_TransmissionSampler";
-                    this.parseTextureInfoExtensions(this.extensions?.KHR_materials_transmission?.transmissionTexture, "Transmission");
-                    this.textures.push(this.extensions?.KHR_materials_transmission?.transmissionTexture);
-                    this.defines.push("HAS_TRANSMISSION_MAP 1");
-                }
-            }
-
-            // KHR Extension: Diffuse Transmission
-            if(this.extensions.KHR_materials_diffuse_transmission !== undefined)
-            {
-                const extension = this.extensions.KHR_materials_diffuse_transmission;
-
-                this.hasDiffuseTransmission = true;
-
-                if (extension.diffuseTransmissionTexture !== undefined)
-                {
-                    extension.diffuseTransmissionTexture.samplerName = "u_DiffuseTransmissionSampler";
-                    this.parseTextureInfoExtensions(extension.diffuseTransmissionTexture, "DiffuseTransmission");
-                    this.textures.push(extension.diffuseTransmissionTexture);
-                    this.defines.push("HAS_DIFFUSE_TRANSMISSION_MAP 1");
-                }
-
-                if (extension.diffuseTransmissionColorTexture !== undefined)
-                {
-                    extension.diffuseTransmissionColorTexture.samplerName = "u_DiffuseTransmissionColorSampler";
-                    this.parseTextureInfoExtensions(extension.diffuseTransmissionColorTexture, "DiffuseTransmissionColor");
-                    this.textures.push(extension.diffuseTransmissionColorTexture);
-                    this.defines.push("HAS_DIFFUSE_TRANSMISSION_COLOR_MAP 1");
-                }
-            }
-
-            // KHR Extension: IOR
-            //https://github.com/DassaultSystemes-Technology/glTF/tree/KHR_materials_ior/extensions/2.0/Khronos/KHR_materials_ior
-            if (this.extensions.KHR_materials_ior !== undefined)
-            {
-                this.hasIOR = true;
-            }
-
-            // KHR Extension: Volume
-            if (this.extensions.KHR_materials_volume !== undefined)
-            {
-                this.hasVolume = true;
-
-                if (this.extensions?.KHR_materials_volume?.thicknessTexture !== undefined)
-                {
-                    this.extensions.KHR_materials_volume.thicknessTexture.samplerName = "u_ThicknessSampler";
-                    this.parseTextureInfoExtensions(this.extensions.KHR_materials_volume.thicknessTexture, "Thickness");
-                    this.textures.push(this.extensions.KHR_materials_volume.thicknessTexture);
-                    this.defines.push("HAS_THICKNESS_MAP 1");
-                }
-            }
-
-            // KHR Extension: Iridescence
-            // See https://github.com/ux3d/glTF/tree/extensions/KHR_materials_iridescence/extensions/2.0/Khronos/KHR_materials_iridescence
-            if(this.extensions.KHR_materials_iridescence !== undefined)
-            {
-                this.hasIridescence = true;
-
-                const extension = this.extensions.KHR_materials_iridescence;
-
-                if (extension.iridescenceTexture !== undefined)
-                {
-                    extension.iridescenceTexture.samplerName = "u_IridescenceSampler";
-                    this.parseTextureInfoExtensions(extension.iridescenceTexture, "Iridescence");
-                    this.textures.push(extension.iridescenceTexture);
-                    this.defines.push("HAS_IRIDESCENCE_MAP 1");
-                }
-
-                if (extension.iridescenceThicknessTexture !== undefined)
-                {
-                    extension.iridescenceThicknessTexture.samplerName = "u_IridescenceThicknessSampler";
-                    this.parseTextureInfoExtensions(extension.iridescenceThicknessTexture, "IridescenceThickness");
-                    this.textures.push(extension.iridescenceThicknessTexture);
-                    this.defines.push("HAS_IRIDESCENCE_THICKNESS_MAP 1");
-                }
-            }
-
-            // KHR Extension: Anisotropy
-            // See https://github.com/KhronosGroup/glTF/tree/main/extensions/2.0/Khronos/KHR_materials_anisotropy
-            if(this.extensions.KHR_materials_anisotropy !== undefined)
-            {
-                this.hasAnisotropy = true;
-
-                const anisotropyTexture = this.extensions.KHR_materials_anisotropy.anisotropyTexture;
-
-                if (anisotropyTexture !== undefined)
-                {
-                    anisotropyTexture.samplerName = "u_AnisotropySampler";
-                    this.parseTextureInfoExtensions(anisotropyTexture, "Anisotropy");
-                    this.textures.push(anisotropyTexture);
-                    this.defines.push("HAS_ANISOTROPY_MAP 1");
-                }
-            }
-
-            // KHR Extension: Dispersion
-            // See https://github.com/KhronosGroup/glTF/tree/main/extensions/2.0/Khronos/KHR_materials_dispersion
-            if (this.extensions.KHR_materials_dispersion !== undefined)
-            {
-                this.hasDispersion = true;
-            }
-        }
-
-        initGlForMembers(this, gltf, webGlContext);
-    }
-
-    fromJson(jsonMaterial)
-    {
-        super.fromJson(jsonMaterial);
-
-        if (jsonMaterial.normalTexture !== undefined)
-        {
-            const normalTexture = new gltfTextureInfo();
-            normalTexture.fromJson(jsonMaterial.normalTexture);
-            this.normalTexture = normalTexture;
-        }
-
-        if (jsonMaterial.occlusionTexture !== undefined)
-        {
-            const occlusionTexture = new gltfTextureInfo();
-            occlusionTexture.fromJson(jsonMaterial.occlusionTexture);
-            this.occlusionTexture = occlusionTexture;
-        }
-
-        if (jsonMaterial.emissiveTexture !== undefined)
-        {
-            const emissiveTexture = new gltfTextureInfo(undefined, 0, false);
-            emissiveTexture.fromJson(jsonMaterial.emissiveTexture);
-            this.emissiveTexture = emissiveTexture;
-        }
-
-        if(jsonMaterial.extensions !== undefined)
-        {
-            this.fromJsonMaterialExtensions(jsonMaterial.extensions);
-        }
-        this.pbrMetallicRoughness = new PbrMetallicRoughness();
-        if (jsonMaterial.pbrMetallicRoughness !== undefined && this.type !== "SG")
-        {
-            this.type = "MR";
-            this.pbrMetallicRoughness.fromJson(jsonMaterial.pbrMetallicRoughness);
-        }
-    }
-
-    fromJsonMaterialExtensions(jsonExtensions)
-    {
-        if (jsonExtensions.KHR_materials_pbrSpecularGlossiness !== undefined)
-        {
-            this.type = "SG";
-            this.extensions.KHR_materials_pbrSpecularGlossiness = new KHR_materials_pbrSpecularGlossiness();
-            this.extensions.KHR_materials_pbrSpecularGlossiness.fromJson(jsonExtensions.KHR_materials_pbrSpecularGlossiness);
-        }
-
-        if(jsonExtensions.KHR_materials_unlit !== undefined)
-        {
-            this.type = "unlit";
-        }
-
-        if(jsonExtensions.KHR_materials_clearcoat !== undefined)
-        {
-            this.extensions.KHR_materials_clearcoat = new KHR_materials_clearcoat();
-            this.extensions.KHR_materials_clearcoat.fromJson(jsonExtensions.KHR_materials_clearcoat);
-        }
-
-        if(jsonExtensions.KHR_materials_sheen !== undefined)
-        {
-            this.extensions.KHR_materials_sheen = new KHR_materials_sheen();
-            this.extensions.KHR_materials_sheen.fromJson(jsonExtensions.KHR_materials_sheen);
-        }
-
-        if(jsonExtensions.KHR_materials_transmission !== undefined)
-        {
-            this.extensions.KHR_materials_transmission = new KHR_materials_transmission();
-            this.extensions.KHR_materials_transmission.fromJson(jsonExtensions.KHR_materials_transmission);
-        }
-
-        if(jsonExtensions.KHR_materials_diffuse_transmission !== undefined)
-        {
-            this.extensions.KHR_materials_diffuse_transmission = new KHR_materials_diffuse_transmission();
-            this.extensions.KHR_materials_diffuse_transmission.fromJson(jsonExtensions.KHR_materials_diffuse_transmission);
-        }
-
-        if(jsonExtensions.KHR_materials_specular !== undefined)
-        {
-            this.extensions.KHR_materials_specular = new KHR_materials_specular();
-            this.extensions.KHR_materials_specular.fromJson(jsonExtensions.KHR_materials_specular);
-        }
-
-        if(jsonExtensions.KHR_materials_volume !== undefined)
-        {
-            this.extensions.KHR_materials_volume = new KHR_materials_volume();
-            this.extensions.KHR_materials_volume.fromJson(jsonExtensions.KHR_materials_volume);
-        }
-
-        if(jsonExtensions.KHR_materials_iridescence !== undefined)
-        {
-            this.extensions.KHR_materials_iridescence = new KHR_materials_iridescence();
-            this.extensions.KHR_materials_iridescence.fromJson(jsonExtensions.KHR_materials_iridescence);
-        }
-
-        if(jsonExtensions.KHR_materials_anisotropy !== undefined)
-        {
-            this.extensions.KHR_materials_anisotropy = new KHR_materials_anisotropy();
-            this.extensions.KHR_materials_anisotropy.fromJson(jsonExtensions.KHR_materials_anisotropy);
-        }
-        
-        if(jsonExtensions.KHR_materials_emissive_strength !== undefined)
-        {
-            this.extensions.KHR_materials_emissive_strength = new KHR_materials_emissive_strength();
-            this.extensions.KHR_materials_emissive_strength.fromJson(jsonExtensions.KHR_materials_emissive_strength);
-        }
-
-        if(jsonExtensions.KHR_materials_dispersion !== undefined) {
-            this.extensions.KHR_materials_dispersion = new KHR_materials_dispersion();
-            this.extensions.KHR_materials_dispersion.fromJson(jsonExtensions.KHR_materials_dispersion);
-        }
-
-        if(jsonExtensions.KHR_materials_ior !== undefined) {
-            this.extensions.KHR_materials_ior = new KHR_materials_ior();
-            this.extensions.KHR_materials_ior.fromJson(jsonExtensions.KHR_materials_ior);
-        }
-    }
-}
-
-class PbrMetallicRoughness extends GltfObject {
-    static animatedProperties = ["baseColorFactor", "metallicFactor", "roughnessFactor"];
-    constructor()
-    {
-        super();
-        this.baseColorFactor = fromValues$2(1, 1, 1, 1);
-        this.baseColorTexture = undefined;
-        this.metallicFactor = 1;
-        this.roughnessFactor = 1;
-        this.metallicRoughnessTexture = undefined;
-    }
-
-    fromJson(json) {
-        super.fromJson(json);
-        if (json.baseColorTexture !== undefined)
-        {
-            const baseColorTexture = new gltfTextureInfo(undefined, 0, false);
-            baseColorTexture.fromJson(json.baseColorTexture);
-            this.baseColorTexture = baseColorTexture;
-        }
-
-        if (json.metallicRoughnessTexture !== undefined)
-        {
-            const metallicRoughnessTexture = new gltfTextureInfo();
-            metallicRoughnessTexture.fromJson(json.metallicRoughnessTexture);
-            this.metallicRoughnessTexture = metallicRoughnessTexture;
-        }
-    }
-}
-
-class KHR_materials_anisotropy extends GltfObject {
-    static animatedProperties = ["anisotropyStrength", "anisotropyRotation"];
-    constructor()
-    {
-        super();
-        this.anisotropyStrength = 0;
-        this.anisotropyRotation = 0;
-        this.anisotropyTexture = undefined;
-    }
-
-    fromJson(json) {
-        super.fromJson(json);
-        if (json.anisotropyTexture !== undefined)
-        {
-            const anisotropyTexture = new gltfTextureInfo();
-            anisotropyTexture.fromJson(json.anisotropyTexture);
-            this.anisotropyTexture = anisotropyTexture;
-        }
-    }
-}
-
-class KHR_materials_clearcoat extends GltfObject {
-    static animatedProperties = ["clearcoatFactor", "clearcoatRoughnessFactor"];
-    constructor()
-    {
-        super();
-        this.clearcoatFactor = 0;
-        this.clearcoatTexture = undefined;
-        this.clearcoatRoughnessFactor = 0;
-        this.clearcoatRoughnessTexture = undefined;
-        this.clearcoatNormalTexture = undefined;
-    }
-
-    fromJson(jsonClearcoat) {
-        super.fromJson(jsonClearcoat);
-        if(jsonClearcoat.clearcoatTexture !== undefined)
-        {
-            const clearcoatTexture = new gltfTextureInfo();
-            clearcoatTexture.fromJson(jsonClearcoat.clearcoatTexture);
-            this.clearcoatTexture = clearcoatTexture;
-        }
-
-        if(jsonClearcoat.clearcoatRoughnessTexture !== undefined)
-        {
-            const clearcoatRoughnessTexture =  new gltfTextureInfo();
-            clearcoatRoughnessTexture.fromJson(jsonClearcoat.clearcoatRoughnessTexture);
-            this.clearcoatRoughnessTexture = clearcoatRoughnessTexture;
-        }
-
-        if(jsonClearcoat.clearcoatNormalTexture !== undefined)
-        {
-            const clearcoatNormalTexture =  new gltfTextureInfo();
-            clearcoatNormalTexture.fromJson(jsonClearcoat.clearcoatNormalTexture);
-            this.clearcoatNormalTexture = clearcoatNormalTexture;
-        }
-    }
-}
-
-class KHR_materials_dispersion extends GltfObject {
-    static animatedProperties = ["dispersion"];
-    constructor()
-    {
-        super();
-        this.dispersion = 0;
-    }
-}
-
-class KHR_materials_emissive_strength extends GltfObject {
-    static animatedProperties = ["emissiveStrength"];
-    constructor()
-    {
-        super();
-        this.emissiveStrength = 1.0;
-    }
-}
-
-class KHR_materials_ior extends GltfObject {
-    static animatedProperties = ["ior"];
-    constructor()
-    {
-        super();
-        this.ior = 1.5;
-    }
-}
-
-class KHR_materials_iridescence extends GltfObject {
-    static animatedProperties = ["iridescenceFactor", "iridescenceIor", "iridescenceThicknessMinimum", "iridescenceThicknessMaximum"];
-    constructor()
-    {
-        super();
-        this.iridescenceFactor = 0;
-        this.iridescenceIor = 1.3;
-        this.iridescenceThicknessMinimum = 100;
-        this.iridescenceThicknessMaximum = 400;
-        this.iridescenceTexture = undefined;
-        this.iridescenceThicknessTexture = undefined;
-    }
-
-    fromJson(jsonIridescence) {
-        super.fromJson(jsonIridescence);
-        if(jsonIridescence.iridescenceTexture !== undefined)
-        {
-            const iridescenceTexture = new gltfTextureInfo();
-            iridescenceTexture.fromJson(jsonIridescence.iridescenceTexture);
-            this.iridescenceTexture = iridescenceTexture;
-        }
-
-        if(jsonIridescence.iridescenceThicknessTexture !== undefined)
-        {
-            const iridescenceThicknessTexture = new gltfTextureInfo();
-            iridescenceThicknessTexture.fromJson(jsonIridescence.iridescenceThicknessTexture);
-            this.iridescenceThicknessTexture = iridescenceThicknessTexture;
-        }
-    }
-}
-
-class KHR_materials_sheen extends GltfObject {
-    static animatedProperties = ["sheenRoughnessFactor", "sheenColorFactor"];
-    constructor()
-    {
-        super();
-        this.sheenRoughnessFactor = 0;
-        this.sheenColorFactor = fromValues$3(0, 0, 0);
-        this.sheenColorTexture = undefined;
-        this.sheenRoughnessTexture = undefined;
-    }
-
-    fromJson(jsonSheen) {
-        super.fromJson(jsonSheen);
-        if(jsonSheen.sheenColorTexture !== undefined)
-        {
-            const sheenColorTexture = new gltfTextureInfo();
-            sheenColorTexture.fromJson(jsonSheen.sheenColorTexture);
-            this.sheenColorTexture = sheenColorTexture;
-        }
-
-        if(jsonSheen.sheenRoughnessTexture !== undefined)
-        {
-            const sheenRoughnessTexture = new gltfTextureInfo();
-            sheenRoughnessTexture.fromJson(jsonSheen.sheenRoughnessTexture);
-            this.sheenRoughnessTexture = sheenRoughnessTexture;
-        }
-    }
-}
-
-class KHR_materials_specular extends GltfObject {
-    static animatedProperties = ["specularFactor", "specularColorFactor"];
-    constructor()
-    {
-        super();
-        this.specularFactor = 1;
-        this.specularColorFactor = fromValues$3(1, 1, 1);
-        this.specularTexture = undefined;
-        this.specularColorTexture = undefined;
-    }
-
-    fromJson(jsonSpecular) {
-        super.fromJson(jsonSpecular);
-        if(jsonSpecular.specularTexture !== undefined)
-        {
-            const specularTexture = new gltfTextureInfo();
-            specularTexture.fromJson(jsonSpecular.specularTexture);
-            this.specularTexture = specularTexture;
-        }
-
-        if(jsonSpecular.specularColorTexture !== undefined)
-        {
-            const specularColorTexture = new gltfTextureInfo();
-            specularColorTexture.fromJson(jsonSpecular.specularColorTexture);
-            this.specularColorTexture = specularColorTexture;
-        }
-    }
-}
-
-class KHR_materials_transmission extends GltfObject {
-    static animatedProperties = ["transmissionFactor"];
-    constructor()
-    {
-        super();
-        this.transmissionFactor = 0;
-        this.transmissionTexture = undefined;
-    }
-
-    fromJson(jsonTransmission) {
-        super.fromJson(jsonTransmission);
-        if(jsonTransmission.transmissionTexture !== undefined)
-        {
-            const transmissionTexture = new gltfTextureInfo();
-            transmissionTexture.fromJson(jsonTransmission.transmissionTexture);
-            this.transmissionTexture = transmissionTexture;
-        }
-    }
-}
-
-class KHR_materials_volume extends GltfObject {
-    static animatedProperties = ["thicknessFactor", "attenuationDistance", "attenuationColor"];
-    constructor()
-    {
-        super();
-        this.thicknessFactor = 0;
-        this.thicknessTexture = undefined;
-        this.attenuationDistance = 0; // 0 means infinite distance
-        this.attenuationColor = fromValues$3(1, 1, 1);
-    }
-
-    fromJson(jsonVolume) {
-        super.fromJson(jsonVolume);
-        if(jsonVolume.thicknessTexture !== undefined)
-        {
-            const thicknessTexture = new gltfTextureInfo();
-            thicknessTexture.fromJson(jsonVolume.thicknessTexture);
-            this.thicknessTexture = thicknessTexture;
-        }
-    }
-}
-
-class KHR_materials_diffuse_transmission extends GltfObject {
-
-    //TODO: define animated properties
-    static animatedProperties = [];
-    constructor()
-    {
-        super();
-        this.diffuseTransmissionFactor = 0;
-        this.diffuseTransmissionColorFactor = fromValues$3(1, 1, 1);
-        this.diffuseTransmissionTexture = undefined;
-        this.diffuseTransmissionColorTexture = undefined;
-    }
-
-    fromJson(jsonDiffuseTransmission) {
-        super.fromJson(jsonDiffuseTransmission);
-        if(jsonDiffuseTransmission.diffuseTransmissionTexture !== undefined)
-        {
-            const diffuseTransmissionTexture = new gltfTextureInfo();
-            diffuseTransmissionTexture.fromJson(jsonDiffuseTransmission.diffuseTransmissionTexture);
-            this.diffuseTransmissionTexture = diffuseTransmissionTexture;
-        }
-
-        if(jsonDiffuseTransmission.diffuseTransmissionColorTexture !== undefined)
-        {
-            const diffuseTransmissionColorTexture = new gltfTextureInfo();
-            diffuseTransmissionColorTexture.fromJson(jsonDiffuseTransmission.diffuseTransmissionColorTexture);
-            this.diffuseTransmissionColorTexture = diffuseTransmissionColorTexture;
-        }
-    }
-}
-
-class KHR_materials_pbrSpecularGlossiness extends GltfObject {
-    static animatedProperties = [];
-    constructor()
-    {
-        super();
-        this.diffuseFactor = fromValues$2(1, 1, 1, 1);
-        this.diffuseTexture = undefined;
-        this.specularFactor = fromValues$3(1, 1, 1);
-        this.specularGlossinessTexture = undefined;
-        this.glossinessFactor = 1;
-    }
-
-    fromJson(jsonSpecularGlossiness) {
-        super.fromJson(jsonSpecularGlossiness);
-        if(jsonSpecularGlossiness.diffuseTexture !== undefined)
-        {
-            const diffuseTexture = new gltfTextureInfo();
-            diffuseTexture.fromJson(jsonSpecularGlossiness.diffuseTexture);
-            this.diffuseTexture = diffuseTexture;
-        }
-
-        if(jsonSpecularGlossiness.specularGlossinessTexture !== undefined)
-        {
-            const specularGlossinessTexture = new gltfTextureInfo();
-            specularGlossinessTexture.fromJson(jsonSpecularGlossiness.specularGlossinessTexture);
-            this.specularGlossinessTexture = specularGlossinessTexture;
-        }
-    }
-}
-
 class gltfSampler extends GltfObject
 {
     static animatedProperties = [];
@@ -22158,8 +22445,9 @@ class gltfPrimitive extends GltfObject
         {
             console.info("Generating tangents using the MikkTSpace algorithm.");
             console.time("Tangent generation");
+            const tangentHash = `${this.attributes.POSITION}_${this.attributes.NORMAL}_${this.attributes.TEXCOORD_0}`;
             this.unweld(gltf);
-            this.generateTangents(gltf);
+            this.generateTangents(gltf, tangentHash);
             console.timeEnd("Tangent generation");
         }
 
@@ -22817,7 +23105,6 @@ class gltfPrimitive extends GltfObject
         if (this.indices === undefined) {
             return;
         }
-
         const indices = gltf.accessors[this.indices].getTypedView(gltf);
 
         // Unweld attributes:
@@ -22885,9 +23172,14 @@ class gltfPrimitive extends GltfObject
         return gltf.accessors.length - 1;
     }
 
-    generateTangents(gltf) {
+    generateTangents(gltf, tangentHash) {
         if(this.attributes.NORMAL === undefined || this.attributes.TEXCOORD_0 === undefined)
         {
+            return;
+        }
+        if (gltf.tangentCache[tangentHash] !== undefined) {
+            // Tangents already generated for this primitive.
+            this.attributes.TANGENT = gltf.tangentCache[tangentHash];
             return;
         }
 
@@ -22948,6 +23240,7 @@ class gltfPrimitive extends GltfObject
         // Update the primitive to use the tangents:
         this.attributes.TANGENT = gltf.accessors.length;
         gltf.accessors.push(tangentAccessor);
+        gltf.tangentCache[tangentHash] = this.attributes.TANGENT;
 
     }
 }
@@ -24862,6 +25155,7 @@ const allowedExtensions = [
     "KHR_lights_punctual",
     "KHR_materials_anisotropy",
     "KHR_materials_clearcoat",
+    "KHR_materials_diffuse_transmission",
     "KHR_materials_dispersion",
     "KHR_materials_emissive_strength",
     "KHR_materials_ior",
@@ -24873,11 +25167,13 @@ const allowedExtensions = [
     "KHR_materials_unlit",
     "KHR_materials_variants",
     "KHR_materials_volume",
+    "KHR_materials_volume_scatter",
     "KHR_mesh_quantization",
     "KHR_node_visibility",
     "KHR_texture_basisu",
     "KHR_texture_transform",
     "KHR_xmp_json_ld",
+    "EXT_mesh_gpu_instancing",
     "EXT_texture_webp",
 ];
 
@@ -24905,6 +25201,9 @@ class glTF extends GltfObject
         this.animations = [];
         this.skins = [];
         this.path = file;
+
+        // Generated tangent cache
+        this.tangentCache = new Map();
     }
 
     initGl(webGlContext)
@@ -29426,7 +29725,7 @@ const getInputObservables = (inputElement, app) => {
         map(file => ({hdr_path: file}))
     );
 
-    const mouseMove = fromEvent(document, 'mousemove');
+    const mouseMove = merge$1(fromEvent(inputElement, 'mousemove'), fromEvent(inputElement, 'mouseout'));
     const mouseDown = fromEvent(inputElement, 'mousedown');
     const mouseUp = merge$1(fromEvent(document, 'mouseup'), fromEvent(document, 'mouseleave'));
     const click = fromEvent(inputElement, 'click');
@@ -29436,6 +29735,7 @@ const getInputObservables = (inputElement, app) => {
     inputElement.addEventListener('mouseup', event => event.preventDefault());
     inputElement.addEventListener('dblclick', event => event.preventDefault());
     inputElement.addEventListener('click', event => event.preventDefault());
+    inputElement.addEventListener('mouseout', event => event.preventDefault());
 
     const selection = click.pipe(
         filter(event => event.button === 0),
@@ -29445,6 +29745,9 @@ const getInputObservables = (inputElement, app) => {
 
     const move = mouseMove.pipe(
         map((moveEvent) => {
+            if (moveEvent.type === 'mouseout') {
+                return {x: undefined, y: undefined};
+            }
             return {x: moveEvent.pageX, y: moveEvent.pageY};
         }));
 
@@ -79822,6 +80125,22 @@ var main = async () => {
     const state = view.createState();
     state.renderingParameters.useDirectionalLightsWithDisabledIBL = true;
 
+    state.graphController.addCustomEventListener("test/onStart", (event) => {
+        console.log("Test duration: ", event);
+    });
+    state.graphController.addCustomEventListener("test/onSuccess", () => {
+        const message = "Interactivity test succeeded";
+        console.log(message);
+        app.$buefy.toast.open({
+            message: message,
+            type: 'is-success'
+        });
+    });
+    state.graphController.addCustomEventListener("test/onFailed", () => {
+        const message = "Interactivity test failed";
+        console.error(message);
+    });
+
     const pathProvider = new GltfModelPathProvider(
         "https://raw.githubusercontent.com/KhronosGroup/glTF-Test-Assets-Interactivity/main"
     );
@@ -80362,6 +80681,11 @@ var main = async () => {
 
     uiModel.moveSelection.subscribe(selection => {
         if (!state.enableHover) {
+            return;
+        }
+        if (selection.x === undefined || selection.y === undefined) {
+            state.pickingX = undefined;
+            state.pickingY = undefined;
             return;
         }
         const devicePixelRatio = window.devicePixelRatio || 1;
