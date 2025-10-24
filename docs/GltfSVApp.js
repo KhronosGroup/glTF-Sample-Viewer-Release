@@ -1,6 +1,6 @@
 /**
  * Bundle of gltf-sample-viewer-example
- * Generated: 2025-10-21
+ * Generated: 2025-10-24
  * Version: 1.0.0
  * License: Apache-2.0
  * Dependencies:
@@ -1091,7 +1091,7 @@
 
 /**
  * Bundle of @khronosgroup/gltf-viewer
- * Generated: 2025-10-21
+ * Generated: 2025-10-24
  * Version: 1.1.0
  * License: Apache-2.0
  * Dependencies:
@@ -3320,12 +3320,12 @@ class gltfWebGl {
 
             if (textureInfo.generateMips) {
                 switch (gltfSampler.minFilter) {
-                case GL.NEAREST_MIPMAP_NEAREST:
-                case GL.NEAREST_MIPMAP_LINEAR:
-                case GL.LINEAR_MIPMAP_NEAREST:
-                case GL.LINEAR_MIPMAP_LINEAR:
-                    this.context.generateMipmap(gltfTex.type);
-                    break;
+                    case GL.NEAREST_MIPMAP_NEAREST:
+                    case GL.NEAREST_MIPMAP_LINEAR:
+                    case GL.LINEAR_MIPMAP_NEAREST:
+                    case GL.LINEAR_MIPMAP_LINEAR:
+                        this.context.generateMipmap(gltfTex.type);
+                        break;
                 }
             }
 
@@ -3561,24 +3561,24 @@ class gltfAccessor extends GltfObject {
             }
 
             switch (this.componentType) {
-            case GL.BYTE:
-                this.typedView = new Int8Array(buffer.buffer, byteOffset, arrayLength);
-                break;
-            case GL.UNSIGNED_BYTE:
-                this.typedView = new Uint8Array(buffer.buffer, byteOffset, arrayLength);
-                break;
-            case GL.SHORT:
-                this.typedView = new Int16Array(buffer.buffer, byteOffset, arrayLength);
-                break;
-            case GL.UNSIGNED_SHORT:
-                this.typedView = new Uint16Array(buffer.buffer, byteOffset, arrayLength);
-                break;
-            case GL.UNSIGNED_INT:
-                this.typedView = new Uint32Array(buffer.buffer, byteOffset, arrayLength);
-                break;
-            case GL.FLOAT:
-                this.typedView = new Float32Array(buffer.buffer, byteOffset, arrayLength);
-                break;
+                case GL.BYTE:
+                    this.typedView = new Int8Array(buffer.buffer, byteOffset, arrayLength);
+                    break;
+                case GL.UNSIGNED_BYTE:
+                    this.typedView = new Uint8Array(buffer.buffer, byteOffset, arrayLength);
+                    break;
+                case GL.SHORT:
+                    this.typedView = new Int16Array(buffer.buffer, byteOffset, arrayLength);
+                    break;
+                case GL.UNSIGNED_SHORT:
+                    this.typedView = new Uint16Array(buffer.buffer, byteOffset, arrayLength);
+                    break;
+                case GL.UNSIGNED_INT:
+                    this.typedView = new Uint32Array(buffer.buffer, byteOffset, arrayLength);
+                    break;
+                case GL.FLOAT:
+                    this.typedView = new Float32Array(buffer.buffer, byteOffset, arrayLength);
+                    break;
             }
         } else {
             this.typedView = this.createView();
@@ -3636,30 +3636,30 @@ class gltfAccessor extends GltfObject {
 
             let func = "getFloat32";
             switch (this.componentType) {
-            case GL.BYTE:
-                this.filteredView = new Int8Array(arrayLength);
-                func = "getInt8";
-                break;
-            case GL.UNSIGNED_BYTE:
-                this.filteredView = new Uint8Array(arrayLength);
-                func = "getUint8";
-                break;
-            case GL.SHORT:
-                this.filteredView = new Int16Array(arrayLength);
-                func = "getInt16";
-                break;
-            case GL.UNSIGNED_SHORT:
-                this.filteredView = new Uint16Array(arrayLength);
-                func = "getUint16";
-                break;
-            case GL.UNSIGNED_INT:
-                this.filteredView = new Uint32Array(arrayLength);
-                func = "getUint32";
-                break;
-            case GL.FLOAT:
-                this.filteredView = new Float32Array(arrayLength);
-                func = "getFloat32";
-                break;
+                case GL.BYTE:
+                    this.filteredView = new Int8Array(arrayLength);
+                    func = "getInt8";
+                    break;
+                case GL.UNSIGNED_BYTE:
+                    this.filteredView = new Uint8Array(arrayLength);
+                    func = "getUint8";
+                    break;
+                case GL.SHORT:
+                    this.filteredView = new Int16Array(arrayLength);
+                    func = "getInt16";
+                    break;
+                case GL.UNSIGNED_SHORT:
+                    this.filteredView = new Uint16Array(arrayLength);
+                    func = "getUint16";
+                    break;
+                case GL.UNSIGNED_INT:
+                    this.filteredView = new Uint32Array(arrayLength);
+                    func = "getUint32";
+                    break;
+                case GL.FLOAT:
+                    this.filteredView = new Float32Array(arrayLength);
+                    func = "getFloat32";
+                    break;
             }
 
             for (let i = 0; i < arrayLength; ++i) {
@@ -3732,27 +3732,27 @@ class gltfAccessor extends GltfObject {
 
         let indicesTypedView;
         switch (this.sparse.indices.componentType) {
-        case GL.UNSIGNED_BYTE:
-            indicesTypedView = new Uint8Array(
-                indicesBuffer.buffer,
-                indicesByteOffset,
-                indicesArrayLength
-            );
-            break;
-        case GL.UNSIGNED_SHORT:
-            indicesTypedView = new Uint16Array(
-                indicesBuffer.buffer,
-                indicesByteOffset,
-                indicesArrayLength
-            );
-            break;
-        case GL.UNSIGNED_INT:
-            indicesTypedView = new Uint32Array(
-                indicesBuffer.buffer,
-                indicesByteOffset,
-                indicesArrayLength
-            );
-            break;
+            case GL.UNSIGNED_BYTE:
+                indicesTypedView = new Uint8Array(
+                    indicesBuffer.buffer,
+                    indicesByteOffset,
+                    indicesArrayLength
+                );
+                break;
+            case GL.UNSIGNED_SHORT:
+                indicesTypedView = new Uint16Array(
+                    indicesBuffer.buffer,
+                    indicesByteOffset,
+                    indicesArrayLength
+                );
+                break;
+            case GL.UNSIGNED_INT:
+                indicesTypedView = new Uint32Array(
+                    indicesBuffer.buffer,
+                    indicesByteOffset,
+                    indicesArrayLength
+                );
+                break;
         }
 
         // Gather values.
@@ -3773,48 +3773,48 @@ class gltfAccessor extends GltfObject {
 
         let valuesTypedView;
         switch (this.componentType) {
-        case GL.BYTE:
-            valuesTypedView = new Int8Array(
-                valuesBuffer.buffer,
-                valuesByteOffset,
-                valuesArrayLength
-            );
-            break;
-        case GL.UNSIGNED_BYTE:
-            valuesTypedView = new Uint8Array(
-                valuesBuffer.buffer,
-                valuesByteOffset,
-                valuesArrayLength
-            );
-            break;
-        case GL.SHORT:
-            valuesTypedView = new Int16Array(
-                valuesBuffer.buffer,
-                valuesByteOffset,
-                valuesArrayLength
-            );
-            break;
-        case GL.UNSIGNED_SHORT:
-            valuesTypedView = new Uint16Array(
-                valuesBuffer.buffer,
-                valuesByteOffset,
-                valuesArrayLength
-            );
-            break;
-        case GL.UNSIGNED_INT:
-            valuesTypedView = new Uint32Array(
-                valuesBuffer.buffer,
-                valuesByteOffset,
-                valuesArrayLength
-            );
-            break;
-        case GL.FLOAT:
-            valuesTypedView = new Float32Array(
-                valuesBuffer.buffer,
-                valuesByteOffset,
-                valuesArrayLength
-            );
-            break;
+            case GL.BYTE:
+                valuesTypedView = new Int8Array(
+                    valuesBuffer.buffer,
+                    valuesByteOffset,
+                    valuesArrayLength
+                );
+                break;
+            case GL.UNSIGNED_BYTE:
+                valuesTypedView = new Uint8Array(
+                    valuesBuffer.buffer,
+                    valuesByteOffset,
+                    valuesArrayLength
+                );
+                break;
+            case GL.SHORT:
+                valuesTypedView = new Int16Array(
+                    valuesBuffer.buffer,
+                    valuesByteOffset,
+                    valuesArrayLength
+                );
+                break;
+            case GL.UNSIGNED_SHORT:
+                valuesTypedView = new Uint16Array(
+                    valuesBuffer.buffer,
+                    valuesByteOffset,
+                    valuesArrayLength
+                );
+                break;
+            case GL.UNSIGNED_INT:
+                valuesTypedView = new Uint32Array(
+                    valuesBuffer.buffer,
+                    valuesByteOffset,
+                    valuesArrayLength
+                );
+                break;
+            case GL.FLOAT:
+                valuesTypedView = new Float32Array(
+                    valuesBuffer.buffer,
+                    valuesByteOffset,
+                    valuesArrayLength
+                );
+                break;
         }
 
         // Overwrite values.
@@ -3831,16 +3831,16 @@ class gltfAccessor extends GltfObject {
     // https://github.com/KhronosGroup/glTF/blob/main/extensions/2.0/Khronos/KHR_mesh_quantization/README.md#encoding-quantized-data
     static dequantize(typedArray, componentType) {
         switch (componentType) {
-        case GL.BYTE:
-            return new Float32Array(typedArray).map((c) => Math.max(c / 127.0, -1.0));
-        case GL.UNSIGNED_BYTE:
-            return new Float32Array(typedArray).map((c) => c / 255.0);
-        case GL.SHORT:
-            return new Float32Array(typedArray).map((c) => Math.max(c / 32767.0, -1.0));
-        case GL.UNSIGNED_SHORT:
-            return new Float32Array(typedArray).map((c) => c / 65535.0);
-        default:
-            return typedArray;
+            case GL.BYTE:
+                return new Float32Array(typedArray).map((c) => Math.max(c / 127.0, -1.0));
+            case GL.UNSIGNED_BYTE:
+                return new Float32Array(typedArray).map((c) => c / 255.0);
+            case GL.SHORT:
+                return new Float32Array(typedArray).map((c) => Math.max(c / 32767.0, -1.0));
+            case GL.UNSIGNED_SHORT:
+                return new Float32Array(typedArray).map((c) => c / 65535.0);
+            default:
+                return typedArray;
         }
     }
 
@@ -3850,17 +3850,17 @@ class gltfAccessor extends GltfObject {
 
     getComponentSize(componentType) {
         switch (componentType) {
-        case GL.BYTE:
-        case GL.UNSIGNED_BYTE:
-            return 1;
-        case GL.SHORT:
-        case GL.UNSIGNED_SHORT:
-            return 2;
-        case GL.UNSIGNED_INT:
-        case GL.FLOAT:
-            return 4;
-        default:
-            return 0;
+            case GL.BYTE:
+            case GL.UNSIGNED_BYTE:
+                return 1;
+            case GL.SHORT:
+            case GL.UNSIGNED_SHORT:
+                return 2;
+            case GL.UNSIGNED_INT:
+            case GL.FLOAT:
+                return 4;
+            default:
+                return 0;
         }
     }
 
@@ -4626,55 +4626,55 @@ class gltfShader {
 
         if (uniform !== undefined) {
             switch (uniform.type) {
-            case GL.FLOAT: {
-                if (Array.isArray(value) || value instanceof Float32Array) {
-                    this.gl.context.uniform1fv(uniform.loc, value);
-                } else {
-                    this.gl.context.uniform1f(uniform.loc, value);
+                case GL.FLOAT: {
+                    if (Array.isArray(value) || value instanceof Float32Array) {
+                        this.gl.context.uniform1fv(uniform.loc, value);
+                    } else {
+                        this.gl.context.uniform1f(uniform.loc, value);
+                    }
+                    break;
                 }
-                break;
-            }
-            case GL.FLOAT_VEC2:
-                this.gl.context.uniform2fv(uniform.loc, value);
-                break;
-            case GL.FLOAT_VEC3:
-                this.gl.context.uniform3fv(uniform.loc, value);
-                break;
-            case GL.FLOAT_VEC4:
-                this.gl.context.uniform4fv(uniform.loc, value);
-                break;
+                case GL.FLOAT_VEC2:
+                    this.gl.context.uniform2fv(uniform.loc, value);
+                    break;
+                case GL.FLOAT_VEC3:
+                    this.gl.context.uniform3fv(uniform.loc, value);
+                    break;
+                case GL.FLOAT_VEC4:
+                    this.gl.context.uniform4fv(uniform.loc, value);
+                    break;
 
-            case GL.INT: {
-                if (
-                    Array.isArray(value) ||
+                case GL.INT: {
+                    if (
+                        Array.isArray(value) ||
                         value instanceof Uint32Array ||
                         value instanceof Int32Array
-                ) {
-                    this.gl.context.uniform1iv(uniform.loc, value);
-                } else {
-                    this.gl.context.uniform1i(uniform.loc, value);
+                    ) {
+                        this.gl.context.uniform1iv(uniform.loc, value);
+                    } else {
+                        this.gl.context.uniform1i(uniform.loc, value);
+                    }
+                    break;
                 }
-                break;
-            }
-            case GL.INT_VEC2:
-                this.gl.context.uniform2iv(uniform.loc, value);
-                break;
-            case GL.INT_VEC3:
-                this.gl.context.uniform3iv(uniform.loc, value);
-                break;
-            case GL.INT_VEC4:
-                this.gl.context.uniform4iv(uniform.loc, value);
-                break;
+                case GL.INT_VEC2:
+                    this.gl.context.uniform2iv(uniform.loc, value);
+                    break;
+                case GL.INT_VEC3:
+                    this.gl.context.uniform3iv(uniform.loc, value);
+                    break;
+                case GL.INT_VEC4:
+                    this.gl.context.uniform4iv(uniform.loc, value);
+                    break;
 
-            case GL.FLOAT_MAT2:
-                this.gl.context.uniformMatrix2fv(uniform.loc, false, value);
-                break;
-            case GL.FLOAT_MAT3:
-                this.gl.context.uniformMatrix3fv(uniform.loc, false, value);
-                break;
-            case GL.FLOAT_MAT4:
-                this.gl.context.uniformMatrix4fv(uniform.loc, false, value);
-                break;
+                case GL.FLOAT_MAT2:
+                    this.gl.context.uniformMatrix2fv(uniform.loc, false, value);
+                    break;
+                case GL.FLOAT_MAT3:
+                    this.gl.context.uniformMatrix3fv(uniform.loc, false, value);
+                    break;
+                case GL.FLOAT_MAT4:
+                    this.gl.context.uniformMatrix4fv(uniform.loc, false, value);
+                    break;
             }
         } else if (log) {
             console.warn("Unkown uniform: " + uniformName);
@@ -4988,16 +4988,16 @@ class gltfLight extends GltfObject {
         uLight.outerConeCos = Math.cos(this.spot.outerConeAngle);
 
         switch (this.type) {
-        case "spot":
-            uLight.type = Type_Spot;
-            break;
-        case "point":
-            uLight.type = Type_Point;
-            break;
-        case "directional":
-        default:
-            uLight.type = Type_Directional;
-            break;
+            case "spot":
+                uLight.type = Type_Spot;
+                break;
+            case "point":
+                uLight.type = Type_Point;
+                break;
+            case "directional":
+            default:
+                uLight.type = Type_Directional;
+                break;
         }
 
         return uLight;
@@ -14080,21 +14080,21 @@ class gltfImage extends GltfObject {
         const parts = this.uri.split(",");
         if (this.mimeType === undefined) {
             switch (parts[0]) {
-            case "data:image/jpeg;base64":
-                this.mimeType = ImageMimeType.JPEG;
-                break;
-            case "data:image/png;base64":
-                this.mimeType = ImageMimeType.PNG;
-                break;
-            case "data:image/webp;base64":
-                this.mimeType = ImageMimeType.WEBP;
-                break;
-            case "data:image/ktx2;base64":
-                this.mimeType = ImageMimeType.KTX2;
-                break;
-            default:
-                console.warn(`Data URI ${parts[0]} not supported`);
-                return false;
+                case "data:image/jpeg;base64":
+                    this.mimeType = ImageMimeType.JPEG;
+                    break;
+                case "data:image/png;base64":
+                    this.mimeType = ImageMimeType.PNG;
+                    break;
+                case "data:image/webp;base64":
+                    this.mimeType = ImageMimeType.WEBP;
+                    break;
+                case "data:image/ktx2;base64":
+                    this.mimeType = ImageMimeType.KTX2;
+                    break;
+                default:
+                    console.warn(`Data URI ${parts[0]} not supported`);
+                    return false;
             }
         }
         const res = await fetch(this.uri);
@@ -14551,39 +14551,39 @@ class gltfPrimitive extends GltfObject {
             }
             let knownAttribute = true;
             switch (attribute) {
-            case "POSITION":
-                this.skip = false;
-                break;
-            case "NORMAL":
-                this.hasNormals = true;
-                break;
-            case "TANGENT":
-                this.hasTangents = true;
-                break;
-            case "TEXCOORD_0":
-                this.hasTexcoord = true;
-                break;
-            case "TEXCOORD_1":
-                this.hasTexcoord = true;
-                break;
-            case "COLOR_0":
-                this.hasColor = true;
-                break;
-            case "JOINTS_0":
-                this.hasJoints = true;
-                break;
-            case "WEIGHTS_0":
-                this.hasWeights = true;
-                break;
-            case "JOINTS_1":
-                this.hasJoints = true;
-                break;
-            case "WEIGHTS_1":
-                this.hasWeights = true;
-                break;
-            default:
-                knownAttribute = false;
-                console.log("Unknown attribute: " + attribute);
+                case "POSITION":
+                    this.skip = false;
+                    break;
+                case "NORMAL":
+                    this.hasNormals = true;
+                    break;
+                case "TANGENT":
+                    this.hasTangents = true;
+                    break;
+                case "TEXCOORD_0":
+                    this.hasTexcoord = true;
+                    break;
+                case "TEXCOORD_1":
+                    this.hasTexcoord = true;
+                    break;
+                case "COLOR_0":
+                    this.hasColor = true;
+                    break;
+                case "JOINTS_0":
+                    this.hasJoints = true;
+                    break;
+                case "WEIGHTS_0":
+                    this.hasWeights = true;
+                    break;
+                case "JOINTS_1":
+                    this.hasJoints = true;
+                    break;
+                case "WEIGHTS_1":
+                    this.hasWeights = true;
+                    break;
+                default:
+                    knownAttribute = false;
+                    console.log("Unknown attribute: " + attribute);
             }
             if (knownAttribute) {
                 const idx = this.attributes[attribute];
@@ -14661,33 +14661,33 @@ class gltfPrimitive extends GltfObject {
                             }
                             const data = accessor.getNormalizedDeinterlacedView(gltf);
                             switch (accessor.type) {
-                            case "VEC2":
-                            case "VEC3": {
-                                // Add padding to fit vec2/vec3 into rgba
-                                let paddingOffset = 0;
-                                let accessorOffset = 0;
-                                const componentCount = accessor.getComponentCount(
-                                    accessor.type
-                                );
-                                for (let j = 0; j < accessor.count; ++j) {
-                                    morphTargetTextureArray.set(
-                                        data.subarray(
-                                            accessorOffset,
-                                            accessorOffset + componentCount
-                                        ),
-                                        offset + paddingOffset
+                                case "VEC2":
+                                case "VEC3": {
+                                    // Add padding to fit vec2/vec3 into rgba
+                                    let paddingOffset = 0;
+                                    let accessorOffset = 0;
+                                    const componentCount = accessor.getComponentCount(
+                                        accessor.type
                                     );
-                                    paddingOffset += 4;
-                                    accessorOffset += componentCount;
+                                    for (let j = 0; j < accessor.count; ++j) {
+                                        morphTargetTextureArray.set(
+                                            data.subarray(
+                                                accessorOffset,
+                                                accessorOffset + componentCount
+                                            ),
+                                            offset + paddingOffset
+                                        );
+                                        paddingOffset += 4;
+                                        accessorOffset += componentCount;
+                                    }
+                                    break;
                                 }
-                                break;
-                            }
-                            case "VEC4":
-                                morphTargetTextureArray.set(data, offset);
-                                break;
-                            default:
-                                console.warn("Unsupported attribute type for morph targets");
-                                break;
+                                case "VEC4":
+                                    morphTargetTextureArray.set(data, offset);
+                                    break;
+                                default:
+                                    console.warn("Unsupported attribute type for morph targets");
+                                    break;
                             }
                         }
                         attributeOffsets[attributeName] = offsetRef + 1;
@@ -15030,35 +15030,35 @@ class gltfPrimitive extends GltfObject {
     loadArrayIntoArrayBuffer(arrayData, componentType) {
         let arrayBuffer;
         switch (componentType) {
-        case "Int8Array":
-            arrayBuffer = new ArrayBuffer(arrayData.length);
-            new Int8Array(arrayBuffer).set(arrayData);
-            break;
-        case "Uint8Array":
-            arrayBuffer = new ArrayBuffer(arrayData.length);
-            new Uint8Array(arrayBuffer).set(arrayData);
-            break;
-        case "Int16Array":
-            arrayBuffer = new ArrayBuffer(arrayData.length * 2);
-            new Int16Array(arrayBuffer).set(arrayData);
-            break;
-        case "Uint16Array":
-            arrayBuffer = new ArrayBuffer(arrayData.length * 2);
-            new Uint16Array(arrayBuffer).set(arrayData);
-            break;
-        case "Int32Array":
-            arrayBuffer = new ArrayBuffer(arrayData.length * 4);
-            new Int32Array(arrayBuffer).set(arrayData);
-            break;
-        case "Uint32Array":
-            arrayBuffer = new ArrayBuffer(arrayData.length * 4);
-            new Uint32Array(arrayBuffer).set(arrayData);
-            break;
-        default:
-        case "Float32Array":
-            arrayBuffer = new ArrayBuffer(arrayData.length * 4);
-            new Float32Array(arrayBuffer).set(arrayData);
-            break;
+            case "Int8Array":
+                arrayBuffer = new ArrayBuffer(arrayData.length);
+                new Int8Array(arrayBuffer).set(arrayData);
+                break;
+            case "Uint8Array":
+                arrayBuffer = new ArrayBuffer(arrayData.length);
+                new Uint8Array(arrayBuffer).set(arrayData);
+                break;
+            case "Int16Array":
+                arrayBuffer = new ArrayBuffer(arrayData.length * 2);
+                new Int16Array(arrayBuffer).set(arrayData);
+                break;
+            case "Uint16Array":
+                arrayBuffer = new ArrayBuffer(arrayData.length * 2);
+                new Uint16Array(arrayBuffer).set(arrayData);
+                break;
+            case "Int32Array":
+                arrayBuffer = new ArrayBuffer(arrayData.length * 4);
+                new Int32Array(arrayBuffer).set(arrayData);
+                break;
+            case "Uint32Array":
+                arrayBuffer = new ArrayBuffer(arrayData.length * 4);
+                new Uint32Array(arrayBuffer).set(arrayData);
+                break;
+            default:
+            case "Float32Array":
+                arrayBuffer = new ArrayBuffer(arrayData.length * 4);
+                new Float32Array(arrayBuffer).set(arrayData);
+                break;
         }
 
         return arrayBuffer;
@@ -15097,22 +15097,22 @@ class gltfPrimitive extends GltfObject {
 
     getDracoArrayTypeFromComponentType(componentType) {
         switch (componentType) {
-        case GL.BYTE:
-            return "Int8Array";
-        case GL.UNSIGNED_BYTE:
-            return "Uint8Array";
-        case GL.SHORT:
-            return "Int16Array";
-        case GL.UNSIGNED_SHORT:
-            return "Uint16Array";
-        case GL.INT:
-            return "Int32Array";
-        case GL.UNSIGNED_INT:
-            return "Uint32Array";
-        case GL.FLOAT:
-            return "Float32Array";
-        default:
-            return "Float32Array";
+            case GL.BYTE:
+                return "Int8Array";
+            case GL.UNSIGNED_BYTE:
+                return "Uint8Array";
+            case GL.SHORT:
+                return "Int16Array";
+            case GL.UNSIGNED_SHORT:
+                return "Uint16Array";
+            case GL.INT:
+                return "Int32Array";
+            case GL.UNSIGNED_INT:
+                return "Uint32Array";
+            case GL.FLOAT:
+                return "Float32Array";
+            default:
+                return "Float32Array";
         }
     }
 
@@ -15200,104 +15200,104 @@ class gltfPrimitive extends GltfObject {
 
         let dataSize;
         switch (attributeType) {
-        case "Float32Array":
-            dataSize = numValues * 4;
-            ptr = draco._malloc(dataSize);
-            decoder.GetAttributeDataArrayForAllPoints(
-                dracoGeometry,
-                attribute,
-                draco.DT_FLOAT32,
-                dataSize,
-                ptr
-            );
-            array = new Float32Array(draco.HEAPF32.buffer, ptr, numValues).slice();
-            draco._free(ptr);
-            break;
+            case "Float32Array":
+                dataSize = numValues * 4;
+                ptr = draco._malloc(dataSize);
+                decoder.GetAttributeDataArrayForAllPoints(
+                    dracoGeometry,
+                    attribute,
+                    draco.DT_FLOAT32,
+                    dataSize,
+                    ptr
+                );
+                array = new Float32Array(draco.HEAPF32.buffer, ptr, numValues).slice();
+                draco._free(ptr);
+                break;
 
-        case "Int8Array":
-            ptr = draco._malloc(numValues);
-            decoder.GetAttributeDataArrayForAllPoints(
-                dracoGeometry,
-                attribute,
-                draco.DT_INT8,
-                numValues,
-                ptr
-            );
-            array = new Int8Array(draco.HEAP8.buffer, ptr, numValues).slice();
-            draco._free(ptr);
-            break;
+            case "Int8Array":
+                ptr = draco._malloc(numValues);
+                decoder.GetAttributeDataArrayForAllPoints(
+                    dracoGeometry,
+                    attribute,
+                    draco.DT_INT8,
+                    numValues,
+                    ptr
+                );
+                array = new Int8Array(draco.HEAP8.buffer, ptr, numValues).slice();
+                draco._free(ptr);
+                break;
 
-        case "Int16Array":
-            dataSize = numValues * 2;
-            ptr = draco._malloc(dataSize);
-            decoder.GetAttributeDataArrayForAllPoints(
-                dracoGeometry,
-                attribute,
-                draco.DT_INT16,
-                dataSize,
-                ptr
-            );
-            array = new Int16Array(draco.HEAP16.buffer, ptr, numValues).slice();
-            draco._free(ptr);
-            break;
+            case "Int16Array":
+                dataSize = numValues * 2;
+                ptr = draco._malloc(dataSize);
+                decoder.GetAttributeDataArrayForAllPoints(
+                    dracoGeometry,
+                    attribute,
+                    draco.DT_INT16,
+                    dataSize,
+                    ptr
+                );
+                array = new Int16Array(draco.HEAP16.buffer, ptr, numValues).slice();
+                draco._free(ptr);
+                break;
 
-        case "Int32Array":
-            dataSize = numValues * 4;
-            ptr = draco._malloc(dataSize);
-            decoder.GetAttributeDataArrayForAllPoints(
-                dracoGeometry,
-                attribute,
-                draco.DT_INT32,
-                dataSize,
-                ptr
-            );
-            array = new Int32Array(draco.HEAP32.buffer, ptr, numValues).slice();
-            draco._free(ptr);
-            break;
+            case "Int32Array":
+                dataSize = numValues * 4;
+                ptr = draco._malloc(dataSize);
+                decoder.GetAttributeDataArrayForAllPoints(
+                    dracoGeometry,
+                    attribute,
+                    draco.DT_INT32,
+                    dataSize,
+                    ptr
+                );
+                array = new Int32Array(draco.HEAP32.buffer, ptr, numValues).slice();
+                draco._free(ptr);
+                break;
 
-        case "Uint8Array":
-            ptr = draco._malloc(numValues);
-            decoder.GetAttributeDataArrayForAllPoints(
-                dracoGeometry,
-                attribute,
-                draco.DT_UINT8,
-                numValues,
-                ptr
-            );
-            array = new Uint8Array(draco.HEAPU8.buffer, ptr, numValues).slice();
-            draco._free(ptr);
-            break;
+            case "Uint8Array":
+                ptr = draco._malloc(numValues);
+                decoder.GetAttributeDataArrayForAllPoints(
+                    dracoGeometry,
+                    attribute,
+                    draco.DT_UINT8,
+                    numValues,
+                    ptr
+                );
+                array = new Uint8Array(draco.HEAPU8.buffer, ptr, numValues).slice();
+                draco._free(ptr);
+                break;
 
-        case "Uint16Array":
-            dataSize = numValues * 2;
-            ptr = draco._malloc(dataSize);
-            decoder.GetAttributeDataArrayForAllPoints(
-                dracoGeometry,
-                attribute,
-                draco.DT_UINT16,
-                dataSize,
-                ptr
-            );
-            array = new Uint16Array(draco.HEAPU16.buffer, ptr, numValues).slice();
-            draco._free(ptr);
-            break;
+            case "Uint16Array":
+                dataSize = numValues * 2;
+                ptr = draco._malloc(dataSize);
+                decoder.GetAttributeDataArrayForAllPoints(
+                    dracoGeometry,
+                    attribute,
+                    draco.DT_UINT16,
+                    dataSize,
+                    ptr
+                );
+                array = new Uint16Array(draco.HEAPU16.buffer, ptr, numValues).slice();
+                draco._free(ptr);
+                break;
 
-        case "Uint32Array":
-            dataSize = numValues * 4;
-            ptr = draco._malloc(dataSize);
-            decoder.GetAttributeDataArrayForAllPoints(
-                dracoGeometry,
-                attribute,
-                draco.DT_UINT32,
-                dataSize,
-                ptr
-            );
-            array = new Uint32Array(draco.HEAPU32.buffer, ptr, numValues).slice();
-            draco._free(ptr);
-            break;
+            case "Uint32Array":
+                dataSize = numValues * 4;
+                ptr = draco._malloc(dataSize);
+                decoder.GetAttributeDataArrayForAllPoints(
+                    dracoGeometry,
+                    attribute,
+                    draco.DT_UINT32,
+                    dataSize,
+                    ptr
+                );
+                array = new Uint32Array(draco.HEAPU32.buffer, ptr, numValues).slice();
+                draco._free(ptr);
+                break;
 
-        default:
-            throw new Error("DRACOLoader: Unexpected attribute type.");
+            default:
+                throw new Error("DRACOLoader: Unexpected attribute type.");
         }
 
         return {
@@ -15860,12 +15860,12 @@ class gltfInterpolator {
         }
 
         switch (sampler.interpolation) {
-        case InterpolationModes.STEP:
-            return this.step(this.prevKey, output, stride);
-        case InterpolationModes.CUBICSPLINE:
-            return this.cubicSpline(this.prevKey, nextKey, output, keyDelta, tn, stride);
-        default:
-            return this.linear(this.prevKey, nextKey, output, tn, stride);
+            case InterpolationModes.STEP:
+                return this.step(this.prevKey, output, stride);
+            case InterpolationModes.CUBICSPLINE:
+                return this.cubicSpline(this.prevKey, nextKey, output, keyDelta, tn, stride);
+            default:
+                return this.linear(this.prevKey, nextKey, output, tn, stride);
         }
     }
 
@@ -16826,25 +16826,25 @@ class gltfAnimation extends GltfObject {
 
             let property = null;
             switch (channel.target.path) {
-            case InterpolationPath.TRANSLATION:
-                property = `/nodes/${channel.target.node}/translation`;
-                break;
-            case InterpolationPath.ROTATION:
-                property = `/nodes/${channel.target.node}/rotation`;
-                break;
-            case InterpolationPath.SCALE:
-                property = `/nodes/${channel.target.node}/scale`;
-                break;
-            case InterpolationPath.WEIGHTS:
-                if (gltf.nodes[channel.target.node].weights !== undefined) {
-                    property = `/nodes/${channel.target.node}/weights`;
-                } else {
-                    property = `/meshes/${gltf.nodes[channel.target.node].mesh}/weights`;
-                }
-                break;
-            case InterpolationPath.POINTER:
-                property = channel.target.extensions.KHR_animation_pointer.pointer;
-                break;
+                case InterpolationPath.TRANSLATION:
+                    property = `/nodes/${channel.target.node}/translation`;
+                    break;
+                case InterpolationPath.ROTATION:
+                    property = `/nodes/${channel.target.node}/rotation`;
+                    break;
+                case InterpolationPath.SCALE:
+                    property = `/nodes/${channel.target.node}/scale`;
+                    break;
+                case InterpolationPath.WEIGHTS:
+                    if (gltf.nodes[channel.target.node].weights !== undefined) {
+                        property = `/nodes/${channel.target.node}/weights`;
+                    } else {
+                        property = `/meshes/${gltf.nodes[channel.target.node].mesh}/weights`;
+                    }
+                    break;
+                case InterpolationPath.POINTER:
+                    property = channel.target.extensions.KHR_animation_pointer.pointer;
+                    break;
             }
 
             if (property != null) {
@@ -17171,25 +17171,25 @@ class glTF extends GltfObject {
                     const getAnimationProperty = function (channel, nodes) {
                         let property = null;
                         switch (channel.target.path) {
-                        case "translation":
-                            property = `/nodes/${channel.target.node}/translation`;
-                            break;
-                        case "rotation":
-                            property = `/nodes/${channel.target.node}/rotation`;
-                            break;
-                        case "scale":
-                            property = `/nodes/${channel.target.node}/scale`;
-                            break;
-                        case "weights":
-                            if (nodes[channel.target.node].weights !== undefined) {
-                                property = `/nodes/${channel.target.node}/weights`;
-                            } else {
-                                property = `/meshes/${nodes[channel.target.node].mesh}/weights`;
-                            }
-                            break;
-                        case "pointer":
-                            property = channel.target.extensions.KHR_animation_pointer.pointer;
-                            break;
+                            case "translation":
+                                property = `/nodes/${channel.target.node}/translation`;
+                                break;
+                            case "rotation":
+                                property = `/nodes/${channel.target.node}/rotation`;
+                                break;
+                            case "scale":
+                                property = `/nodes/${channel.target.node}/scale`;
+                                break;
+                            case "weights":
+                                if (nodes[channel.target.node].weights !== undefined) {
+                                    property = `/nodes/${channel.target.node}/weights`;
+                                } else {
+                                    property = `/meshes/${nodes[channel.target.node].mesh}/weights`;
+                                }
+                                break;
+                            case "pointer":
+                                property = channel.target.extensions.KHR_animation_pointer.pointer;
+                                break;
                         }
                         return property;
                     };
@@ -18759,19 +18759,19 @@ class GltfView {
 
                 // convert vertex count to point, line or triangle count
                 switch (primitive.mode) {
-                case GL.POINTS:
-                    return vertexCount;
-                case GL.LINES:
-                    return vertexCount / 2;
-                case GL.LINE_LOOP:
-                    return vertexCount;
-                case GL.LINE_STRIP:
-                    return vertexCount - 1;
-                case GL.TRIANGLES:
-                    return vertexCount / 3;
-                case GL.TRIANGLE_STRIP:
-                case GL.TRIANGLE_FAN:
-                    return vertexCount - 2;
+                    case GL.POINTS:
+                        return vertexCount;
+                    case GL.LINES:
+                        return vertexCount / 2;
+                    case GL.LINE_LOOP:
+                        return vertexCount;
+                    case GL.LINE_STRIP:
+                        return vertexCount - 1;
+                    case GL.TRIANGLES:
+                        return vertexCount / 3;
+                    case GL.TRIANGLE_STRIP:
+                    case GL.TRIANGLE_FAN:
+                        return vertexCount - 2;
                 }
             })
             .reduce((acc, faceCount) => acc + faceCount);
@@ -21562,10 +21562,7 @@ const getInputObservables = (inputElement, app) => {
                     additionalFiles = additionalFiles.map((file) => {
                         let filePath = file[0].replaceAll("\\", "/");
                         if (filePath.startsWith(folderPath)) {
-                            return [
-                                filePath.substr(folderPath.length),
-                                file[1]
-                            ];
+                            return [filePath.substr(folderPath.length), file[1]];
                         } else {
                             return file;
                         }
@@ -72236,18 +72233,18 @@ var main = async () => {
 
     uiModel.environmentRotation.subscribe((environmentRotation) => {
         switch (environmentRotation) {
-        case "+Z":
-            state.renderingParameters.environmentRotation = 90.0;
-            break;
-        case "-X":
-            state.renderingParameters.environmentRotation = 180.0;
-            break;
-        case "-Z":
-            state.renderingParameters.environmentRotation = 270.0;
-            break;
-        case "+X":
-            state.renderingParameters.environmentRotation = 0.0;
-            break;
+            case "+Z":
+                state.renderingParameters.environmentRotation = 90.0;
+                break;
+            case "-X":
+                state.renderingParameters.environmentRotation = 180.0;
+                break;
+            case "-Z":
+                state.renderingParameters.environmentRotation = 270.0;
+                break;
+            case "+X":
+                state.renderingParameters.environmentRotation = 0.0;
+                break;
         }
     });
     listenForRedraw(uiModel.environmentRotation);
