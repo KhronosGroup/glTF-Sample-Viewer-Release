@@ -1,6 +1,6 @@
 /**
  * Bundle of gltf-sample-viewer-example
- * Generated: 2025-10-28
+ * Generated: 2025-10-29
  * Version: 1.0.0
  * License: Apache-2.0
  * Dependencies:
@@ -1091,7 +1091,7 @@
 
 /**
  * Bundle of @khronosgroup/gltf-viewer
- * Generated: 2025-10-28
+ * Generated: 2025-10-29
  * Version: 1.1.0
  * License: Apache-2.0
  * Dependencies:
@@ -1117,7 +1117,7 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
  * THE SOFTWARE.
  * 
- * @khronosgroup/khr-interactivity-authoring-engine -- 0.1.0 -- Apache-2.0
+ * @khronosgroup/gltf-interactivity-sample-engine -- 0.1.0 -- Apache-2.0
  * Apache License
  * Version 2.0, January 2004
  * http://www.apache.org/licenses/
@@ -10054,12 +10054,13 @@ class gltfGraph extends GltfObject {
 class GraphController {
     constructor(fps = 60, debug = false) {
         this.fps = fps;
+        this.debug = debug;
         this.graphIndex = undefined;
         this.playing = false;
         this.customEvents = [];
         this.eventBus = new DOMEventBus();
         this.engine = new BasicBehaveEngine(this.fps, this.eventBus);
-        this.decorator = new SampleViewerDecorator(this.engine, debug);
+        this.decorator = new SampleViewerDecorator(this.engine, this.debug);
     }
 
     needsHover() {
@@ -10093,12 +10094,17 @@ class GraphController {
     /**
      * Initialize the graph controller with the given state.
      * This needs to be called every time a glTF assets is loaded.
+     * Event listeners are cleared.
      * @param {GltfState} state - The state of the application.
      */
     initializeGraphs(state) {
+        this.decorator.pauseEventQueue();
         this.state = state;
         this.graphIndex = undefined;
         this.playing = false;
+        this.eventBus = new DOMEventBus();
+        this.engine = new BasicBehaveEngine(this.fps, this.eventBus);
+        this.decorator = new SampleViewerDecorator(this.engine, this.debug);
         this.decorator.setState(state);
         this.engine.clearEventList();
         this.engine.clearPointerInterpolation();
@@ -10186,6 +10192,7 @@ class GraphController {
     /**
      * Adds a custom event listener to the decorator.
      * Khronos test assets use test/onStart, test/onFail and test/onSuccess.
+     * Needs to be called after initializeGraphs.
      * @param {string} eventName
      * @param {function(CustomEvent)} callback
      */
@@ -10297,6 +10304,7 @@ class SampleViewerDecorator extends ADecorator {
     }
 
     resetGraph() {
+        this.pauseEventQueue();
         this.behaveEngine.loadBehaveGraph({
             nodes: [],
             types: [],
@@ -10316,12 +10324,12 @@ class SampleViewerDecorator extends ADecorator {
             }
             parent.animatedPropertyObjects[propertyName].rest();
         };
-        this.recurseAllAnimatedProperties(this.world.gltf, resetAnimatedProperty);
         this.behaveEngine.clearEventList();
         this.behaveEngine.clearPointerInterpolation();
         this.behaveEngine.clearVariableInterpolation();
         this.behaveEngine.clearScheduledDelays();
         this.behaveEngine.clearValueEvaluationCache();
+        this.recurseAllAnimatedProperties(this.world.gltf, resetAnimatedProperty);
     }
 
     processNodeStarted(node) {
@@ -14791,7 +14799,11 @@ class gltfRenderer {
             (state.enableHover || needsHover) && pickingX !== undefined && pickingY !== undefined;
 
         if (doHover) {
-            if (pickingProjection === undefined) {
+            if (
+                pickingProjection === undefined ||
+                pickingX !== state.selectionPositions[0].x ||
+                pickingY !== state.selectionPositions[0].y
+            ) {
                 pickingProjection = currentCamera.getProjectionMatrixForPixel(
                     pickingX - aspectOffsetX,
                     this.currentHeight - pickingY - aspectOffsetY,
@@ -25347,6 +25359,11 @@ class gltfAnimation extends GltfObject {
                 }
             }
         }
+        if (this.minTime > this.maxTime || this.minTime < 0 || this.maxTime < 0) {
+            console.error("Invalid min/max time for animation with index:", this.gltfObjectIndex);
+            this.minTime = undefined;
+            this.maxTime = undefined;
+        }
     }
 
     // advance the animation, if totalTime is undefined, the animation is deactivated
@@ -25366,6 +25383,7 @@ class gltfAnimation extends GltfObject {
         let elapsedTime = totalTime;
         let reverse = false;
 
+        // createdTimestamp is only used for KHR_interactivity
         if (this.createdTimestamp !== undefined) {
             elapsedTime = totalTime - this.createdTimestamp;
             elapsedTime *= this.speed;
@@ -80713,22 +80731,6 @@ var main = async () => {
     const state = view.createState();
     state.renderingParameters.useDirectionalLightsWithDisabledIBL = true;
 
-    state.graphController.addCustomEventListener("test/onStart", (event) => {
-        console.log("Test duration: ", event);
-    });
-    state.graphController.addCustomEventListener("test/onSuccess", () => {
-        const message = "Interactivity test succeeded";
-        console.log(message);
-        app.$buefy.toast.open({
-            message: message,
-            type: "is-success"
-        });
-    });
-    state.graphController.addCustomEventListener("test/onFailed", () => {
-        const message = "Interactivity test failed";
-        console.error(message);
-    });
-
     const pathProvider = new GltfModelPathProvider(
         "https://raw.githubusercontent.com/KhronosGroup/glTF-Test-Assets-Interactivity/main"
     );
@@ -80880,6 +80882,32 @@ var main = async () => {
                             state.animationTimer.start();
                             if (state.gltf?.extensions?.KHR_interactivity?.graphs !== undefined) {
                                 state.graphController.initializeGraphs(state);
+
+                                state.graphController.addCustomEventListener(
+                                    "test/onStart",
+                                    (event) => {
+                                        console.log("Test duration: ", event);
+                                    }
+                                );
+                                state.graphController.addCustomEventListener(
+                                    "test/onSuccess",
+                                    () => {
+                                        const message = "Interactivity test succeeded";
+                                        console.log(message);
+                                        app.$buefy.toast.open({
+                                            message: message,
+                                            type: "is-success"
+                                        });
+                                    }
+                                );
+                                state.graphController.addCustomEventListener(
+                                    "test/onFailed",
+                                    () => {
+                                        const message = "Interactivity test failed";
+                                        console.error(message);
+                                    }
+                                );
+
                                 const graphIndex =
                                     state.gltf.extensions.KHR_interactivity.graph ?? 0;
                                 state.graphController.loadGraph(graphIndex);
