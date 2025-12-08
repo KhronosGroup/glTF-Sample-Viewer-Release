@@ -11016,7 +11016,7 @@ class SampleViewerDecorator extends ADecorator {
                 const pathParts = path.split("/");
                 const animationIndex = parseInt(pathParts[2]);
                 const animation = this.world.gltf.animations[animationIndex];
-                animation.computeMinMaxTime();
+                animation.computeMinMaxTime(this.world.gltf);
                 return [animation.minTime];
             },
             (_path, _value) => {},
@@ -11029,7 +11029,7 @@ class SampleViewerDecorator extends ADecorator {
                 const pathParts = path.split("/");
                 const animationIndex = parseInt(pathParts[2]);
                 const animation = this.world.gltf.animations[animationIndex];
-                animation.computeMinMaxTime();
+                animation.computeMinMaxTime(this.world.gltf);
                 return [animation.maxTime];
             },
             (_path, _value) => {},
