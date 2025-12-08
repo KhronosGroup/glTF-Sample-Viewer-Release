@@ -24679,8 +24679,9 @@ class gltfInterpolator {
         // Wrap t around, so the animation loops.
         // Make sure that t is never earlier than the first keyframe and never later then the last keyframe.
         const isNegative = t < 0;
+        const isZero = t === 0;
         t = t % maxTime;
-        if (isNegative) {
+        if (isNegative || (t === 0 && !isZero)) {
             t += maxTime;
         }
         t = clamp(t, input[0], input[input.length - 1]);
@@ -81761,6 +81762,11 @@ var main = async () => {
         redraw |= !state.animationTimer.paused && state.animationIndices.length > 0;
         redraw |= state.graphController.playing;
         redraw |= past.width != canvas.width || past.height != canvas.height;
+
+        // Do not redraw when loading is in progress
+        if (app.loadingComponent !== undefined) {
+            redraw = false;
+        }
 
         // Refit view if canvas changes significantly
         if (
