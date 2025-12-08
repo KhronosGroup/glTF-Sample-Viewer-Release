@@ -30369,9 +30369,9 @@ class UIModel {
         const inputObservables = getInputObservables(canvas, this.app);
 
         const dropdownGltfChanged = app.modelChanged.pipe(
-            startWith(modelURL === null ? "DamagedHelmet" : null),
-            filter((value) => value !== null),
-            map((value) => {
+            startWith(modelURL === null ? "BowShooting" : null),
+            filter(value => value !== null),
+            map(value => {
                 app.flavours = modelPathProvider.getModelFlavours(value);
                 if (app.flavours.includes("glTF")) {
                     app.selectedFlavour = "glTF";
@@ -69495,7 +69495,7 @@ const appCreated = vue_cjsExports.createApp({
             assetGenerator: "",
             statistics: [],
 
-            selectedModel: "DamagedHelmet",
+            selectedModel: "BowShooting",
             selectedFlavour: "",
             selectedScene: {},
             selectedCamera: {},
@@ -81197,7 +81197,7 @@ var main = async () => {
         console.error(message);
     });
     const pathProvider = new GltfModelPathProvider(
-        "https://raw.githubusercontent.com/KhronosGroup/glTF-Sample-Assets/main"
+        "https://raw.githubusercontent.com/KhronosGroup/glTF-Test-Assets-Interactivity/main"
     );
     await pathProvider.initialize();
     const environmentPaths = fillEnvironmentWithPaths(
