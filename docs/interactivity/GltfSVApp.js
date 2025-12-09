@@ -1,6 +1,6 @@
 /**
  * Bundle of gltf-sample-viewer-example
- * Generated: 2025-12-08
+ * Generated: 2025-12-09
  * Version: 1.0.0
  * License: Apache-2.0
  * Dependencies:
@@ -1091,7 +1091,7 @@
 
 /**
  * Bundle of @khronosgroup/gltf-viewer
- * Generated: 2025-12-08
+ * Generated: 2025-12-09
  * Version: 1.1.0
  * License: Apache-2.0
  * Dependencies:
@@ -11089,8 +11089,9 @@ class SampleViewerDecorator extends ADecorator {
                         return [NaN, NaN, NaN, NaN];
                     }
                     activeCamera = this.world.gltf.cameras[cameraIndex];
+                    activeCamera.setNode(this.world.gltf, this.world.cameraNodeIndex);
                 }
-                return activeCamera.getRotation().slice(0);
+                return activeCamera.getRotation(this.world.gltf).slice(0);
             },
             (_path, _value) => {
                 //no-op
@@ -11115,8 +11116,9 @@ class SampleViewerDecorator extends ADecorator {
                         return [NaN, NaN, NaN];
                     }
                     activeCamera = this.world.gltf.cameras[cameraIndex];
+                    activeCamera.setNode(this.world.gltf, this.world.cameraNodeIndex);
                 }
-                return activeCamera.getPosition().slice(0);
+                return activeCamera.getPosition(this.world.gltf).slice(0);
             },
             (_path, _value) => {
                 //no-op
