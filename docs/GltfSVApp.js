@@ -1,6 +1,6 @@
 /**
  * Bundle of gltf-sample-viewer-example
- * Generated: 2026-01-22
+ * Generated: 2026-01-30
  * Version: 1.0.0
  * License: Apache-2.0
  * Dependencies:
@@ -1091,7 +1091,7 @@
 
 /**
  * Bundle of @khronosgroup/gltf-viewer
- * Generated: 2026-01-22
+ * Generated: 2026-01-30
  * Version: 1.1.0
  * License: Apache-2.0
  * Dependencies:
@@ -3522,6 +3522,31 @@ class gltfWebGl {
     }
 }
 
+function hasMeshOptCompression(object) {
+    if (object.extensions === undefined) {
+        return false;
+    }
+
+    let hasExtExtension = object.extensions.EXT_meshopt_compression !== undefined;
+    let hasKHRExtension = object.extensions.KHR_meshopt_compression !== undefined;
+
+    return hasExtExtension || hasKHRExtension;
+}
+
+function getMeshOptExtensionObject(object) {
+    if (object.extensions === undefined) {
+        return null;
+    }
+
+    if (object.extensions.EXT_meshopt_compression !== undefined) {
+        return object.extensions.EXT_meshopt_compression;
+    }
+
+    if (object.extensions.KHR_meshopt_compression !== undefined) {
+        return object.extensions.KHR_meshopt_compression;
+    }
+}
+
 /* globals WebGl */
 
 
@@ -3694,7 +3719,16 @@ class gltfAccessor extends GltfObject {
                     ? bufferView.byteStride
                     : componentCount * componentSize;
 
-            let bufferViewData = new DataView(buffer.buffer, byteOffset, this.count * stride);
+            let bufferViewData;
+            if (isMeshOptCompressed) {
+                bufferViewData = new DataView(buffer.buffer, byteOffset, this.count * stride);
+            } else {
+                bufferViewData = new DataView(
+                    buffer.buffer,
+                    bufferView.byteOffset,
+                    bufferView.byteLength
+                );
+            }
 
             let func = "getFloat32";
             switch (this.componentType) {
@@ -4046,31 +4080,6 @@ function getExtentsFromAccessor(accessor, worldTransform, outMin, outMax) {
     for (const i of [0, 1, 2]) {
         outMin[i] = center[i] - radius;
         outMax[i] = center[i] + radius;
-    }
-}
-
-function hasMeshOptCompression(object) {
-    if (object.extensions === undefined) {
-        return false;
-    }
-
-    let hasExtExtension = object.extensions.EXT_meshopt_compression !== undefined;
-    let hasKHRExtension = object.extensions.KHR_meshopt_compression !== undefined;
-
-    return hasExtExtension || hasKHRExtension;
-}
-
-function getMeshOptExtensionObject(object) {
-    if (object.extensions === undefined) {
-        return null;
-    }
-
-    if (object.extensions.EXT_meshopt_compression !== undefined) {
-        return object.extensions.EXT_meshopt_compression;
-    }
-
-    if (object.extensions.KHR_meshopt_compression !== undefined) {
-        return object.extensions.KHR_meshopt_compression;
     }
 }
 
