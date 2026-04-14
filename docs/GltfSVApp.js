@@ -1,6 +1,6 @@
 /**
  * Bundle of gltf-sample-viewer-example
- * Generated: 2026-04-13
+ * Generated: 2026-04-14
  * Version: 1.0.0
  * License: Apache-2.0
  * Dependencies:
@@ -454,8 +454,8 @@
  * SOFTWARE.
  *
  *
- * gl-matrix -- 3.4.3 -- MIT
- * Copyright (c) 2015-2021, Brandon Jones, Colin MacKenzie IV.
+ * gl-matrix -- 3.4.4 -- MIT
+ * Copyright (c) 2015-2025, Brandon Jones, Colin MacKenzie IV.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -1091,7 +1091,7 @@
 
 /**
  * Bundle of @khronosgroup/gltf-viewer
- * Generated: 2026-04-13
+ * Generated: 2026-04-14
  * Version: 1.1.0
  * License: Apache-2.0
  * Dependencies:
@@ -2876,22 +2876,6 @@ function stringHash(str, seed = 0) {
 
 function clamp(number, min, max) {
     return Math.min(Math.max(number, min), max);
-}
-
-function getIsGlb(filename) {
-    return getExtension(filename) == "glb";
-}
-
-function getExtension(filename) {
-    const split = filename.toLowerCase().split(".");
-    if (split.length == 1) {
-        return undefined;
-    }
-    return split[split.length - 1];
-}
-
-function getContainingFolder(filePath) {
-    return filePath.substring(0, filePath.lastIndexOf("/") + 1);
 }
 
 // marker interface used to for parsing the uniforms
@@ -7554,6 +7538,74 @@ class gltfRenderer {
     }
 }
 
+/**
+ * Utility class providing static helper methods for resource loading operations,
+ * such as extracting file extensions, resolving folder paths, normalizing relative
+ * paths, and detecting absolute URLs.
+ */
+class ResourceLoaderUtils {
+    /**
+     * Extracts the file extension from a filename.
+     * @param {string} filename - The filename or path to extract the extension from.
+     * @returns {string|undefined} The lowercase file extension (without the leading dot),
+     *   or `undefined` if the filename has no extension.
+     */
+    static getExtension(filename) {
+        const split = filename.toLowerCase().split(".");
+        if (split.length == 1) {
+            return undefined;
+        }
+        return split[split.length - 1];
+    }
+
+    /**
+     * Returns the directory portion of a file path, including the trailing slash.
+     * @param {string} filePath - The full file path.
+     * @returns {string} The path up to and including the last `/`, or an empty string
+     *   if no `/` is present.
+     */
+    static getContainingFolder(filePath) {
+        return filePath.substring(0, filePath.lastIndexOf("/") + 1);
+    }
+
+    /**
+     * Normalizes a relative URL path by resolving `.` and `..` segments.
+     * - Strips a leading `./` prefix.
+     * - Collapses `/./` sequences to `/`.
+     * - Resolves `/../` sequences by removing the preceding path segment.
+     * @param {string} relativePath - The relative path to clean.
+     * @returns {string} The normalized path with dot segments resolved.
+     */
+    static cleanRelativePath(relativePath) {
+        if (relativePath.startsWith("./")) {
+            relativePath = relativePath.substring(2);
+        }
+        while (relativePath.includes("/./")) {
+            relativePath = relativePath.replace("/./", "/");
+        }
+        let searchIndex = relativePath.indexOf("/../");
+        while (searchIndex !== -1) {
+            let slashIndex = relativePath.lastIndexOf("/", searchIndex - 1);
+            relativePath =
+                relativePath.substring(0, slashIndex + 1) + relativePath.substring(searchIndex + 4);
+            searchIndex = relativePath.indexOf("/../");
+        }
+        return relativePath;
+    }
+
+    /**
+     * Determines whether a URL is absolute (i.e. contains a scheme such as `http:` or `data:`).
+     * A URL is considered absolute when it contains a `:` that appears before any `/`.
+     * @param {string} url - The URL string to test.
+     * @returns {boolean} `true` if the URL is absolute, `false` otherwise.
+     */
+    static isAbsoluteUrl(url) {
+        const colonIndex = url.indexOf(":");
+        const slashIndex = url.indexOf("/");
+        return colonIndex !== -1 && (slashIndex === -1 || colonIndex < slashIndex);
+    }
+}
+
 class gltfBuffer extends GltfObject {
     static animatedProperties = [];
     constructor() {
@@ -7566,7 +7618,7 @@ class gltfBuffer extends GltfObject {
         this.buffer = undefined; // raw data blob
     }
 
-    load(gltf, additionalFiles = undefined) {
+    load(gltf, additionalFiles = undefined, allowResourceAbsolutePath = true) {
         if (this.buffer !== undefined) {
             console.error("buffer has already been loaded");
             return;
@@ -7575,50 +7627,66 @@ class gltfBuffer extends GltfObject {
         const self = this;
         return new Promise(function (resolve, reject) {
             if (
-                !self.setBufferFromFiles(additionalFiles, resolve) &&
-                !self.setBufferFromUri(gltf, resolve, reject)
+                !self.setBufferFromFiles(gltf, additionalFiles, resolve) &&
+                !self.setBufferFromUri(gltf, resolve, reject, allowResourceAbsolutePath)
             ) {
                 if (hasMeshOptCompression(self)) {
                     // buffer will be loaded by EXT_meshopt_compression or KHR_meshopt_compression
                     resolve();
                 } else {
                     // if buffer has no meshopt compression extension AND no uri or files provided, we have an error
-                    console.error("Was not able to resolve buffer with uri '%s'", self.uri);
                     reject("Buffer data missing for '" + self.name + "' in " + gltf.path);
                 }
             }
         });
     }
 
-    setBufferFromUri(gltf, resolve, reject) {
+    setBufferFromUri(gltf, resolve, reject, allowResourceAbsolutePath) {
         if (this.uri === undefined) {
             return false;
         }
-        const parentPath = this.uri.startsWith("data:") ? "" : getContainingFolder(gltf.path);
-        fetch(parentPath + this.uri).then((response) => {
-            if (!response.ok) {
-                reject(
-                    `Failed to fetch buffer from ${parentPath + this.uri}: ${response.statusText}`
-                );
-                return;
-            }
-            response.arrayBuffer().then((buffer) => {
-                this.buffer = buffer;
-                resolve();
+        if (!allowResourceAbsolutePath && ResourceLoaderUtils.isAbsoluteUrl(this.uri)) {
+            reject("Absolute URLs are not allowed for security reasons: " + this.uri);
+            return true; // we return true, because the buffer has a uri, but we reject the loading due to security reasons
+        }
+        const parentPath = this.uri.startsWith("data:")
+            ? ""
+            : ResourceLoaderUtils.getContainingFolder(gltf.path ?? "");
+        fetch(parentPath + this.uri)
+            .then((response) => {
+                if (!response.ok) {
+                    reject(
+                        `Failed to fetch buffer from ${parentPath + this.uri}: ${response.statusText}`
+                    );
+                    return;
+                }
+                response.arrayBuffer().then((buffer) => {
+                    this.buffer = buffer;
+                    resolve();
+                });
+            })
+            .catch((error) => {
+                reject(`Error fetching buffer from ${parentPath + this.uri}: ${error}`);
             });
-        });
 
         return true;
     }
 
-    setBufferFromFiles(files, callback) {
+    setBufferFromFiles(gltf, files, callback) {
         if (this.uri === undefined || files === undefined) {
             return false;
         }
+        let actualPath = this.uri;
+        if (!ResourceLoaderUtils.isAbsoluteUrl(this.uri)) {
+            const parentPath = ResourceLoaderUtils.getContainingFolder(gltf.path ?? "");
+            actualPath = ResourceLoaderUtils.cleanRelativePath(parentPath + this.uri);
+        }
 
-        const foundFile = files.find(
-            (file) => file[1].name === this.uri || file[1].fullPath === this.uri
-        );
+        const foundFile = files.find((file) => {
+            if (file[0] == actualPath) {
+                return true;
+            }
+        });
 
         if (foundFile === undefined) {
             return false;
@@ -14067,19 +14135,7 @@ class gltfImage extends GltfObject {
         this.miplevel = miplevel; // nonstandard
     }
 
-    resolveRelativePath(basePath) {
-        if (typeof this.uri === "string" || this.uri instanceof String) {
-            if (this.uri.startsWith("data:")) {
-                return;
-            }
-            if (this.uri.startsWith("./")) {
-                this.uri = this.uri.substring(2);
-            }
-            this.uri = basePath + this.uri;
-        }
-    }
-
-    async load(gltf, additionalFiles = undefined) {
+    async load(gltf, additionalFiles = undefined, allowResourceAbsolutePath) {
         if (this.image !== undefined) {
             if (this.mimeType !== ImageMimeType.GLTEXTURE) {
                 console.error("image has already been loaded");
@@ -14090,7 +14146,7 @@ class gltfImage extends GltfObject {
         if (
             !(await this.setImageFromBufferView(gltf)) &&
             !(await this.setImageFromFiles(gltf, additionalFiles)) &&
-            !(await this.setImageFromUri(gltf)) &&
+            !(await this.setImageFromUri(gltf, allowResourceAbsolutePath)) &&
             !(await this.setImageFromBase64(gltf))
         ) {
             return;
@@ -14110,7 +14166,7 @@ class gltfImage extends GltfObject {
     }
 
     setMimetypeFromFilename(filename) {
-        let extension = getExtension(filename);
+        let extension = ResourceLoaderUtils.getExtension(filename);
         if (extension == "ktx2" || extension == "ktx") {
             this.mimeType = ImageMimeType.KTX2;
         } else if (extension == "jpg" || extension == "jpeg") {
@@ -14187,17 +14243,22 @@ class gltfImage extends GltfObject {
         return await this.setImageFromBytes(gltf, new Uint8Array(buffer));
     }
 
-    async setImageFromUri(gltf) {
+    async setImageFromUri(gltf, allowResourceAbsolutePath) {
         if (this.uri === undefined || this.uri.startsWith("data:")) {
             return false;
         }
+        if (!allowResourceAbsolutePath && ResourceLoaderUtils.isAbsoluteUrl(this.uri)) {
+            throw new Error("Absolute URLs are not allowed for security reasons: " + this.uri);
+        }
+        const parentPath = ResourceLoaderUtils.getContainingFolder(gltf.path ?? "");
+        const fullPath = parentPath + this.uri;
         if (this.mimeType === undefined) {
             this.setMimetypeFromFilename(this.uri);
         }
 
         if (this.mimeType === ImageMimeType.KTX2) {
             if (gltf.ktxDecoder !== undefined) {
-                this.image = await gltf.ktxDecoder.loadKtxFromUri(this.uri);
+                this.image = await gltf.ktxDecoder.loadKtxFromUri(fullPath);
             } else {
                 console.warn("Loading of ktx images failed: KtxDecoder not initalized");
             }
@@ -14208,9 +14269,9 @@ class gltfImage extends GltfObject {
                 this.mimeType === ImageMimeType.WEBP)
         ) {
             try {
-                this.image = await gltfImage.loadHTMLImage(this.uri);
+                this.image = await gltfImage.loadHTMLImage(fullPath);
             } catch {
-                throw new Error(`Could not load image from ${this.uri}`);
+                throw new Error(`Could not load image from ${fullPath}`);
             }
         } else if (this.mimeType === ImageMimeType.JPEG && this.uri instanceof ArrayBuffer) {
             this.image = jpegJsExports.decode(this.uri, { useTArray: true });
@@ -14239,9 +14300,14 @@ class gltfImage extends GltfObject {
         if (this.uri === undefined || files === undefined) {
             return false;
         }
+        let actualPath = this.uri;
+        if (!ResourceLoaderUtils.isAbsoluteUrl(this.uri)) {
+            const parentPath = ResourceLoaderUtils.getContainingFolder(gltf.path ?? "");
+            actualPath = ResourceLoaderUtils.cleanRelativePath(parentPath + this.uri);
+        }
 
         let foundFile = files.find((file) => {
-            if (file[0] == "/" + this.uri) {
+            if (file[0] == actualPath) {
                 return true;
             }
         });
@@ -15652,6 +15718,10 @@ class gltfNode extends GltfObject {
     }
 
     getLocalTransform() {
+        // Matrices are never animated, so if a matrix is present we can just use it directly
+        if (this.matrix !== undefined) {
+            return this.matrix;
+        }
         return fromRotationTranslationScale(
             create$3(),
             this.rotation,
@@ -17457,14 +17527,23 @@ class GlbParser {
 }
 
 class gltfLoader {
-    static async load(gltf, webGlContext, appendix = undefined) {
+    static async load(gltf, webGlContext, appendix = undefined, allowResourceAbsolutePath = true) {
         const buffers = gltfLoader.getBuffers(appendix);
         const additionalFiles = gltfLoader.getAdditionalFiles(appendix);
 
-        const buffersPromise = gltfLoader.loadBuffers(gltf, buffers, additionalFiles);
+        const buffersPromise = gltfLoader.loadBuffers(
+            gltf,
+            buffers,
+            additionalFiles,
+            allowResourceAbsolutePath
+        );
 
         await buffersPromise; // images might be stored in the buffers
-        const imagesPromise = gltfLoader.loadImages(gltf, additionalFiles);
+        const imagesPromise = gltfLoader.loadImages(
+            gltf,
+            additionalFiles,
+            allowResourceAbsolutePath
+        );
 
         return await Promise.all([buffersPromise, imagesPromise]).then(() =>
             gltf.initGl(webGlContext)
@@ -17508,7 +17587,7 @@ class gltfLoader {
         }
     }
 
-    static loadBuffers(gltf, buffers, additionalFiles) {
+    static loadBuffers(gltf, buffers, additionalFiles, allowResourceAbsolutePath) {
         const promises = [];
 
         if (buffers !== undefined && buffers[0] !== undefined) {
@@ -17521,20 +17600,22 @@ class gltfLoader {
 
             gltf.buffers[0].buffer = buffers[0];
             for (let i = 1; i < gltf.buffers.length; ++i) {
-                promises.push(gltf.buffers[i].load(gltf, additionalFiles));
+                promises.push(
+                    gltf.buffers[i].load(gltf, additionalFiles, allowResourceAbsolutePath)
+                );
             }
         } else {
             for (const buffer of gltf.buffers) {
-                promises.push(buffer.load(gltf, additionalFiles));
+                promises.push(buffer.load(gltf, additionalFiles, allowResourceAbsolutePath));
             }
         }
         return Promise.all(promises);
     }
 
-    static loadImages(gltf, additionalFiles) {
+    static loadImages(gltf, additionalFiles, allowResourceAbsolutePath) {
         const imagePromises = [];
         for (let image of gltf.images) {
-            imagePromises.push(image.load(gltf, additionalFiles));
+            imagePromises.push(image.load(gltf, additionalFiles, allowResourceAbsolutePath));
         }
         return Promise.all(imagePromises);
     }
@@ -19770,9 +19851,10 @@ class ResourceLoader {
      * loadGltf asynchroneously and create resources for rendering
      * @param {(String | ArrayBuffer | File)} gltfFile the .gltf or .glb file either as path or as preloaded resource. In node.js environments, only ArrayBuffer types are accepted.
      * @param {File[]} [externalFiles] additional files containing resources that are referenced in the gltf
+     * @param {Boolean} allowResourceAbsolutePath whether to allow absolute paths for images/buffers.
      * @returns {Promise} a promise that fulfills when the gltf file was loaded
      */
-    async loadGltf(gltfFile, externalFiles) {
+    async loadGltf(gltfFile, externalFiles, allowResourceAbsolutePath = true) {
         let isGlb = undefined;
         let buffers = undefined;
         let json = undefined;
@@ -19805,8 +19887,8 @@ class ResourceLoader {
             gltfFile[1] instanceof File
         ) {
             let fileContent = gltfFile[1];
-            filename = gltfFile[1].name;
-            isGlb = getIsGlb(filename);
+            filename = gltfFile[0];
+            isGlb = ResourceLoaderUtils.getExtension(filename) == "glb";
             if (isGlb) {
                 data = await AsyncFileReader.readAsArrayBuffer(fileContent);
             } else {
@@ -19835,13 +19917,8 @@ class ResourceLoader {
         //Make sure draco decoder instance is ready
         gltf.fromJson(json);
 
-        // because the gltf image paths are not relative
-        // to the gltf, we have to resolve all image paths before that
-        for (const image of gltf.images) {
-            image.resolveRelativePath(getContainingFolder(gltf.path));
-        }
         await init(`${this.libPath}mikktspace_bg.wasm`);
-        await gltfLoader.load(gltf, this.view.context, buffers);
+        await gltfLoader.load(gltf, this.view.context, buffers, allowResourceAbsolutePath);
 
         return gltf;
     }
@@ -19865,7 +19942,7 @@ class ResourceLoader {
             });
             image = await loadHDR(new Uint8Array(imageData));
         } else {
-            console.error("Passed invalid type to loadEnvironment " + typeof gltfFile);
+            console.error("Passed invalid type to loadEnvironment " + typeof environmentFile);
         }
         if (image === undefined) {
             return undefined;
@@ -20218,7 +20295,12 @@ class GltfView {
      */
     gatherStatistics(state) {
         if (state.gltf === undefined) {
-            return;
+            return {
+                meshCount: 0,
+                faceCount: 0,
+                opaqueMaterialsCount: 0,
+                transparentMaterialsCount: 0
+            };
         }
 
         // gather information from the active scene
@@ -21974,18 +22056,8 @@ var e=[0,1,2,3,4,4,5,5,6,6,6,6,7,7,7,7,8,8,8,8,8,8,8,8,9,9,9,9,9,9,9,9,10,10,10,
  * Common utilities
  * @module glMatrix
  */
-// Configuration Constants
-var ARRAY_TYPE = typeof Float32Array !== 'undefined' ? Float32Array : Array;
-if (!Math.hypot) Math.hypot = function () {
-  var y = 0,
-      i = arguments.length;
 
-  while (i--) {
-    y += arguments[i] * arguments[i];
-  }
-
-  return Math.sqrt(y);
-};
+var ARRAY_TYPE = typeof Float32Array !== "undefined" ? Float32Array : Array;
 
 /**
  * 2 Dimensional Vector
@@ -21997,17 +22069,15 @@ if (!Math.hypot) Math.hypot = function () {
  *
  * @returns {vec2} a new 2D vector
  */
-
 function create() {
   var out = new ARRAY_TYPE(2);
-
   if (ARRAY_TYPE != Float32Array) {
     out[0] = 0;
     out[1] = 0;
   }
-
   return out;
 }
+
 /**
  * Creates a new vec2 initialized with the given values
  *
@@ -22015,13 +22085,13 @@ function create() {
  * @param {Number} y Y component
  * @returns {vec2} a new 2D vector
  */
-
 function fromValues(x, y) {
   var out = new ARRAY_TYPE(2);
   out[0] = x;
   out[1] = y;
   return out;
 }
+
 /**
  * Calculates the euclidian distance between two vec2's
  *
@@ -22029,18 +22099,18 @@ function fromValues(x, y) {
  * @param {ReadonlyVec2} b the second operand
  * @returns {Number} distance between a and b
  */
-
 function distance(a, b) {
   var x = b[0] - a[0],
-      y = b[1] - a[1];
-  return Math.hypot(x, y);
+    y = b[1] - a[1];
+  return Math.sqrt(x * x + y * y);
 }
+
 /**
  * Alias for {@link vec2.distance}
  * @function
  */
-
 var dist = distance;
+
 /**
  * Perform some operation over an array of vec2s.
  *
@@ -22053,26 +22123,21 @@ var dist = distance;
  * @returns {Array} a
  * @function
  */
-
 (function () {
   var vec = create();
   return function (a, stride, offset, count, fn, arg) {
     var i, l;
-
     if (!stride) {
       stride = 2;
     }
-
     if (!offset) {
       offset = 0;
     }
-
     if (count) {
       l = Math.min(count * stride + offset, a.length);
     } else {
       l = a.length;
     }
-
     for (i = offset; i < l; i += stride) {
       vec[0] = a[i];
       vec[1] = a[i + 1];
@@ -22080,7 +22145,6 @@ var dist = distance;
       a[i] = vec[0];
       a[i + 1] = vec[1];
     }
-
     return a;
   };
 })();
@@ -23103,47 +23167,29 @@ const getInputObservables = (inputElement, app) => {
 
     // Partition files into a .gltf or .glb and additional files like buffers and textures
     observables.droppedGltf = droppedFiles.pipe(
-        map((files) => ({
-            mainFile: files.find(([path]) => path.endsWith(".glb") || path.endsWith(".gltf")),
-            additionalFiles: files.filter(
-                (file) => !file[0].endsWith(".glb") && !file[0].endsWith(".gltf")
-            )
-        })),
-        filter(({ mainFile }) => {
+        map((files) => {
+            files = files.map((file) => {
+                let filePath = file[0].replaceAll("\\", "/");
+                return [filePath.substring(1), file[1]]; // remove leading slash
+            });
+            return {
+                mainFile: files.find(([path]) => path.endsWith(".glb") || path.endsWith(".gltf")),
+                additionalFiles: files.filter(
+                    (file) => !file[0].endsWith(".glb") && !file[0].endsWith(".gltf")
+                )
+            };
+        }),
+        filter(({ mainFile, additionalFiles }) => {
             let isDefined = mainFile !== undefined;
 
-            if (!isDefined) {
+            if (
+                !isDefined &&
+                !(additionalFiles.length === 1 && additionalFiles[0][0].endsWith(".hdr"))
+            ) {
                 console.warn("Only glTF, glb and hdr files can be loaded on drop.");
             }
 
             return isDefined;
-        }),
-        map(({ mainFile, additionalFiles }) => {
-            if (mainFile[0].endsWith(".gltf")) {
-                // extract folder path from gltf file
-                let folderPath = mainFile[0];
-                // replace all \ by /
-                folderPath = folderPath.replaceAll("\\", "/");
-                // remove filename
-                folderPath = folderPath.substr(0, folderPath.lastIndexOf("/"));
-
-                if (folderPath !== "") {
-                    // remove folder path from additional files
-                    additionalFiles = additionalFiles.map((file) => {
-                        let filePath = file[0].replaceAll("\\", "/");
-                        if (filePath.startsWith(folderPath)) {
-                            return [filePath.substr(folderPath.length), file[1]];
-                        } else {
-                            return file;
-                        }
-                    });
-                }
-            }
-
-            return {
-                mainFile: mainFile,
-                additionalFiles: additionalFiles
-            };
         }),
         filter((files) => files.mainFile !== undefined)
     );
@@ -62091,7 +62137,7 @@ const appCreated = vue_cjsExports.createApp({
             let info = "";
             let color = "white";
             const padding = this.isMobile ? "right:-3px;top:-18px;" : "right:-18px;top:-18px;";
-            if (this.validationReport.error) {
+            if (this.validationReport?.error) {
                 info = "X";
                 color = "red";
                 return (
@@ -73446,6 +73492,8 @@ var main = async () => {
     const state = view.createState();
     state.renderingParameters.useDirectionalLightsWithDisabledIBL = true;
 
+    const emptyGltf = await resourceLoader.loadGltf(undefined, undefined, false);
+
     const pathProvider = new GltfModelPathProvider(
         "https://raw.githubusercontent.com/KhronosGroup/glTF-Sample-Assets/main"
     );
@@ -73505,12 +73553,20 @@ var main = async () => {
                         });
                     } else if (Array.isArray(model.mainFile)) {
                         const externalRefFunction = (uri) => {
-                            uri = "/" + uri;
                             return new Promise((resolve, reject) => {
                                 let foundFile = undefined;
                                 for (let i = 0; i < model.additionalFiles.length; i++) {
                                     const file = model.additionalFiles[i];
-                                    if (file[0] == uri) {
+                                    let actualPath = uri;
+                                    if (!ResourceLoaderUtils.isAbsoluteUrl(uri)) {
+                                        const parentPath = ResourceLoaderUtils.getContainingFolder(
+                                            model.mainFile[0]
+                                        );
+                                        actualPath = ResourceLoaderUtils.cleanRelativePath(
+                                            parentPath + uri
+                                        );
+                                    }
+                                    if (file[0] == actualPath) {
                                         foundFile = file[1];
                                         break;
                                     }
@@ -73560,7 +73616,7 @@ var main = async () => {
 
             return from(
                 resourceLoader
-                    .loadGltf(model.mainFile, model.additionalFiles)
+                    .loadGltf(model.mainFile, model.additionalFiles, false)
                     .then((gltf) => {
                         state.gltf = gltf;
                         const defaultScene = state.gltf.scene;
@@ -73604,14 +73660,11 @@ var main = async () => {
                     })
                     .catch((error) => {
                         console.error("Loading failed: " + error);
-                        resourceLoader.loadGltf(undefined, undefined).then((gltf) => {
-                            state.gltf = gltf;
-                            state.sceneIndex = 0;
-                            state.cameraNodeIndex = undefined;
-
-                            uiModel.exitLoadingState();
-                            redraw = true;
-                        });
+                        state.gltf = emptyGltf;
+                        state.sceneIndex = 0;
+                        state.cameraNodeIndex = undefined;
+                        uiModel.exitLoadingState();
+                        redraw = true;
                         return state;
                     })
             );
