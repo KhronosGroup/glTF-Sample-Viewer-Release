@@ -153,7 +153,7 @@
 
                             <!-- Tab Content: Models -->
                             <div class="tabContent">
-                                <img src="assets/ui/Navigation_right_20px.svg" width="30px"
+                                <img src="assets/ui/Navigation_right_20px.svg" class="tabNavigationIcon" width="30px"
                                     @click="collapseActiveTab($event, 0)">
                                 <h2 class="title is-spaced">Models</h2>
                                 <b-field label="Models" class="subtitle">
@@ -221,7 +221,7 @@
                             </template>
 
                             <div class="tabContent">
-                                <img src="assets/ui/Navigation_right_20px.svg" width="30px"
+                                <img src="assets/ui/Navigation_right_20px.svg" class="tabNavigationIcon" width="30px"
                                     @click="collapseActiveTab($event, 1)">
                                 <h2 class="title  is-spaced">Display</h2>
                                 <b-field label="Lighting" class="subtitle">
@@ -317,7 +317,7 @@
                             </template>
     
                             <div class="tabContent" style="display: flex; flex-direction: column; height: inherit;">
-                                <img src="assets/ui/Navigation_right_20px.svg" width="30px"
+                                <img src="assets/ui/Navigation_right_20px.svg" class="tabNavigationIcon" width="30px"
                                     @click="collapseActiveTab($event, 2)">
                                 <h2 class="title is-spaced" v-bind:data="validationReport">glTF Validator</h2>
                                     <div class="modelCredit" v-show='validationReport?.error === undefined'>
@@ -359,7 +359,7 @@
                             </template>
 
                             <div class="tabContent">
-                                <img src="assets/ui/Navigation_right_20px.svg" width="30px"
+                                <img src="assets/ui/Navigation_right_20px.svg" class="tabNavigationIcon" width="30px"
                                     @click="collapseActiveTab($event, 3)">
                                 <h2 class="title is-spaced">Animation</h2>
                                 <label class="subtitle" v-bind:style="[animations.length == 0 ? {'display': 'none'} : {}]">Animation Controls</label>
@@ -398,7 +398,7 @@
                             </template>
 
                             <div class="tabContent">
-                                <img src="assets/ui/Navigation_right_20px.svg" width="30px"
+                                <img src="assets/ui/Navigation_right_20px.svg" class="tabNavigationIcon" width="30px"
                                     @click="collapseActiveTab($event, 4)">
                                 <h2 class="title">Model Credits</h2>
                                 <div class="modelCredit"><i>Copyright:</i><br/>{{ assetCopyright }}</div>
@@ -435,7 +435,7 @@
                             </template>
 
                             <div class="tabContent">
-                                <img src="assets/ui/Navigation_right_20px.svg" width="30px"
+                                <img src="assets/ui/Navigation_right_20px.svg" class="tabNavigationIcon" width="30px"
                                     @click="collapseActiveTab($event, 5)">
                                 <h2 class="title is-spaced">Advanced Controls</h2>
                                 <b-field label="Capture Canvas" class="subtitle">

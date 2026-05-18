@@ -15957,8 +15957,22 @@ button.button {
   overflow: visible;
 }
 
+.maximizeCanvasIcon {
+  transition: scale 0.2s;
+  cursor: pointer;
+}
+
 .maximizeCanvasIcon:hover {
-  transform: scale(1.2);
+  scale: 1.2;
+}
+
+.tabNavigationIcon {
+  transition: scale 0.2s;
+  cursor: pointer;
+}
+
+.tabNavigationIcon:hover {
+  scale: 1.2;
 }
 
 .dg li.gui-stats:not(.folder) {
