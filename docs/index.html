@@ -455,6 +455,8 @@
                                     </b-select>
                                 </b-field>
 
+                                <b-switch v-model="inputSmoothing" v-on:input="inputSmoothingChanged.next($event.target.checked)">Input Smoothing</b-switch>
+                                <br>
                                 <b-switch v-model="skinning" v-on:input="skinningChanged.next($event.target.checked)">Skinning</b-switch>
                                 <br>
                                 <b-switch v-model="morphing" v-on:input="morphingChanged.next($event.target.checked)">Morphing</b-switch>
