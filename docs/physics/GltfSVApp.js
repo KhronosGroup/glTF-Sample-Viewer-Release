@@ -1,6 +1,6 @@
 /**
  * Bundle of gltf-sample-viewer-example
- * Generated: 2026-02-27
+ * Generated: 2026-06-08
  * Version: 1.0.0
  * License: Apache-2.0
  * Dependencies:
@@ -1091,7 +1091,7 @@
 
 /**
  * Bundle of @khronosgroup/gltf-viewer
- * Generated: 2026-02-27
+ * Generated: 2026-06-08
  * Version: 1.1.0
  * License: Apache-2.0
  * Dependencies:
@@ -1321,7 +1321,7 @@
  * limitations under the License.
  * 
  * 
- * physx-js-webidl -- 2.7.1 -- MIT
+ * physx-js-webidl -- 2.7.2 -- MIT
  * 
  * 
  * jpeg-js -- 0.4.4 -- BSD-3-Clause
@@ -1468,11 +1468,11 @@ class AnimatableProperty {
     }
 
     rest() {
+        if (!this.dirty) {
+            this.dirty = true;
+            AnimatableProperty.dirtyFlagList.push(this);
+        }
         if (this.animatedValue !== null) {
-            if (!this.dirty) {
-                this.dirty = true;
-                AnimatableProperty.dirtyFlagList.push(this);
-            }
             this.animatedValue = null;
         }
     }
@@ -1644,7 +1644,7 @@ function fromValues$4(m00, m01, m02, m10, m11, m12, m20, m21, m22) {
  * @returns {mat3} out
  */
 
-function identity$1(out) {
+function identity$2(out) {
   out[0] = 1;
   out[1] = 0;
   out[2] = 0;
@@ -1802,7 +1802,7 @@ function clone$3(a) {
  * @returns {mat4} out
  */
 
-function identity$2(out) {
+function identity$1(out) {
   out[0] = 1;
   out[1] = 0;
   out[2] = 0;
@@ -2610,7 +2610,7 @@ function lookAt(out, eye, center, up) {
   var centerz = center[2];
 
   if (Math.abs(eyex - centerx) < EPSILON && Math.abs(eyey - centery) < EPSILON && Math.abs(eyez - centerz) < EPSILON) {
-    return identity$2(out);
+    return identity$1(out);
   }
 
   z0 = eyex - centerx;
@@ -3262,6 +3262,20 @@ function create$1() {
   return out;
 }
 /**
+ * Set a quat to the identity quaternion
+ *
+ * @param {quat} out the receiving quaternion
+ * @returns {quat} out
+ */
+
+function identity$3(out) {
+  out[0] = 0;
+  out[1] = 0;
+  out[2] = 0;
+  out[3] = 1;
+  return out;
+}
+/**
  * Sets a quat from the given angle and rotation axis,
  * then returns it.
  *
@@ -3492,6 +3506,34 @@ function fromMat3(out, m) {
     out[k] = (m[k * 3 + i] + m[i * 3 + k]) * fRoot;
   }
 
+  return out;
+}
+/**
+ * Creates a quaternion from the given euler angle x, y, z.
+ *
+ * @param {quat} out the receiving quaternion
+ * @param {x} Angle to rotate around X axis in degrees.
+ * @param {y} Angle to rotate around Y axis in degrees.
+ * @param {z} Angle to rotate around Z axis in degrees.
+ * @returns {quat} out
+ * @function
+ */
+
+function fromEuler(out, x, y, z) {
+  var halfToRad = 0.5 * Math.PI / 180.0;
+  x *= halfToRad;
+  y *= halfToRad;
+  z *= halfToRad;
+  var sx = Math.sin(x);
+  var cx = Math.cos(x);
+  var sy = Math.sin(y);
+  var cy = Math.cos(y);
+  var sz = Math.sin(z);
+  var cz = Math.cos(z);
+  out[0] = sx * cy * cz - cx * sy * sz;
+  out[1] = cx * sy * cz + sx * cy * sz;
+  out[2] = cx * cy * sz - sx * sy * cz;
+  out[3] = cx * cy * cz + sx * sy * sz;
   return out;
 }
 /**
@@ -11817,37 +11859,6 @@ function getAnimatedIndices(gltf, prefix, properties) {
     return { animatedIndices: animatedIndices, runtimeChanges: runtimeChanges };
 }
 
-function getMorphedNodeIndices(gltf) {
-    const morphedNodes = new Set();
-    const morphedMeshes = new Set();
-    for (const mesh of gltf.meshes) {
-        if (mesh.primitives === undefined) {
-            continue;
-        }
-        for (const primitive of mesh.primitives) {
-            let isMorphed = false;
-            if (primitive.targets !== undefined && primitive.targets.length > 0) {
-                for (const target of primitive.targets) {
-                    if (target.POSITION !== undefined) {
-                        isMorphed = true;
-                        break;
-                    }
-                }
-            }
-            if (isMorphed) {
-                morphedMeshes.add(mesh.gltfObjectIndex);
-                break;
-            }
-        }
-    }
-    for (const node of gltf.nodes) {
-        if (node.mesh !== undefined && morphedMeshes.has(node.mesh)) {
-            morphedNodes.add(node.gltfObjectIndex);
-        }
-    }
-    return morphedNodes;
-}
-
 function recurseAllAnimatedProperties(gltfObject, callable, currentPath = "") {
     if (gltfObject === undefined || !(gltfObject instanceof GltfObject)) {
         return;
@@ -12232,7 +12243,7 @@ class SampleViewerDecorator extends ADecorator {
         this.behaveEngine.clearScheduledDelays();
         this.behaveEngine.clearValueEvaluationCache();
 
-        this.world.gltf.resetAnimatedProperties();
+        this.world.gltf.resetAnimatedProperties(this.world.sceneIndex ?? -1);
     }
 
     processNodeStarted(node) {
@@ -16737,6 +16748,8 @@ var _emscripten_bind_PxD6Joint_setDrivePosition_2 = Module['_emscripten_bind_PxD
 var _emscripten_bind_PxD6Joint_getDrivePosition_0 = Module['_emscripten_bind_PxD6Joint_getDrivePosition_0'] = makeInvalidEarlyAccess('_emscripten_bind_PxD6Joint_getDrivePosition_0');
 var _emscripten_bind_PxD6Joint_setDriveVelocity_2 = Module['_emscripten_bind_PxD6Joint_setDriveVelocity_2'] = makeInvalidEarlyAccess('_emscripten_bind_PxD6Joint_setDriveVelocity_2');
 var _emscripten_bind_PxD6Joint_getDriveVelocity_2 = Module['_emscripten_bind_PxD6Joint_getDriveVelocity_2'] = makeInvalidEarlyAccess('_emscripten_bind_PxD6Joint_getDriveVelocity_2');
+var _emscripten_bind_PxD6Joint_setAngularDriveConfig_1 = Module['_emscripten_bind_PxD6Joint_setAngularDriveConfig_1'] = makeInvalidEarlyAccess('_emscripten_bind_PxD6Joint_setAngularDriveConfig_1');
+var _emscripten_bind_PxD6Joint_getAngularDriveConfig_0 = Module['_emscripten_bind_PxD6Joint_getAngularDriveConfig_0'] = makeInvalidEarlyAccess('_emscripten_bind_PxD6Joint_getAngularDriveConfig_0');
 var _emscripten_bind_PxD6Joint_release_0 = Module['_emscripten_bind_PxD6Joint_release_0'] = makeInvalidEarlyAccess('_emscripten_bind_PxD6Joint_release_0');
 var _emscripten_bind_PxD6Joint_getConcreteTypeName_0 = Module['_emscripten_bind_PxD6Joint_getConcreteTypeName_0'] = makeInvalidEarlyAccess('_emscripten_bind_PxD6Joint_getConcreteTypeName_0');
 var _emscripten_bind_PxD6Joint_getConcreteType_0 = Module['_emscripten_bind_PxD6Joint_getConcreteType_0'] = makeInvalidEarlyAccess('_emscripten_bind_PxD6Joint_getConcreteType_0');
@@ -19471,6 +19484,9 @@ var _emscripten_enum_PxConvexFlagEnum_eFAST_INERTIA_COMPUTATION = Module['_emscr
 var _emscripten_enum_PxConvexFlagEnum_eSHIFT_VERTICES = Module['_emscripten_enum_PxConvexFlagEnum_eSHIFT_VERTICES'] = makeInvalidEarlyAccess('_emscripten_enum_PxConvexFlagEnum_eSHIFT_VERTICES');
 var _emscripten_enum_PxConvexMeshCookingTypeEnum_eQUICKHULL = Module['_emscripten_enum_PxConvexMeshCookingTypeEnum_eQUICKHULL'] = makeInvalidEarlyAccess('_emscripten_enum_PxConvexMeshCookingTypeEnum_eQUICKHULL');
 var _emscripten_enum_PxConvexMeshGeometryFlagEnum_eTIGHT_BOUNDS = Module['_emscripten_enum_PxConvexMeshGeometryFlagEnum_eTIGHT_BOUNDS'] = makeInvalidEarlyAccess('_emscripten_enum_PxConvexMeshGeometryFlagEnum_eTIGHT_BOUNDS');
+var _emscripten_enum_PxD6AngularDriveConfigEnum_eSWING_TWIST = Module['_emscripten_enum_PxD6AngularDriveConfigEnum_eSWING_TWIST'] = makeInvalidEarlyAccess('_emscripten_enum_PxD6AngularDriveConfigEnum_eSWING_TWIST');
+var _emscripten_enum_PxD6AngularDriveConfigEnum_eSLERP = Module['_emscripten_enum_PxD6AngularDriveConfigEnum_eSLERP'] = makeInvalidEarlyAccess('_emscripten_enum_PxD6AngularDriveConfigEnum_eSLERP');
+var _emscripten_enum_PxD6AngularDriveConfigEnum_eLEGACY = Module['_emscripten_enum_PxD6AngularDriveConfigEnum_eLEGACY'] = makeInvalidEarlyAccess('_emscripten_enum_PxD6AngularDriveConfigEnum_eLEGACY');
 var _emscripten_enum_PxD6AxisEnum_eX = Module['_emscripten_enum_PxD6AxisEnum_eX'] = makeInvalidEarlyAccess('_emscripten_enum_PxD6AxisEnum_eX');
 var _emscripten_enum_PxD6AxisEnum_eY = Module['_emscripten_enum_PxD6AxisEnum_eY'] = makeInvalidEarlyAccess('_emscripten_enum_PxD6AxisEnum_eY');
 var _emscripten_enum_PxD6AxisEnum_eZ = Module['_emscripten_enum_PxD6AxisEnum_eZ'] = makeInvalidEarlyAccess('_emscripten_enum_PxD6AxisEnum_eZ');
@@ -23661,6 +23677,10 @@ function assignWasmExports(wasmExports) {
   _emscripten_bind_PxD6Joint_setDriveVelocity_2 = Module['_emscripten_bind_PxD6Joint_setDriveVelocity_2'] = createExportWrapper('emscripten_bind_PxD6Joint_setDriveVelocity_2', 3);
   assert(typeof wasmExports['emscripten_bind_PxD6Joint_getDriveVelocity_2'] != 'undefined', 'missing Wasm export: emscripten_bind_PxD6Joint_getDriveVelocity_2');
   _emscripten_bind_PxD6Joint_getDriveVelocity_2 = Module['_emscripten_bind_PxD6Joint_getDriveVelocity_2'] = createExportWrapper('emscripten_bind_PxD6Joint_getDriveVelocity_2', 3);
+  assert(typeof wasmExports['emscripten_bind_PxD6Joint_setAngularDriveConfig_1'] != 'undefined', 'missing Wasm export: emscripten_bind_PxD6Joint_setAngularDriveConfig_1');
+  _emscripten_bind_PxD6Joint_setAngularDriveConfig_1 = Module['_emscripten_bind_PxD6Joint_setAngularDriveConfig_1'] = createExportWrapper('emscripten_bind_PxD6Joint_setAngularDriveConfig_1', 2);
+  assert(typeof wasmExports['emscripten_bind_PxD6Joint_getAngularDriveConfig_0'] != 'undefined', 'missing Wasm export: emscripten_bind_PxD6Joint_getAngularDriveConfig_0');
+  _emscripten_bind_PxD6Joint_getAngularDriveConfig_0 = Module['_emscripten_bind_PxD6Joint_getAngularDriveConfig_0'] = createExportWrapper('emscripten_bind_PxD6Joint_getAngularDriveConfig_0', 1);
   assert(typeof wasmExports['emscripten_bind_PxD6Joint_release_0'] != 'undefined', 'missing Wasm export: emscripten_bind_PxD6Joint_release_0');
   _emscripten_bind_PxD6Joint_release_0 = Module['_emscripten_bind_PxD6Joint_release_0'] = createExportWrapper('emscripten_bind_PxD6Joint_release_0', 1);
   assert(typeof wasmExports['emscripten_bind_PxD6Joint_getConcreteTypeName_0'] != 'undefined', 'missing Wasm export: emscripten_bind_PxD6Joint_getConcreteTypeName_0');
@@ -29129,6 +29149,12 @@ function assignWasmExports(wasmExports) {
   _emscripten_enum_PxConvexMeshCookingTypeEnum_eQUICKHULL = Module['_emscripten_enum_PxConvexMeshCookingTypeEnum_eQUICKHULL'] = createExportWrapper('emscripten_enum_PxConvexMeshCookingTypeEnum_eQUICKHULL', 0);
   assert(typeof wasmExports['emscripten_enum_PxConvexMeshGeometryFlagEnum_eTIGHT_BOUNDS'] != 'undefined', 'missing Wasm export: emscripten_enum_PxConvexMeshGeometryFlagEnum_eTIGHT_BOUNDS');
   _emscripten_enum_PxConvexMeshGeometryFlagEnum_eTIGHT_BOUNDS = Module['_emscripten_enum_PxConvexMeshGeometryFlagEnum_eTIGHT_BOUNDS'] = createExportWrapper('emscripten_enum_PxConvexMeshGeometryFlagEnum_eTIGHT_BOUNDS', 0);
+  assert(typeof wasmExports['emscripten_enum_PxD6AngularDriveConfigEnum_eSWING_TWIST'] != 'undefined', 'missing Wasm export: emscripten_enum_PxD6AngularDriveConfigEnum_eSWING_TWIST');
+  _emscripten_enum_PxD6AngularDriveConfigEnum_eSWING_TWIST = Module['_emscripten_enum_PxD6AngularDriveConfigEnum_eSWING_TWIST'] = createExportWrapper('emscripten_enum_PxD6AngularDriveConfigEnum_eSWING_TWIST', 0);
+  assert(typeof wasmExports['emscripten_enum_PxD6AngularDriveConfigEnum_eSLERP'] != 'undefined', 'missing Wasm export: emscripten_enum_PxD6AngularDriveConfigEnum_eSLERP');
+  _emscripten_enum_PxD6AngularDriveConfigEnum_eSLERP = Module['_emscripten_enum_PxD6AngularDriveConfigEnum_eSLERP'] = createExportWrapper('emscripten_enum_PxD6AngularDriveConfigEnum_eSLERP', 0);
+  assert(typeof wasmExports['emscripten_enum_PxD6AngularDriveConfigEnum_eLEGACY'] != 'undefined', 'missing Wasm export: emscripten_enum_PxD6AngularDriveConfigEnum_eLEGACY');
+  _emscripten_enum_PxD6AngularDriveConfigEnum_eLEGACY = Module['_emscripten_enum_PxD6AngularDriveConfigEnum_eLEGACY'] = createExportWrapper('emscripten_enum_PxD6AngularDriveConfigEnum_eLEGACY', 0);
   assert(typeof wasmExports['emscripten_enum_PxD6AxisEnum_eX'] != 'undefined', 'missing Wasm export: emscripten_enum_PxD6AxisEnum_eX');
   _emscripten_enum_PxD6AxisEnum_eX = Module['_emscripten_enum_PxD6AxisEnum_eX'] = createExportWrapper('emscripten_enum_PxD6AxisEnum_eX', 0);
   assert(typeof wasmExports['emscripten_enum_PxD6AxisEnum_eY'] != 'undefined', 'missing Wasm export: emscripten_enum_PxD6AxisEnum_eY');
@@ -44619,6 +44645,19 @@ PxD6Joint.prototype['getDriveVelocity'] = PxD6Joint.prototype.getDriveVelocity =
   if (linear && typeof linear === 'object') linear = linear.ptr;
   if (angular && typeof angular === 'object') angular = angular.ptr;
   _emscripten_bind_PxD6Joint_getDriveVelocity_2(self, linear, angular);
+};
+
+/** @suppress {undefinedVars, duplicate} @this{Object} */
+PxD6Joint.prototype['setAngularDriveConfig'] = PxD6Joint.prototype.setAngularDriveConfig = function(config) {
+  var self = this.ptr;
+  if (config && typeof config === 'object') config = config.ptr;
+  _emscripten_bind_PxD6Joint_setAngularDriveConfig_1(self, config);
+};
+
+/** @suppress {undefinedVars, duplicate} @this{Object} */
+PxD6Joint.prototype['getAngularDriveConfig'] = PxD6Joint.prototype.getAngularDriveConfig = function() {
+  var self = this.ptr;
+  return _emscripten_bind_PxD6Joint_getAngularDriveConfig_0(self);
 };
 
 /** @suppress {undefinedVars, duplicate} @this{Object} */
@@ -64420,6 +64459,15 @@ Vector_PxVec4.prototype['__destroy__'] = Vector_PxVec4.prototype.__destroy__ = f
     Module['eTIGHT_BOUNDS'] = _emscripten_enum_PxConvexMeshGeometryFlagEnum_eTIGHT_BOUNDS();
 
     
+// $PxD6AngularDriveConfigEnum
+
+    Module['eSWING_TWIST'] = _emscripten_enum_PxD6AngularDriveConfigEnum_eSWING_TWIST();
+
+    Module['eSLERP'] = _emscripten_enum_PxD6AngularDriveConfigEnum_eSLERP();
+
+    Module['eLEGACY'] = _emscripten_enum_PxD6AngularDriveConfigEnum_eLEGACY();
+
+    
 // $PxD6AxisEnum
 
     Module['eX'] = _emscripten_enum_PxD6AxisEnum_eX();
@@ -65260,18 +65308,308 @@ class gltfCollisionFilter extends GltfObject {
     }
 }
 
+/**
+ * glTF allows defining multiple limits and drives for a joint,which can lead
+ * to complex combinations of constraints that are not directly supported by
+ * common physics engines. The simplifiedPhysicsJoint class takes the limits
+ * and drives defined in a gltfPhysicsJoint and simplifies them into one or
+ * more sets of constraints that can be more easily implemented in a physics engine.
+ * Each simplifiedPhysicsJoint represents a single set of constraints (e.g., one twist limit and two swing limits)
+ * along with the necessary local rotation to align the joint's axes with the physics engine's expected axes.
+ */
+class simplifiedPhysicsJoint {
+    constructor(limits, drives) {
+        this.limits = limits;
+        this.drives = drives;
+
+        this.twistLimit = undefined;
+        this.swingLimit1 = undefined;
+        this.swingLimit2 = undefined;
+        this.localRotation = create$1();
+        this.twistAxis = 0; // 0 = X, 1 = Y, 2 = Z
+        this.isCylindrical = false;
+
+        const freeAxes = new Set([0, 1, 2]);
+        const limitAxes = new Map();
+        const fixedAxes = new Map();
+
+        for (const limit of this.limits) {
+            if (limit.angularAxes !== undefined) {
+                for (const axis of limit.angularAxes) {
+                    if (limit.min === 0 && limit.max === 0) {
+                        fixedAxes.set(axis, limit);
+                    } else {
+                        limitAxes.set(axis, limit);
+                    }
+                    freeAxes.delete(axis);
+                }
+                if (limit.angularAxes.length > 1) {
+                    this.isCylindrical = true;
+                }
+            }
+        }
+
+        // Handle cylindrical joints (cone/ellipse limits)
+        if (this.isCylindrical) {
+            this._handleCylindricalLimits(limitAxes, fixedAxes);
+            return;
+        }
+
+        if (freeAxes.size === 0) {
+            // All axes are constrained
+            if (limitAxes.size === 0) {
+                // All axes are fixed (locked)
+                this.twistLimit = fixedAxes.get(0);
+                this.swingLimit1 = fixedAxes.get(1);
+                this.swingLimit2 = fixedAxes.get(2);
+            } else {
+                // Mix of fixed and limited axes
+                this._handleMixedConstraints(limitAxes, fixedAxes);
+            }
+        } else if (freeAxes.size === 1) {
+            // Two axes are constrained, one is free
+            const freeAxis = Array.from(freeAxes)[0];
+            this._handleTwoConstrainedAxes(limitAxes, fixedAxes, freeAxis);
+        } else if (freeAxes.size === 2) {
+            // One axis is constrained, two are free
+            const constrainedAxis = [0, 1, 2].find((axis) => !freeAxes.has(axis));
+            this._handleOneConstrainedAxis(limitAxes, fixedAxes, constrainedAxis);
+        }
+    }
+
+    /**
+     * Input the glTF defined axis and get the corresponding axis and sign
+     * after applying the local rotation to always align twist with the X-axis.
+     * @param {number} axis
+     * @returns {{axis: number, sign: number}}
+     */
+    getRotatedAxisAndSign(axis) {
+        let result = {
+            axis: axis,
+            sign: 1
+        };
+        if (this.twistAxis === 0) {
+            return result; // No rotation needed
+        }
+        if (this.twistAxis === 1) {
+            if (axis === 0) {
+                result.axis = 1;
+            } else if (axis === 1) {
+                result.axis = 0;
+                result.sign = -1;
+            } else {
+                result.axis = 2;
+            }
+        } else {
+            if (axis === 0) {
+                result.axis = 2;
+                result.sign = -1;
+            } else if (axis === 1) {
+                result.axis = 1;
+            } else {
+                result.axis = 0;
+            }
+        }
+        return result;
+    }
+
+    _handleMixedConstraints(limitAxes, fixedAxes) {
+        // Find the axis with the largest angular range to use as twist
+        let maxAxis = -1;
+        let maxRange = 0;
+
+        for (const [axis, limit] of limitAxes.entries()) {
+            const range = limit.max - limit.min;
+            if (range > maxRange) {
+                maxRange = range;
+                maxAxis = axis;
+            }
+        }
+
+        if (maxAxis === -1) {
+            // No limited axes, all are fixed
+            this.twistLimit = fixedAxes.get(0);
+            this.swingLimit1 = fixedAxes.get(1);
+            this.swingLimit2 = fixedAxes.get(2);
+            return;
+        }
+
+        // Use the axis with largest range as twist axis
+        this._assignLimitsWithTwistAxis(limitAxes, fixedAxes, maxAxis);
+    }
+
+    _handleTwoConstrainedAxes(limitAxes, fixedAxes, freeAxis) {
+        // Two constrained axes should use swing limits (cone/pyramid)
+        // The free axis becomes the twist axis
+        const constrainedAxes = [0, 1, 2].filter((axis) => axis !== freeAxis);
+
+        // Calculate local rotation to align free axis with PhysX twist axis (X-axis)
+        this.localRotation = this._calculateLocalRotation(freeAxis);
+
+        // Free axis becomes twist axis (may be free or have some constraint)
+        this.twistLimit = limitAxes.get(freeAxis) || fixedAxes.get(freeAxis);
+
+        // Constrained axes become swing limits
+        this.swingLimit1 = limitAxes.get(constrainedAxes[0]) || fixedAxes.get(constrainedAxes[0]);
+        this.swingLimit2 = limitAxes.get(constrainedAxes[1]) || fixedAxes.get(constrainedAxes[1]);
+    }
+
+    _handleOneConstrainedAxis(limitAxes, fixedAxes, constrainedAxis) {
+        // Use the constrained axis as twist axis
+        this._assignLimitsWithTwistAxis(limitAxes, fixedAxes, constrainedAxis);
+    }
+
+    _assignLimitsWithTwistAxis(limitAxes, fixedAxes, twistAxis) {
+        // Calculate local rotation to align twist axis with PhysX convention (X-axis)
+        this.localRotation = this._calculateLocalRotation(twistAxis);
+
+        // Assign limits based on the chosen twist axis
+        this.twistLimit = limitAxes.get(twistAxis) || fixedAxes.get(twistAxis);
+
+        // Assign swing limits for the other two axes
+        const swingAxes = [0, 1, 2].filter((axis) => axis !== twistAxis);
+        this.swingLimit1 = limitAxes.get(swingAxes[0]) || fixedAxes.get(swingAxes[0]);
+        this.swingLimit2 = limitAxes.get(swingAxes[1]) || fixedAxes.get(swingAxes[1]);
+    }
+
+    _calculateLocalRotation(twistAxis) {
+        // Calculate rotation to align the chosen twist axis with PhysX X-axis
+        const rotation = create$1();
+        this.twistAxis = twistAxis;
+
+        switch (twistAxis) {
+            case 0: // X-axis is already aligned
+                identity$3(rotation);
+                break;
+            case 1: // Y-axis -> rotate X-axis to align with Y-axis
+                // Rotate 90 degrees around Z-axis
+                fromEuler(rotation, 0, 0, 90);
+                break;
+            case 2: // Z-axis -> rotate X-axis to align with Z-axis
+                // Rotate -90 degrees around Y-axis
+                fromEuler(rotation, 0, -90, 0);
+                break;
+        }
+
+        return rotation;
+    }
+
+    _handleCylindricalLimits(limitAxes, fixedAxes) {
+        // Handle limits that constrain multiple axes together (cone/ellipse)
+        // Find the limit that affects multiple axes
+        // eslint-disable-next-line no-unused-vars
+        for (const [axis, limit] of limitAxes.entries()) {
+            if (limit.angularAxes && limit.angularAxes.length > 1) {
+                // This is a cone/ellipse limit
+                const affectedAxes = limit.angularAxes;
+                const freeAxis = [0, 1, 2].find((axis) => !affectedAxes.includes(axis));
+
+                if (freeAxis !== undefined) {
+                    // Free axis becomes twist
+                    this.localRotation = this._calculateLocalRotation(freeAxis);
+                    this.twistLimit = limitAxes.get(freeAxis) || fixedAxes.get(freeAxis);
+
+                    // Cone limit affects both swing axes equally
+                    this.swingLimit1 = limit;
+                    this.swingLimit2 = limit;
+                } else {
+                    // All axes are in the cone - use first axis as twist
+                    this.swingLimit1 = limit;
+                    this.swingLimit2 = limit;
+                }
+                break;
+            }
+        }
+    }
+}
+
 class gltfPhysicsJoint extends GltfObject {
     static animatedProperties = [];
     constructor() {
         super();
         this.limits = [];
         this.drives = [];
+
+        // non glTF
+        this.simplifiedPhysicsJoints = [];
+    }
+
+    _getUniqueDrives(drivesCopy) {
+        const definedLinearDrives = new Set();
+        const definedAngularDrives = new Set();
+        const result = [];
+        for (let i = drivesCopy.length - 1; i >= 0; i--) {
+            if (drivesCopy[i].type === "linear" && definedLinearDrives.has(drivesCopy[i].axis)) {
+                continue;
+            }
+            if (drivesCopy[i].type === "angular" && definedAngularDrives.has(drivesCopy[i].axis)) {
+                continue;
+            }
+            if (drivesCopy[i].type === "linear") {
+                definedLinearDrives.add(drivesCopy[i].axis);
+                result.push(drivesCopy[i]);
+                drivesCopy.splice(i, 1);
+            } else {
+                definedAngularDrives.add(drivesCopy[i].axis);
+                result.push(drivesCopy[i]);
+                drivesCopy.splice(i, 1);
+            }
+        }
+        return result;
     }
 
     fromJson(json) {
         super.fromJson(json);
         this.limits = objectsFromJsons(json.limits, gltfPhysicsJointLimit);
         this.drives = objectsFromJsons(json.drives, gltfPhysicsJointDrive);
+
+        const definedLinearAxes = new Set();
+        const definedAngularAxes = new Set();
+        let currentLimits = [];
+        const drivesCopy = this.drives.slice();
+
+        // If multiple limits affect the same axis, we create separate simplified joints for each combination of constraints.
+        let needToCreateNewJoint = false;
+        for (const limit of this.limits) {
+            for (const axis of limit.angularAxes || []) {
+                if (definedAngularAxes.has(axis)) {
+                    needToCreateNewJoint = true;
+                }
+            }
+            for (const axis of limit.linearAxes || []) {
+                if (definedLinearAxes.has(axis)) {
+                    needToCreateNewJoint = true;
+                }
+            }
+            if (needToCreateNewJoint) {
+                const drives = this._getUniqueDrives(drivesCopy);
+                this.simplifiedPhysicsJoints.push(
+                    new simplifiedPhysicsJoint(currentLimits, drives)
+                );
+                currentLimits = [];
+                definedLinearAxes.clear();
+                definedAngularAxes.clear();
+                needToCreateNewJoint = false;
+            }
+            currentLimits.push(limit);
+            for (const axis of limit.angularAxes || []) {
+                definedAngularAxes.add(axis);
+            }
+            for (const axis of limit.linearAxes || []) {
+                definedLinearAxes.add(axis);
+            }
+        }
+        // Add remaining limits and drives as a simplified joint
+        if (currentLimits.length > 0) {
+            const drives = this._getUniqueDrives(drivesCopy);
+            this.simplifiedPhysicsJoints.push(new simplifiedPhysicsJoint(currentLimits, drives));
+        }
+
+        // If there are any drives left that were not included in the previous joints, we create a new simplified joint for them without limits.
+        while (drivesCopy.length > 0) {
+            const drives = this._getUniqueDrives(drivesCopy);
+            this.simplifiedPhysicsJoints.push(new simplifiedPhysicsJoint([], drives));
+        }
     }
 }
 
@@ -65573,7 +65911,134 @@ function createBoxVertexData(
     return { vertices: new Float32Array(positions), indices: new Uint8Array(indices) };
 }
 
+/* eslint-disable no-unused-vars */
+
+class PhysicsInterface {
+    constructor() {
+        this.simpleShapes = [];
+    }
+
+    // Functions to be implemented by physics engine wrappers
+
+    // Start functions from PhysicsController
+
+    async initializeEngine() {}
+    initializeSimulation(
+        state,
+        staticActors,
+        kinematicActors,
+        dynamicActors,
+        jointNodes,
+        triggerNodes,
+        independentTriggerNodes,
+        nodeToMotion,
+        hasRuntimeAnimationTargets,
+        staticMeshColliderCount,
+        dynamicMeshColliderCount
+    ) {}
+    resetSimulation() {}
+    simulateStep(state, deltaTime) {}
+    enableDebugColliders(enable) {}
+    enableDebugJoints(enable) {}
+
+    applyImpulse(nodeIndex, linearImpulse, angularImpulse) {}
+    applyPointImpulse(nodeIndex, impulse, position) {}
+    rayCast(rayStart, rayEnd) {}
+
+    updateActorTransform(node) {}
+    updatePhysicsJoint(state, jointNode) {}
+    updatePhysicsMaterials(gltf) {}
+    updateCollider(
+        gltf,
+        node,
+        collider,
+        actorNode,
+        worldTransform,
+        offsetChanged,
+        scaleChanged,
+        isTrigger
+    ) {}
+    updateMotion(actorNode) {}
+
+    // End functions from PhysicsController
+
+    generateSimpleShapes(gltf) {
+        this.simpleShapes = [];
+        if (gltf?.extensions?.KHR_implicit_shapes === undefined) {
+            return;
+        }
+        for (const shape of gltf.extensions.KHR_implicit_shapes.shapes) {
+            this.simpleShapes.push(this.generateSimpleShape(shape));
+        }
+    }
+
+    /**
+     * Generates a simple physics shape based on the provided gltfImplicitShape.
+     * The scale and scaleAxis parameters should be used to apply additional scaling to the shape.
+     * The reference parameter can be used to update an already existing shape instead of creating a new one,
+     * if the physics engine supports it.
+     *
+     * @param {gltfImplicitShape} shape
+     * @param {vec3} scale
+     * @param {quat} scaleAxis
+     * @param {any | undefined} reference
+     * @returns
+     */
+    generateSimpleShape(
+        shape,
+        scale = fromValues$3(1, 1, 1),
+        scaleAxis = create$1(),
+        reference = undefined
+    ) {
+        switch (shape.type) {
+            case "box":
+                return this.generateBox(
+                    shape.box.size[0],
+                    shape.box.size[1],
+                    shape.box.size[2],
+                    scale,
+                    scaleAxis,
+                    reference
+                );
+            case "capsule":
+                return this.generateCapsule(
+                    shape.capsule.height,
+                    shape.capsule.radiusTop,
+                    shape.capsule.radiusBottom,
+                    scale,
+                    scaleAxis,
+                    reference
+                );
+            case "cylinder":
+                return this.generateCylinder(
+                    shape.cylinder.height,
+                    shape.cylinder.radiusTop,
+                    shape.cylinder.radiusBottom,
+                    scale,
+                    scaleAxis,
+                    reference
+                );
+            case "sphere":
+                return this.generateSphere(shape.sphere.radius, scale, scaleAxis, reference);
+            case "plane":
+                return this.generatePlane(reference);
+        }
+    }
+
+    generateBox(x, y, z, scale, scaleAxis, reference) {}
+    generateCapsule(height, radiusTop, radiusBottom, scale, scaleAxis, reference) {}
+    generateCylinder(height, radiusTop, radiusBottom, scale, scaleAxis, reference) {}
+    generateSphere(radius, scale, scaleAxis, reference) {}
+    generatePlane(reference) {}
+}
+
 class PhysicsUtils {
+    /**
+     * Returns the cumulative scale and scale axis from the node up to the root,
+     * which can be used to properly scale physics shapes
+     * @param {gltfNode} node
+     * @returns {{scale: vec3, scaleAxis: quat}}
+     */
     static calculateScaleAndAxis(node) {
         const scaleFactor = clone$2(node.scale);
         let scaleRotation = create$1();
@@ -65651,11 +66116,73 @@ class PhysicsUtils {
         return triangleIndices;
     }
 
+    /**
+     * Recursively propagates a parent world transform down the node hierarchy,
+     * computing and storing the scaled physics transform for each non-motion node.
+     * Stops traversal at nodes that carry motion data.
+     *
+     * @param {glTF} gltf - The glTF asset containing the full node array.
+     * @param {gltfNode} node - The current node to process.
+     * @param {Float32Array} parentTransform - The 4x4 world transform of the parent node.
+     */
+    static applyTransformRecursively(gltf, node, parentTransform) {
+        if (node.extensions?.KHR_physics_rigid_bodies?.motion !== undefined) {
+            return;
+        }
+        const localTransform = node.getLocalTransform();
+        const globalTransform = create$4();
+        multiply$2(globalTransform, parentTransform, localTransform);
+        node.scaledPhysicsTransform = globalTransform;
+        for (const childIndex of node.children) {
+            const childNode = gltf.nodes[childIndex];
+            this.applyTransformRecursively(gltf, childNode, globalTransform);
+        }
+    }
+
+    /**
+     * Checks if the joint space of a joint node has changed by traversing up the hierarchy to find any dirty transforms.
+     * @param {gltfNode} jointNode
+     * @returns {boolean}
+     */
+    static hasJointSpaceChanged(jointNode) {
+        if (jointNode.dirtyTransform === false) {
+            return false;
+        }
+        let currentNode = jointNode;
+        while (
+            currentNode !== undefined &&
+            currentNode.extensions?.KHR_physics_rigid_bodies?.motion === undefined
+        ) {
+            if (currentNode.isLocalTransformDirty()) {
+                return true;
+            }
+            currentNode = currentNode.parent;
+        }
+        return false;
+    }
+
+    /**
+     * Recursively traverses the node hierarchy of a motion to find all colliders and triggers, and applies the custom function to them.
+     * The custom function has the following signature:
+     * function(gltf, node, collider/trigger, motionNode, computedWorldTransform, offsetChanged, scaleChanged, isTrigger, ...args)
+     * offsetChanged and scaleChanged are cumulative values that indicate whether any node in the hierarchy has a dirty offset or scale,
+     * which can be used to determine if the physics shape needs to be updated.
+     * isTrigger indicates whether the current geometry is a trigger or a collider.
+     *
+     * @param {gltf} gltf
+     * @param {gltfNode} node
+     * @param {KHR_physics_rigid_bodies_collider | KHR_physics_rigid_bodies_trigger} collider
+     * @param {gltfNode} motionNode
+     * @param {boolean} offsetChanged
+     * @param {boolean} scaleChanged
+     * @param {Function} customFunction
+     * @param {Array} args
+     */
     static recurseCollider(
         gltf,
         node,
         collider,
-        actorNode,
+        motionNode,
         offsetChanged,
         scaleChanged,
         customFunction,
@@ -65683,7 +66210,7 @@ class PhysicsUtils {
                 gltf,
                 node,
                 node.extensions.KHR_physics_rigid_bodies.collider,
-                actorNode,
+                motionNode,
                 computedWorldTransform,
                 offsetChanged,
                 scaleChanged,
@@ -65701,7 +66228,7 @@ class PhysicsUtils {
                 gltf,
                 node,
                 node.extensions.KHR_physics_rigid_bodies.trigger,
-                actorNode,
+                motionNode,
                 computedWorldTransform,
                 offsetChanged,
                 scaleChanged,
@@ -65716,7 +66243,7 @@ class PhysicsUtils {
                 gltf,
                 childNode,
                 collider,
-                actorNode,
+                motionNode,
                 offsetChanged,
                 scaleChanged,
                 customFunction,
@@ -65726,501 +66253,11 @@ class PhysicsUtils {
     }
 }
 
-class PhysicsController {
-    constructor() {
-        this.engine = undefined;
-        this.staticActors = [];
-        this.kinematicActors = []; // This list is not updated if a dynamic actor is switched to kinematic at runtime
-        this.dynamicActors = [];
-        this.triggerNodes = [];
-        this.independentTriggerNodes = []; // Trigger nodes that are not not part of another actor
-        this.compoundTriggerNodes = new Map(); // Map of compound trigger node index to set of included colliders
-        this.triggerToCompound = new Map(); // Map of trigger node index to compound trigger node index
-        this.nodeToMotion = new Map();
-        this.jointNodes = [];
-        this.morphedColliders = [];
-        this.skinnedColliders = [];
-        this.hasRuntimeAnimationTargets = false;
-        this.morphWeights = new Map();
-
-        this.playing = false;
-        this.enabled = false;
-        this.simulationStepTime = 1 / 60;
-        this.timeAccumulator = 0;
-        this.pauseTime = undefined;
-        this.skipFrames = 2; // Skip the first two simulation frames to allow engine to initialize
-        this.loading = false;
-    }
-
-    calculateMorphColliders(gltf) {
-        for (const node of this.morphedColliders) {
-            const mesh = gltf.meshes[node.mesh];
-            let morphWeights = node.weights ?? mesh.weights;
-            if (morphWeights === undefined) {
-                continue;
-            }
-            morphWeights = morphWeights.slice();
-            const oldMorphWeights = this.morphWeights.get(node.gltfObjectIndex);
-
-            // Check if morph weights have changed
-            if (
-                oldMorphWeights !== undefined &&
-                oldMorphWeights.length === morphWeights.length &&
-                oldMorphWeights.every((value, index) => value === morphWeights[index])
-            ) {
-                continue;
-            }
-
-            this.morphWeights.set(node.gltfObjectIndex, morphWeights);
-
-            const vertices = new Float32Array();
-
-            for (const primitive of mesh.primitives) {
-                const positionAccessor = gltf.accessors[primitive.attributes.POSITION];
-                const positionData = positionAccessor.getNormalizedDeinterlacedView(gltf);
-                const morphData = [];
-                for (let i = 0; i < morphWeights.length; i++) {
-                    const morphAccessor = gltf.accessors[primitive.targets[i].POSITION];
-                    morphData.push(morphAccessor.getNormalizedDeinterlacedView(gltf));
-                }
-
-                // Calculate morphed vertex positions on CPU
-                for (let i = 0; i < positionData.length; i++) {
-                    let position = positionData[i];
-                    for (let j = 0; j < morphWeights.length; j++) {
-                        const morphValue = morphData[j];
-                        position += morphValue[i] * morphWeights[j];
-                    }
-                    vertices.push(position);
-                }
-            }
-
-            this.engine.updateMorphedColliderGeometry(node, vertices);
-        }
-    }
-
-    async initializeEngine(engine) {
-        if (engine === "NvidiaPhysX") {
-            this.engine = new NvidiaPhysicsInterface();
-            await this.engine.initializeEngine();
-        }
-    }
-
-    loadScene(state, sceneIndex) {
-        this.resetScene(state.gltf);
-        if (
-            state.gltf.extensionsUsed === undefined ||
-            state.gltf.extensionsUsed.includes("KHR_physics_rigid_bodies") === false
-        ) {
-            this.enabled = false;
-            return;
-        }
-        const scene = state.gltf.scenes[sceneIndex];
-        if (!scene.nodes) {
-            this.enabled = false;
-            return;
-        }
-        this.skipFrames = 2;
-        this.loading = true;
-        getMorphedNodeIndices(state.gltf);
-        const result = getAnimatedIndices(state.gltf, "/nodes/", [
-            "translation",
-            "rotation",
-            "scale"
-        ]);
-        let dynamicMeshColliderCount = 0;
-        let staticMeshColliderCount = 0;
-        this.hasRuntimeAnimationTargets = result.runtimeChanges;
-        const gatherRigidBodies = (nodeIndex, currentRigidBody) => {
-            let parentRigidBody = currentRigidBody;
-            const node = state.gltf.nodes[nodeIndex];
-            const rigidBody = node.extensions?.KHR_physics_rigid_bodies;
-            if (rigidBody) {
-                if (rigidBody.motion) {
-                    if (rigidBody.motion.isKinematic) {
-                        this.kinematicActors.push(node);
-                    } else {
-                        this.dynamicActors.push(node);
-                    }
-                    parentRigidBody = node;
-                } else if (currentRigidBody === undefined && rigidBody.collider !== undefined) {
-                    this.staticActors.push(node);
-                }
-                if (rigidBody.collider?.geometry?.mesh !== undefined) {
-                    if (!rigidBody.collider.geometry.convexHull) {
-                        if (
-                            parentRigidBody === undefined ||
-                            parentRigidBody.extensions.KHR_physics_rigid_bodies.motion.isKinematic
-                        ) {
-                            staticMeshColliderCount++;
-                        } else {
-                            if (
-                                currentRigidBody?.gltfObjectIndex !==
-                                parentRigidBody.gltfObjectIndex
-                            ) {
-                                dynamicMeshColliderCount++;
-                            }
-                        }
-                    }
-                }
-                if (rigidBody.joint !== undefined) {
-                    this.jointNodes.push(node);
-                }
-                if (rigidBody.trigger !== undefined) {
-                    if (rigidBody.trigger.nodes !== undefined) {
-                        this.compoundTriggerNodes.set(node.gltfObjectIndex, {
-                            previous: new Map(), //ref counting
-                            added: new Set(),
-                            removed: new Set()
-                        });
-                        for (const triggerNodeIndex of rigidBody.trigger.nodes) {
-                            if (this.triggerToCompound.has(triggerNodeIndex)) {
-                                this.triggerToCompound
-                                    .get(triggerNodeIndex)
-                                    .add(node.gltfObjectIndex);
-                            } else {
-                                this.triggerToCompound.set(
-                                    triggerNodeIndex,
-                                    new Set([node.gltfObjectIndex])
-                                );
-                            }
-                        }
-                    } else {
-                        this.triggerNodes.push(node);
-                        if (parentRigidBody === undefined) {
-                            this.independentTriggerNodes.push(node);
-                        }
-                    }
-                }
-            }
-
-            if (parentRigidBody !== undefined) {
-                this.nodeToMotion.set(node.gltfObjectIndex, parentRigidBody.gltfObjectIndex);
-            }
-            for (const childIndex of node.children) {
-                gatherRigidBodies(childIndex, parentRigidBody);
-            }
-        };
-
-        for (const nodeIndex of scene.nodes) {
-            gatherRigidBodies(nodeIndex, undefined);
-        }
-        if (
-            !this.engine ||
-            (this.staticActors.length === 0 &&
-                this.kinematicActors.length === 0 &&
-                this.dynamicActors.length === 0 &&
-                this.triggerNodes.length === 0)
-        ) {
-            this.enabled = false;
-            return;
-        }
-        this.enabled = true;
-        this.engine.initializeSimulation(
-            state,
-            this.staticActors,
-            this.kinematicActors,
-            this.dynamicActors,
-            this.jointNodes,
-            this.triggerNodes,
-            this.independentTriggerNodes,
-            this.nodeToMotion,
-            this.hasRuntimeAnimationTargets,
-            staticMeshColliderCount,
-            dynamicMeshColliderCount
-        );
-        this.loading = false;
-        state.gltf.resetAllDirtyFlags();
-        this.simulateStep(state, 0); // Simulate an initial step to ensure everything is up to date before rendering
-    }
-
-    resetScene(gltf) {
-        this.staticActors = [];
-        this.kinematicActors = [];
-        this.dynamicActors = [];
-        this.jointNodes = [];
-        this.triggerNodes = [];
-        this.independentTriggerNodes = [];
-        this.nodeToMotion.clear();
-        this.compoundTriggerNodes.clear();
-        this.triggerToCompound.clear();
-        this.morphedColliders = [];
-        this.skinnedColliders = [];
-        this.hasRuntimeAnimationTargets = false;
-        this.morphWeights.clear();
-        this.timeAccumulator = 0;
-        for (const node of gltf?.nodes ?? []) {
-            node.physicsTransform = undefined;
-            node.scaledPhysicsTransform = undefined;
-        }
-        if (this.engine) {
-            this.engine.resetSimulation();
-        }
-    }
-
-    stopSimulation() {
-        this.playing = false;
-        this.enabled = false;
-        if (this.engine) {
-            this.engine.stopSimulation();
-        }
-    }
-
-    resumeSimulation() {
-        if (this.engine) {
-            this.enabled = true;
-            this.playing = true;
-        }
-    }
-
-    pauseSimulation() {
-        this.pauseTime = performance.now();
-        this.enabled = true;
-        this.playing = false;
-    }
-
-    simulateStep(state, deltaTime) {
-        if (state === undefined) {
-            return;
-        }
-        if (this.loading) {
-            return;
-        }
-        if (this.skipFrames > 0) {
-            this.skipFrames -= 1;
-            return;
-        }
-        this.applyAnimations(state);
-        this.timeAccumulator += deltaTime;
-        if (this.pauseTime !== undefined) {
-            this.timeAccumulator = this.simulationStepTime;
-            if (this.playing) {
-                this.pauseTime = undefined;
-            }
-        }
-        if (
-            this.enabled &&
-            this.engine &&
-            state &&
-            this.timeAccumulator >= this.simulationStepTime * 0.9
-        ) {
-            this.engine.simulateStep(state, this.timeAccumulator);
-            this.timeAccumulator = 0;
-        }
-    }
-
-    updateColliders(state, node, isTrigger = false) {
-        this.engine.updateActorTransform(node);
-
-        let collider = undefined;
-        if (isTrigger) {
-            collider = node.extensions?.KHR_physics_rigid_bodies?.trigger;
-        } else {
-            collider = node.extensions?.KHR_physics_rigid_bodies?.collider;
-        }
-
-        if (collider?.geometry?.shape !== undefined || collider?.geometry?.mesh !== undefined) {
-            this.engine.updateCollider(
-                state.gltf,
-                node,
-                collider,
-                node,
-                node.worldTransform,
-                false,
-                node.dirtyScale,
-                isTrigger
-            );
-        }
-
-        if (
-            !isTrigger &&
-            (node.extensions?.KHR_physics_rigid_bodies?.trigger?.mesh !== undefined ||
-                node.extensions?.KHR_physics_rigid_bodies?.trigger?.shape !== undefined)
-        ) {
-            this.engine.updateCollider(
-                state.gltf,
-                node,
-                node.extensions?.KHR_physics_rigid_bodies?.trigger,
-                node,
-                node.worldTransform,
-                false,
-                node.dirtyScale,
-                true
-            );
-        }
-        if (!isTrigger) {
-            for (const childIndex of node.children) {
-                const childNode = state.gltf.nodes[childIndex];
-                if (isTrigger) {
-                    collider = childNode.extensions?.KHR_physics_rigid_bodies?.trigger;
-                } else {
-                    collider = childNode.extensions?.KHR_physics_rigid_bodies?.collider;
-                }
-                PhysicsUtils.recurseCollider(
-                    state.gltf,
-                    childNode,
-                    collider,
-                    node,
-                    node.dirtyScale,
-                    node.dirtyScale,
-                    this.engine.updateCollider.bind(this.engine)
-                );
-            }
-        }
-    }
-
-    applyAnimations(state) {
-        this.engine.updatePhysicMaterials(state.gltf);
-
-        for (const actorNode of this.staticActors) {
-            this.updateColliders(state, actorNode);
-        }
-
-        for (const actorNode of this.kinematicActors) {
-            this.engine.updateMotion(actorNode);
-            this.updateColliders(state, actorNode);
-        }
-
-        for (const actorNode of this.dynamicActors) {
-            this.engine.updateMotion(actorNode);
-            this.updateColliders(state, actorNode);
-        }
-
-        for (const node of this.independentTriggerNodes) {
-            this.updateColliders(state, node, true);
-        }
-
-        for (const jointNode of this.jointNodes) {
-            this.engine.updatePhysicsJoint(state, jointNode); //TODO
-        }
-    }
-
-    enableDebugColliders(enable) {
-        this.engine.enableDebugColliders(enable);
-    }
-
-    enableDebugJoints(enable) {
-        this.engine.enableDebugJoints(enable);
-    }
-
-    getDebugLineData() {
-        if (this.engine) {
-            return this.engine.getDebugLineData();
-        }
-        return [];
-    }
-
-    applyImpulse(nodeIndex, linearImpulse, angularImpulse) {
-        this.engine.applyImpulse(nodeIndex, linearImpulse, angularImpulse);
-    }
-
-    applyPointImpulse(nodeIndex, impulse, position) {
-        this.engine.applyPointImpulse(nodeIndex, impulse, position);
-    }
-
-    rayCast(rayStart, rayEnd) {
-        return this.engine.rayCast(rayStart, rayEnd);
-    }
-}
-
-class PhysicsInterface {
-    constructor() {
-        this.simpleShapes = [];
-    }
-
-    async initializeEngine() {}
-    initializeSimulation(
-        state,
-        staticActors,
-        kinematicActors,
-        dynamicActors,
-        jointNodes,
-        triggerNodes,
-        independentTriggerNodes,
-        nodeToMotion,
-        hasRuntimeAnimationTargets,
-        staticMeshColliderCount,
-        dynamicMeshColliderCount
-    ) {}
-    pauseSimulation() {}
-    resumeSimulation() {}
-    resetSimulation() {}
-    stopSimulation() {}
-    enableDebugColliders(enable) {}
-    enableDebugJoints(enable) {}
-
-    applyImpulse(nodeIndex, linearImpulse, angularImpulse) {}
-    applyPointImpulse(nodeIndex, impulse, position) {}
-    rayCast(rayStart, rayEnd) {}
-
-    generateBox(x, y, z, scale, scaleAxis, reference) {}
-    generateCapsule(height, radiusTop, radiusBottom, scale, scaleAxis, reference) {}
-    generateCylinder(height, radiusTop, radiusBottom, scale, scaleAxis, reference) {}
-    generateSphere(radius, scale, scaleAxis, reference) {}
-    generatePlane(width, height, doubleSided, scale, scaleAxis, reference) {}
-    generateSimpleShape(
-        shape,
-        scale = fromValues$3(1, 1, 1),
-        scaleAxis = create$1(),
-        reference = undefined
-    ) {
-        switch (shape.type) {
-            case "box":
-                return this.generateBox(
-                    shape.box.size[0],
-                    shape.box.size[1],
-                    shape.box.size[2],
-                    scale,
-                    scaleAxis,
-                    reference
-                );
-            case "capsule":
-                return this.generateCapsule(
-                    shape.capsule.height,
-                    shape.capsule.radiusTop,
-                    shape.capsule.radiusBottom,
-                    scale,
-                    scaleAxis,
-                    reference
-                );
-            case "cylinder":
-                return this.generateCylinder(
-                    shape.cylinder.height,
-                    shape.cylinder.radiusTop,
-                    shape.cylinder.radiusBottom,
-                    scale,
-                    scaleAxis,
-                    reference
-                );
-            case "sphere":
-                return this.generateSphere(shape.sphere.radius, scale, scaleAxis, reference);
-            case "plane":
-                return this.generatePlane(
-                    shape.plane.width,
-                    shape.plane.height,
-                    shape.plane.doubleSided,
-                    scale,
-                    scaleAxis,
-                    reference
-                );
-        }
-    }
-
-    generateSimpleShapes(gltf) {
-        this.simpleShapes = [];
-        if (gltf?.extensions?.KHR_implicit_shapes === undefined) {
-            return;
-        }
-        for (const shape of gltf.extensions.KHR_implicit_shapes.shapes) {
-            this.simpleShapes.push(this.generateSimpleShape(shape));
-        }
-    }
-
-    updateActorTransform(node) {}
-    updatePhysicsJoint(state, jointNode) {}
-}
-
 class NvidiaPhysicsInterface extends PhysicsInterface {
+    /**
+     * Creates a new NvidiaPhysicsInterface instance, initializing all internal
+     * state maps, debug flags, and placeholders for the PhysX engine objects.
+     */
     constructor() {
         super();
         this.PhysX = undefined;
@@ -66234,7 +66271,7 @@ class NvidiaPhysicsInterface extends PhysicsInterface {
         this.scene = undefined;
         this.nodeToActor = new Map();
         this.nodeToMotion = new Map();
-        this.nodeToJoint = new Map();
+        this.nodeToSimplifiedJoints = new Map();
         this.shapeToNode = new Map();
         this.filterData = [];
         this.physXFilterData = [];
@@ -66252,6 +66289,15 @@ class NvidiaPhysicsInterface extends PhysicsInterface {
         this.MAX_FLOAT = 3.4028234663852885981170418348452e38;
     }
 
+    //region General
+
+    /**
+     * Asynchronously loads and initializes the PhysX WebAssembly module, creating the
+     * PhysX foundation, tolerances scale, physics object, and a default physics material.
+     *
+     * @async
+     * @returns {Promise<object>} The initialized PhysX module instance.
+     */
     async initializeEngine() {
         this.PhysX = await PhysX({ locateFile: () => "./libs/physx-js-webidl.wasm" });
         const version = this.PhysX.PHYSICS_VERSION;
@@ -66277,22 +66323,679 @@ class NvidiaPhysicsInterface extends PhysicsInterface {
         return this.PhysX;
     }
 
-    updatePhysicMaterials(gltf) {
-        const materials = gltf.extensions?.KHR_physics_rigid_bodies?.physicsMaterials;
-        if (materials === undefined) {
+    /**
+     * Applies the current debug visualization flags to the active PhysX scene.
+     * Enables or disables rendering of collision shapes, joint frames, joint limits,
+     * actor axes, and world axes based on {@link debugColliders} and {@link debugJoints}.
+     * Does nothing if there is no active scene or if the state has not changed.
+     */
+    changeDebugVisualization() {
+        if (!this.scene || !this.debugStateChanged) {
             return;
         }
-        for (let i = 0; i < materials.length; i++) {
-            const material = materials[i];
-            if (material.isDirty()) {
-                const physXMaterial = this.physXMaterials[i];
-                physXMaterial.setStaticFriction(material.staticFriction);
-                physXMaterial.setDynamicFriction(material.dynamicFriction);
-                physXMaterial.setRestitution(material.restitution);
+        this.debugStateChanged = false;
+        this.scene.setVisualizationParameter(
+            this.PhysX.eSCALE,
+            this.debugColliders || this.debugJoints ? 1 : 0
+        );
+        this.scene.setVisualizationParameter(
+            this.PhysX.eWORLD_AXES,
+            this.debugColliders || this.debugJoints ? 1 : 0
+        );
+        this.scene.setVisualizationParameter(
+            this.PhysX.eACTOR_AXES,
+            this.debugColliders || this.debugJoints ? 1 : 0
+        );
+        this.scene.setVisualizationParameter(
+            this.PhysX.eCOLLISION_SHAPES,
+            this.debugColliders ? 1 : 0
+        );
+        this.scene.setVisualizationParameter(
+            this.PhysX.eJOINT_LOCAL_FRAMES,
+            this.debugJoints ? 1 : 0
+        );
+        this.scene.setVisualizationParameter(this.PhysX.eJOINT_LIMITS, this.debugJoints ? 1 : 0);
+        for (const joints of this.nodeToSimplifiedJoints.values()) {
+            for (const joint of joints) {
+                joint.setConstraintFlag(
+                    this.PhysX.PxConstraintFlagEnum.eVISUALIZATION,
+                    this.debugJoints
+                );
+            }
+        }
+        for (const shapePtr of this.shapeToNode.keys()) {
+            const shape = this.PhysX.wrapPointer(shapePtr, this.PhysX.PxShape);
+            shape.setFlag(this.PhysX.PxShapeFlagEnum.eVISUALIZATION, this.debugColliders);
+        }
+    }
+
+    /**
+     * Sets up the PhysX scene and populates it with actors and joints derived from the
+     * provided glTF node lists. Creates collision filters, physics materials, and the
+     * PhysX scene descriptor before adding static, kinematic, dynamic, trigger, and
+     * joint actors.
+     *
+     * @param {object} state - The current viewer state, containing the glTF asset and controllers.
+     * @param {Array<object>} staticActors - Nodes to be created as static rigid body actors.
+     * @param {Array<object>} kinematicActors - Nodes to be created as kinematic rigid body actors.
+     * @param {Array<object>} dynamicActors - Nodes to be created as dynamic rigid body actors.
+     * @param {Array<object>} jointNodes - Nodes carrying joint definitions.
+     * @param {Array<object>} triggerNodes - Nodes designated as trigger volumes.
+     * @param {Array<object>} independentTriggerNodes - Trigger nodes not already covered by another actor.
+     * @param {Map<number, object>} nodeToMotion - Mapping from node index to motion data.
+     * @param {boolean} _hasRuntimeAnimationTargets - Unused; reserved for future use.
+     * @param {number} _staticMeshColliderCount - Unused; reserved for future use.
+     * @param {number} _dynamicMeshColliderCount - Unused; reserved for future use.
+     */
+    initializeSimulation(
+        state,
+        staticActors,
+        kinematicActors,
+        dynamicActors,
+        jointNodes,
+        triggerNodes,
+        independentTriggerNodes,
+        nodeToMotion,
+        _hasRuntimeAnimationTargets,
+        _staticMeshColliderCount,
+        _dynamicMeshColliderCount
+    ) {
+        if (!this.PhysX) {
+            return;
+        }
+        this.nodeToMotion = nodeToMotion;
+        this.generateSimpleShapes(state.gltf);
+        this.computeFilterData(state.gltf);
+        for (let i = 0; i < this.filterData.length; i++) {
+            const physXFilterData = this.createPhysXCollisionFilter(i);
+            this.physXFilterData.push(physXFilterData);
+        }
+
+        const materials = state.gltf.extensions?.KHR_physics_rigid_bodies?.physicsMaterials;
+        if (materials !== undefined) {
+            for (const gltfMaterial of materials) {
+                const physxMaterial = this.createPhysXMaterial(gltfMaterial);
+                this.physXMaterials.push(physxMaterial);
+            }
+        }
+
+        const tmpVec = new this.PhysX.PxVec3(0, -9.81, 0);
+        const sceneDesc = new this.PhysX.PxSceneDesc(this.tolerances);
+        sceneDesc.set_gravity(tmpVec);
+        sceneDesc.set_cpuDispatcher(this.PhysX.DefaultCpuDispatcherCreate(0));
+        sceneDesc.set_filterShader(this.PhysX.DefaultFilterShader());
+        const sceneFlags = new this.PhysX.PxSceneFlags(
+            this.PhysX.PxSceneFlagEnum.eENABLE_CCD | this.PhysX.PxSceneFlagEnum.eENABLE_PCM
+        );
+        sceneDesc.flags = sceneFlags;
+
+        this.scene = this.physics.createScene(sceneDesc);
+        let triggerCallback = undefined;
+
+        if (triggerNodes.length > 0) {
+            console.log("Enabling trigger report callback");
+            triggerCallback = new this.PhysX.PxSimulationEventCallbackImpl();
+            triggerCallback.onTrigger = (pairs, count) => {
+                for (const compoundTrigger of state.physicsController.compoundTriggerNodes.values()) {
+                    compoundTrigger.added.clear();
+                    compoundTrigger.removed.clear();
+                }
+                console.log("Trigger callback called with", count, "pairs");
+                for (let i = 0; i < count; i++) {
+                    const pair = this.PhysX.NativeArrayHelpers.prototype.getTriggerPairAt(pairs, i);
+                    const triggerShape = pair.triggerShape;
+                    const otherShape = pair.otherShape;
+                    const triggerNodeIndex = this.shapeToNode.get(triggerShape.ptr);
+                    const otherNodeIndex = this.shapeToNode.get(otherShape.ptr);
+                    if (pair.status === this.PhysX.PxPairFlagEnum.eNOTIFY_TOUCH_FOUND) {
+                        state.graphController.rigidBodyTriggerEntered(
+                            triggerNodeIndex,
+                            otherNodeIndex,
+                            nodeToMotion.get(otherNodeIndex)
+                        );
+                    } else if (pair.status === this.PhysX.PxPairFlagEnum.eNOTIFY_TOUCH_LOST) {
+                        state.graphController.rigidBodyTriggerExited(
+                            triggerNodeIndex,
+                            otherNodeIndex,
+                            nodeToMotion.get(otherNodeIndex)
+                        );
+                    }
+                    const compoundTriggers =
+                        state.physicsController.triggerToCompound.get(triggerNodeIndex);
+                    if (compoundTriggers !== undefined) {
+                        for (const compoundTriggerIndex of compoundTriggers) {
+                            const compoundTriggerInfo =
+                                state.physicsController.compoundTriggerNodes.get(
+                                    compoundTriggerIndex
+                                );
+                            if (pair.status === this.PhysX.PxPairFlagEnum.eNOTIFY_TOUCH_FOUND) {
+                                compoundTriggerInfo.added.add(otherNodeIndex);
+                            } else if (
+                                pair.status === this.PhysX.PxPairFlagEnum.eNOTIFY_TOUCH_LOST
+                            ) {
+                                compoundTriggerInfo.removed.add(otherNodeIndex);
+                            }
+                        }
+                    }
+                }
+
+                for (const [
+                    idx,
+                    compoundTrigger
+                ] of state.physicsController.compoundTriggerNodes.entries()) {
+                    for (const addedNodeIndex of compoundTrigger.added) {
+                        if (!compoundTrigger.previous.has(addedNodeIndex)) {
+                            compoundTrigger.previous.set(addedNodeIndex, 1);
+                            state.graphController.rigidBodyTriggerEntered(
+                                idx,
+                                addedNodeIndex,
+                                nodeToMotion.get(addedNodeIndex)
+                            );
+                        } else {
+                            const currentCount = compoundTrigger.previous.get(addedNodeIndex);
+                            compoundTrigger.previous.set(addedNodeIndex, currentCount + 1);
+                        }
+                    }
+                    for (const removedNodeIndex of compoundTrigger.removed) {
+                        const currentCount = compoundTrigger.previous.get(removedNodeIndex);
+                        if (currentCount > 1) {
+                            compoundTrigger.previous.set(removedNodeIndex, currentCount - 1);
+                        } else {
+                            compoundTrigger.previous.delete(removedNodeIndex);
+                            state.graphController.rigidBodyTriggerExited(
+                                idx,
+                                removedNodeIndex,
+                                nodeToMotion.get(removedNodeIndex)
+                            );
+                        }
+                    }
+                }
+            };
+
+            // All callbacks need to be defined
+            triggerCallback.onConstraintBreak = (_constraints, _count) => {};
+            triggerCallback.onWake = (_actors, _count) => {};
+            triggerCallback.onSleep = (_actors, _count) => {};
+            triggerCallback.onContact = (_pairHeaders, _pairs, _count) => {};
+            sceneDesc.simulationEventCallback = triggerCallback;
+        }
+
+        this.scene = this.physics.createScene(sceneDesc);
+
+        console.log("Created scene");
+        const shapeFlags = new this.PhysX.PxShapeFlags(
+            this.PhysX.PxShapeFlagEnum.eSCENE_QUERY_SHAPE |
+                this.PhysX.PxShapeFlagEnum.eSIMULATION_SHAPE
+        );
+
+        const triggerFlags = new this.PhysX.PxShapeFlags(this.PhysX.PxShapeFlagEnum.eTRIGGER_SHAPE);
+
+        for (const node of staticActors) {
+            this.createActor(state.gltf, node, shapeFlags, triggerFlags, "static");
+        }
+        for (const node of kinematicActors) {
+            this.createActor(state.gltf, node, shapeFlags, triggerFlags, "kinematic");
+        }
+        for (const node of dynamicActors) {
+            this.createActor(state.gltf, node, shapeFlags, triggerFlags, "dynamic", true);
+        }
+        for (const node of independentTriggerNodes) {
+            if (
+                this.nodeToActor.has(node.gltfObjectIndex) ||
+                this.nodeToMotion.has(node.gltfObjectIndex)
+            ) {
+                continue;
+            }
+            this.createActor(state.gltf, node, shapeFlags, triggerFlags, "trigger", true);
+        }
+        for (const node of jointNodes) {
+            this.createJoint(state.gltf, node);
+        }
+
+        this.PhysX.destroy(tmpVec);
+        this.PhysX.destroy(sceneDesc);
+        this.PhysX.destroy(shapeFlags);
+        this.PhysX.destroy(triggerFlags);
+
+        this.debugStateChanged = true;
+        this.changeDebugVisualization();
+    }
+
+    /**
+     * Enables or disables debug visualization of collision shapes.
+     *
+     * @param {boolean} enable - `true` to show collision shape debug rendering; `false` to hide it.
+     */
+    enableDebugColliders(enable) {
+        this.debugColliders = enable;
+        this.debugStateChanged = true;
+    }
+
+    /**
+     * Enables or disables debug visualization of physics joints.
+     *
+     * @param {boolean} enable - `true` to show joint debug rendering; `false` to hide it.
+     */
+    enableDebugJoints(enable) {
+        this.debugJoints = enable;
+        this.debugStateChanged = true;
+    }
+
+    /**
+     * Executes a single fixed-duration physics sub-step. Before stepping, applies
+     * kinematic targets for nodes with velocity overrides and non-unit gravity factors.
+     * After stepping, calls `scene.fetchResults` to commit the simulation results.
+     *
+     * @param {object} state - The current viewer state.
+     * @param {number} deltaTime - The duration of the sub-step in seconds.
+     */
+    subStepSimulation(state, deltaTime) {
+        // eslint-disable-next-line no-unused-vars
+        for (const [nodeIndex, { actor, pxShapeMap }] of this.nodeToActor.entries()) {
+            const node = state.gltf.nodes[nodeIndex];
+            if (node.dirtyTransform) {
+                // Node transform is currently animated
+                continue;
+            }
+            const motion = node.extensions?.KHR_physics_rigid_bodies?.motion;
+            if (motion && motion.isKinematic) {
+                const linearVelocity = motion.computedLinearVelocity ?? motion.linearVelocity;
+                const angularVelocity = motion.computedAngularVelocity ?? motion.angularVelocity;
+                if (linearVelocity !== undefined || angularVelocity !== undefined) {
+                    const worldTransform = node.physicsTransform ?? node.worldTransform;
+                    const targetPosition = create$3();
+                    targetPosition[0] = worldTransform[12];
+                    targetPosition[1] = worldTransform[13];
+                    targetPosition[2] = worldTransform[14];
+                    let nodeRotation = create$1();
+                    if (node.physicsTransform !== undefined) {
+                        getRotation(nodeRotation, worldTransform);
+                    } else {
+                        nodeRotation = clone(node.worldQuaternion);
+                    }
+                    if (linearVelocity !== undefined) {
+                        const acceleration = create$3();
+                        scale(acceleration, linearVelocity, deltaTime);
+                        transformQuat(acceleration, acceleration, nodeRotation);
+                        targetPosition[0] += acceleration[0];
+                        targetPosition[1] += acceleration[1];
+                        targetPosition[2] += acceleration[2];
+                    }
+                    if (angularVelocity !== undefined) {
+                        // Transform angular velocity from local space to world space
+                        // by rotating the velocity axes by the current node rotation.
+                        const localX = fromValues$3(1, 0, 0);
+                        const localY = fromValues$3(0, 1, 0);
+                        const localZ = fromValues$3(0, 0, 1);
+                        transformQuat(localX, localX, nodeRotation);
+                        transformQuat(localY, localY, nodeRotation);
+                        transformQuat(localZ, localZ, nodeRotation);
+
+                        const angularAcceleration = create$1();
+                        const qX = create$1();
+                        const qY = create$1();
+                        const qZ = create$1();
+                        setAxisAngle(qX, localX, angularVelocity[0] * deltaTime);
+                        setAxisAngle(qY, localY, angularVelocity[1] * deltaTime);
+                        setAxisAngle(qZ, localZ, angularVelocity[2] * deltaTime);
+                        multiply(angularAcceleration, qX, angularAcceleration);
+                        multiply(angularAcceleration, qY, angularAcceleration);
+                        multiply(angularAcceleration, qZ, angularAcceleration);
+
+                        multiply(nodeRotation, angularAcceleration, nodeRotation);
+                    }
+                    const pos = new this.PhysX.PxVec3(...targetPosition);
+                    const rot = new this.PhysX.PxQuat(...nodeRotation);
+                    const transform = new this.PhysX.PxTransform(pos, rot);
+
+                    actor.setKinematicTarget(transform);
+                    this.PhysX.destroy(pos);
+                    this.PhysX.destroy(rot);
+                    this.PhysX.destroy(transform);
+
+                    const physicsTransform = create$4();
+                    fromRotationTranslation(physicsTransform, nodeRotation, targetPosition);
+
+                    const scaledPhysicsTransform = create$4();
+                    scale$1(scaledPhysicsTransform, physicsTransform, node.worldScale);
+
+                    node.physicsTransform = physicsTransform;
+                    node.scaledPhysicsTransform = scaledPhysicsTransform;
+                }
+            } else if (motion && motion.gravityFactor !== 1.0) {
+                const force = new this.PhysX.PxVec3(0, -9.81 * motion.gravityFactor, 0);
+                actor.addForce(force, this.PhysX.PxForceModeEnum.eACCELERATION);
+                this.PhysX.destroy(force);
+            }
+        }
+
+        this.scene.simulate(deltaTime);
+        if (!this.scene.fetchResults(true)) {
+            console.warn("PhysX: fetchResults failed");
+        }
+    }
+
+    /**
+     * Advances the physics simulation by one frame. Checks for a pending reset,
+     * updates debug visualization, runs {@link subStepSimulation}, then reads back
+     * actor poses and propagates them to the corresponding glTF nodes and their children.
+     *
+     * @param {object} state - The current viewer state.
+     * @param {number} deltaTime - The elapsed time since the last frame, in seconds.
+     */
+    simulateStep(state, deltaTime) {
+        if (!this.scene) {
+            this.reset = false;
+            return;
+        }
+        if (this.reset === true) {
+            this._resetSimulation();
+            this.reset = false;
+            return;
+        }
+
+        this.changeDebugVisualization();
+
+        this.subStepSimulation(state, deltaTime);
+
+        // eslint-disable-next-line no-unused-vars
+        for (const [nodeIndex, { actor, pxShapeMap }] of this.nodeToActor.entries()) {
+            const node = state.gltf.nodes[nodeIndex];
+            const motion = node.extensions?.KHR_physics_rigid_bodies?.motion;
+            if (motion && !motion.isKinematic && !node.dirtyTransform) {
+                const transform = actor.getGlobalPose();
+                const position = fromValues$3(transform.p.x, transform.p.y, transform.p.z);
+                const rotation = fromValues$1(
+                    transform.q.x,
+                    transform.q.y,
+                    transform.q.z,
+                    transform.q.w
+                );
+
+                const physicsTransform = create$4();
+                fromRotationTranslation(physicsTransform, rotation, position);
+
+                node.physicsTransform = physicsTransform;
+
+                const rotationBetween = create$1();
+
+                let parentNode = node;
+                while (parentNode.parentNode !== undefined) {
+                    parentNode = parentNode.parentNode;
+                }
+
+                invert(rotationBetween, node.worldQuaternion);
+                multiply(rotationBetween, rotation, rotationBetween);
+
+                const rotMat = create$5();
+                fromQuat$1(rotMat, rotationBetween);
+
+                const scaleRot = create$5();
+                fromMat4(scaleRot, node.worldTransform);
+
+                multiply$3(scaleRot, rotMat, scaleRot);
+
+                const scaledPhysicsTransform = create$4();
+                scaledPhysicsTransform[0] = scaleRot[0];
+                scaledPhysicsTransform[1] = scaleRot[1];
+                scaledPhysicsTransform[2] = scaleRot[2];
+                scaledPhysicsTransform[4] = scaleRot[3];
+                scaledPhysicsTransform[5] = scaleRot[4];
+                scaledPhysicsTransform[6] = scaleRot[5];
+                scaledPhysicsTransform[8] = scaleRot[6];
+                scaledPhysicsTransform[9] = scaleRot[7];
+                scaledPhysicsTransform[10] = scaleRot[8];
+                scaledPhysicsTransform[12] = position[0];
+                scaledPhysicsTransform[13] = position[1];
+                scaledPhysicsTransform[14] = position[2];
+
+                node.scaledPhysicsTransform = scaledPhysicsTransform;
+                for (const childIndex of node.children) {
+                    const childNode = state.gltf.nodes[childIndex];
+                    PhysicsUtils.applyTransformRecursively(
+                        state.gltf,
+                        childNode,
+                        node.scaledPhysicsTransform
+                    );
+                }
             }
         }
     }
 
+    /**
+     * Schedules a simulation reset on the next call to {@link simulateStep}.
+     * Triggers {@link _resetSimulation} immediately by calling `simulateStep` with a
+     * zero delta time.
+     */
+    resetSimulation() {
+        this.reset = true;
+        this.simulateStep({}, 0);
+    }
+
+    /**
+     * Immediately tears down the current PhysX scene, releasing all actors, shapes,
+     * joints, meshes, materials, and filter data. Clears all internal caches so
+     * the simulation can be re-initialized from scratch.
+     */
+    _resetSimulation() {
+        const scenePointer = this.scene;
+        this.scene = undefined;
+        this.filterData = [];
+        for (const physXFilterData of this.physXFilterData) {
+            this.PhysX.destroy(physXFilterData);
+        }
+        this.physXFilterData = [];
+
+        for (const material of this.physXMaterials) {
+            material.release();
+        }
+        this.physXMaterials = [];
+
+        for (const shape of this.simpleShapes) {
+            shape.destroy?.();
+        }
+        this.simpleShapes = [];
+
+        for (const convexMesh of this.convexMeshes) {
+            convexMesh.release();
+        }
+        this.convexMeshes = [];
+
+        for (const triangleMesh of this.triangleMeshes) {
+            triangleMesh.release();
+        }
+        this.triangleMeshes = [];
+
+        for (const joints of this.nodeToSimplifiedJoints.values()) {
+            for (const joint of joints) {
+                joint.release();
+            }
+        }
+        this.nodeToSimplifiedJoints.clear();
+
+        for (const actor of this.nodeToActor.values()) {
+            actor.actor.release();
+        }
+
+        this.nodeToActor.clear();
+
+        if (scenePointer) {
+            scenePointer.release();
+        }
+
+        this.shapeToNode.clear();
+    }
+
+    /**
+     * Retrieves the current debug render-buffer line data from the PhysX scene.
+     * Returns an interleaved flat array of `[x0, y0, z0, x1, y1, z1, ...]` for
+     * each debug line segment.
+     *
+     * @returns {number[]} A flat array of line endpoint coordinates, or an empty
+     *   array if there is no active scene or debug visualization is disabled.
+     */
+    getDebugLineData() {
+        if (!this.scene || (this.debugColliders === false && this.debugJoints === false)) {
+            return [];
+        }
+        const result = [];
+        const rb = this.scene.getRenderBuffer();
+        for (let i = 0; i < rb.getNbLines(); i++) {
+            const line = this.PhysX.NativeArrayHelpers.prototype.getDebugLineAt(rb.getLines(), i);
+
+            result.push(line.pos0.x);
+            result.push(line.pos0.y);
+            result.push(line.pos0.z);
+            result.push(line.pos1.x);
+            result.push(line.pos1.y);
+            result.push(line.pos1.z);
+        }
+        return result;
+    }
+
+    /**
+     * Applies a linear and an angular impulse to the dynamic actor associated with
+     * the given node index.
+     *
+     * @param {number} nodeIndex - Index of the target glTF node.
+     * @param {number[]} linearImpulse - World-space linear impulse as `[x, y, z]`.
+     * @param {number[]} angularImpulse - World-space angular impulse as `[x, y, z]`.
+     */
+    applyImpulse(nodeIndex, linearImpulse, angularImpulse) {
+        if (!this.scene) {
+            return;
+        }
+        const motionNode = this.nodeToMotion.get(nodeIndex);
+        if (!motionNode) {
+            return;
+        }
+        const actorEntry = this.nodeToActor.get(nodeIndex);
+        if (!actorEntry) {
+            return;
+        }
+        const actor = actorEntry.actor;
+
+        const linImpulse = new this.PhysX.PxVec3(...linearImpulse);
+        const angImpulse = new this.PhysX.PxVec3(...angularImpulse);
+        actor.addForce(linImpulse, this.PhysX.PxForceModeEnum.eIMPULSE);
+        actor.addTorque(angImpulse, this.PhysX.PxForceModeEnum.eIMPULSE);
+        this.PhysX.destroy(linImpulse);
+        this.PhysX.destroy(angImpulse);
+    }
+
+    /**
+     * Applies a linear impulse at a specific world-space position on the actor
+     * associated with the given node index. The off-centre application will also
+     * generate a corresponding angular impulse.
+     *
+     * @param {number} nodeIndex - Index of the target glTF node.
+     * @param {number[]} impulse - World-space impulse vector as `[x, y, z]`.
+     * @param {number[]} position - World-space point of application as `[x, y, z]`.
+     */
+    applyPointImpulse(nodeIndex, impulse, position) {
+        if (!this.scene) {
+            return;
+        }
+        const motionNode = this.nodeToMotion.get(nodeIndex);
+        if (!motionNode) {
+            return;
+        }
+        const actorEntry = this.nodeToActor.get(nodeIndex);
+        if (!actorEntry) {
+            return;
+        }
+        const actor = actorEntry.actor;
+
+        const pxImpulse = new this.PhysX.PxVec3(...impulse);
+        const pxPosition = new this.PhysX.PxVec3(...position);
+        this.PhysX.PxRigidBodyExt.prototype.addForceAtPos(
+            actor,
+            pxImpulse,
+            pxPosition,
+            this.PhysX.PxForceModeEnum.eIMPULSE
+        );
+        this.PhysX.destroy(pxImpulse);
+        this.PhysX.destroy(pxPosition);
+    }
+
+    /**
+     * Performs a ray-cast between two world-space points and returns information
+     * about the first shape hit.
+     *
+     * @param {number[]} rayStart - World-space ray origin as `[x, y, z]`.
+     * @param {number[]} rayEnd - World-space ray terminus as `[x, y, z]`.
+     * @returns {{ hitNodeIndex: number, hitFraction?: number, hitNormal?: Float32Array }}
+     *   An object containing the index of the hit node (`-1` on miss), the normalised
+     *   hit fraction along the ray, and the surface normal at the hit point.
+     */
+    rayCast(rayStart, rayEnd) {
+        const result = {};
+        result.hitNodeIndex = -1;
+        if (!this.scene) {
+            return result;
+        }
+        const origin = new this.PhysX.PxVec3(...rayStart);
+        const directionVec = create$3();
+        subtract(directionVec, rayEnd, rayStart);
+        normalize$2(directionVec, directionVec);
+        const direction = new this.PhysX.PxVec3(...directionVec);
+        const maxDistance = distance$1(rayStart, rayEnd);
+
+        const hitBuffer = new this.PhysX.PxRaycastBuffer10();
+        const hitFlags = new this.PhysX.PxHitFlags(this.PhysX.PxHitFlagEnum.eDEFAULT);
+
+        const queryFilterData = new this.PhysX.PxQueryFilterData();
+        queryFilterData.set_flags(
+            this.PhysX.PxQueryFlagEnum.eSTATIC | this.PhysX.PxQueryFlagEnum.eDYNAMIC
+        );
+
+        const hasHit = this.scene.raycast(
+            origin,
+            direction,
+            maxDistance,
+            hitBuffer,
+            hitFlags,
+            queryFilterData
+        );
+
+        this.PhysX.destroy(origin);
+        this.PhysX.destroy(direction);
+        this.PhysX.destroy(hitFlags);
+        this.PhysX.destroy(queryFilterData);
+
+        if (hasHit) {
+            const hitCount = hitBuffer.getNbAnyHits();
+            if (hitCount > 1) {
+                console.warn("Raycast hit multiple objects, only the first hit is returned.");
+            }
+            const hit = hitBuffer.getAnyHit(0);
+            const fraction = hit.distance / maxDistance;
+            const hitNormal = fromValues$3(hit.normal.x, hit.normal.y, hit.normal.z);
+            const hitNodeIndex = this.shapeToNode.get(hit.shape.ptr);
+            if (hitNodeIndex === undefined) {
+                return result;
+            }
+            return {
+                hitNodeIndex: hitNodeIndex,
+                hitFraction: fraction,
+                hitNormal: hitNormal
+            };
+        } else {
+            return result;
+        }
+    }
+
+    //endregion
+
+    //region Updates
+
+    /**
+     * Synchronises the PhysX actor pose with the node's current world transform when
+     * the node has been flagged as dirty (e.g. by an animation). For kinematic actors
+     * `setKinematicTarget` is used; for others `setGlobalPose` is used directly.
+     *
+     * @param {object} node - The glTF node whose actor transform should be updated.
+     */
     updateActorTransform(node) {
         if (node.dirtyTransform) {
             const actor = this.nodeToActor.get(node.gltfObjectIndex)?.actor;
@@ -66317,91 +67020,36 @@ class NvidiaPhysicsInterface extends PhysicsInterface {
         }
     }
 
-    calculateMassAndInertia(motion, actor) {
-        const pos = new this.PhysX.PxVec3(0, 0, 0);
-        if (motion.centerOfMass !== undefined) {
-            pos.x = motion.centerOfMass[0];
-            pos.y = motion.centerOfMass[1];
-            pos.z = motion.centerOfMass[2];
+    /**
+     * Updates the PhysX material parameters (static friction, dynamic friction,
+     * restitution) for any glTF physics materials that have been marked dirty.
+     *
+     * @param {object} gltf - The glTF asset whose `KHR_physics_rigid_bodies` extension
+     *   contains the physics materials list.
+     */
+    updatePhysicMaterials(gltf) {
+        const materials = gltf.extensions?.KHR_physics_rigid_bodies?.physicsMaterials;
+        if (materials === undefined) {
+            return;
         }
-        const rot = new this.PhysX.PxQuat(this.PhysX.PxIDENTITYEnum.PxIdentity);
-        if (motion.inertiaDiagonal !== undefined) {
-            let inertia = undefined;
-            if (
-                motion.inertiaOrientation !== undefined &&
-                !exactEquals(motion.inertiaOrientation, create$1())
-            ) {
-                const intertiaRotMat = create$5();
-
-                const inertiaDiagonalMat = create$5();
-                inertiaDiagonalMat[0] = motion.inertiaDiagonal[0];
-                inertiaDiagonalMat[4] = motion.inertiaDiagonal[1];
-                inertiaDiagonalMat[8] = motion.inertiaDiagonal[2];
-
-                if (
-                    length(motion.inertiaOrientation) > 1.0e-5 ||
-                    length(motion.inertiaOrientation) < 1.0e-5
-                ) {
-                    identity$1(intertiaRotMat);
-                    console.warn(
-                        "PhysX: Invalid inertia orientation quaternion, ignoring rotation"
-                    );
-                } else {
-                    fromQuat$1(intertiaRotMat, motion.inertiaOrientation);
-                }
-
-                const inertiaTensor = create$5();
-                multiply$3(inertiaTensor, intertiaRotMat, inertiaDiagonalMat);
-
-                const col0 = new this.PhysX.PxVec3(
-                    inertiaTensor[0],
-                    inertiaTensor[1],
-                    inertiaTensor[2]
-                );
-                const col1 = new this.PhysX.PxVec3(
-                    inertiaTensor[3],
-                    inertiaTensor[4],
-                    inertiaTensor[5]
-                );
-                const col2 = new this.PhysX.PxVec3(
-                    inertiaTensor[6],
-                    inertiaTensor[7],
-                    inertiaTensor[8]
-                );
-                const pxInertiaTensor = new this.PhysX.PxMat33(col0, col1, col2);
-                inertia = this.PhysX.PxMassProperties.prototype.getMassSpaceInertia(
-                    pxInertiaTensor,
-                    rot
-                );
-                this.PhysX.destroy(col0);
-                this.PhysX.destroy(col1);
-                this.PhysX.destroy(col2);
-                this.PhysX.destroy(pxInertiaTensor);
-                actor.setMassSpaceInertiaTensor(inertia);
-            } else {
-                inertia = new this.PhysX.PxVec3(...motion.inertiaDiagonal);
-                actor.setMassSpaceInertiaTensor(inertia);
-                this.PhysX.destroy(inertia);
-            }
-        } else {
-            if (motion.mass === undefined) {
-                this.PhysX.PxRigidBodyExt.prototype.updateMassAndInertia(actor, 1.0, pos);
-            } else {
-                this.PhysX.PxRigidBodyExt.prototype.setMassAndUpdateInertia(
-                    actor,
-                    motion.mass,
-                    pos
-                );
+        for (let i = 0; i < materials.length; i++) {
+            const material = materials[i];
+            if (material.isDirty()) {
+                const physXMaterial = this.physXMaterials[i];
+                physXMaterial.setStaticFriction(material.staticFriction);
+                physXMaterial.setDynamicFriction(material.dynamicFriction);
+                physXMaterial.setRestitution(material.restitution);
             }
         }
-
-        const pose = new this.PhysX.PxTransform(pos, rot);
-        actor.setCMassLocalPose(pose);
-        this.PhysX.destroy(pos);
-        this.PhysX.destroy(rot);
-        this.PhysX.destroy(pose);
     }
 
+    /**
+     * Applies any dirty motion-property changes (kinematic flag, mass, inertia,
+     * gravity factor, linear velocity, angular velocity) from the glTF node's motion
+     * extension to the corresponding PhysX actor.
+     *
+     * @param {object} actorNode - The glTF node whose motion properties should be updated.
+     */
     updateMotion(actorNode) {
         const motion = actorNode.extensions?.KHR_physics_rigid_bodies?.motion;
         const actor = this.nodeToActor.get(actorNode.gltfObjectIndex).actor;
@@ -66454,6 +67102,20 @@ class NvidiaPhysicsInterface extends PhysicsInterface {
         }
     }
 
+    /**
+     * Updates the geometry and/or local pose of a collider shape attached to an actor.
+     * Handles scale changes for convex/triangle mesh geometries and recreates simple
+     * shapes when their defining properties have changed.
+     *
+     * @param {object} gltf - The glTF asset.
+     * @param {object} node - The node that owns the collider shape.
+     * @param {object} collider - The glTF collider descriptor for the node.
+     * @param {object} actorNode - The node that owns the PhysX actor.
+     * @param {Float32Array} worldTransform - The 4x4 world transform of the collider node.
+     * @param {boolean} offsetChanged - `true` if the shape's local pose must be recomputed.
+     * @param {boolean} scaleChanged - `true` if the geometry scale must be updated.
+     * @param {boolean} isTrigger - `true` if the shape is a trigger volume.
+     */
     updateCollider(
         gltf,
         node,
@@ -66578,51 +67240,161 @@ class NvidiaPhysicsInterface extends PhysicsInterface {
         }
     }
 
+    /**
+     * Propagates dirty joint-property changes (collision flag, limits, drives) from
+     * the glTF joint extension to the corresponding PhysX D6 joint constraints.
+     *
+     * @param {object} state - The current viewer state, providing access to the glTF asset.
+     * @param {object} jointNode - The glTF node whose joint properties should be updated.
+     */
     updatePhysicsJoint(state, jointNode) {
-        const pxJoint = this.nodeToJoint.get(jointNode.gltfObjectIndex);
-        if (pxJoint === undefined) {
+        const pxJoints = this.nodeToSimplifiedJoints.get(jointNode.gltfObjectIndex);
+        if (pxJoints === undefined) {
             return;
         }
-        const jointIndex = jointNode.extensions?.KHR_physics_rigid_bodies?.joint?.joint;
-        const gltfJoint = state.gltf.extensions.KHR_physics_rigid_bodies.physicsJoints[jointIndex];
-        if (
-            jointNode.extensions.KHR_physics_rigid_bodies.joint.animatedPropertyObjects
-                .enableCollision.dirty
-        ) {
-            pxJoint.setConstraintFlag(
-                this.PhysX.PxConstraintFlagEnum.eCOLLISION_ENABLED,
-                jointNode.extensions.KHR_physics_rigid_bodies.joint.enableCollision
+        const gltfJoint =
+            state.gltf.extensions.KHR_physics_rigid_bodies.physicsJoints[
+                jointNode.extensions.KHR_physics_rigid_bodies.joint.joint
+            ];
+
+        const connectedNode =
+            state.gltf.nodes[jointNode.extensions.KHR_physics_rigid_bodies.joint.connectedNode];
+
+        const simplifiedJoints = gltfJoint.simplifiedPhysicsJoints;
+        if (simplifiedJoints.length !== pxJoints.length) {
+            console.warn(
+                "Number of simplified joints does not match number of PhysX joints. Skipping joint update."
             );
-        }
-        for (const limit of gltfJoint.limits) {
-            if (limit.animatedPropertyObjects.min.dirty) ;
-            if (limit.animatedPropertyObjects.max.dirty) ;
-            if (limit.animatedPropertyObjects.stiffness.dirty) ;
-            if (limit.animatedPropertyObjects.damping.dirty) ;
+            return;
         }
 
-        for (const drive of gltfJoint.drives) {
-            if (drive.animatedPropertyObjects.stiffness.dirty) ;
-            if (drive.animatedPropertyObjects.damping.dirty) ;
-            if (drive.animatedPropertyObjects.maxForce.dirty) ;
-            if (drive.animatedPropertyObjects.positionTarget.dirty) ;
-            if (drive.animatedPropertyObjects.velocityTarget.dirty) ;
+        const hasJointSpaceChangedA = PhysicsUtils.hasJointSpaceChanged(jointNode);
+        const hasJointSpaceChangedB = PhysicsUtils.hasJointSpaceChanged(connectedNode);
+
+        for (let i = 0; i < simplifiedJoints.length; i++) {
+            const pxJoint = pxJoints[i];
+            const simplifiedJoint = simplifiedJoints[i];
+            if (hasJointSpaceChangedA) {
+                const resultA = this.computeJointOffsetAndActor(jointNode, simplifiedJoint);
+                const pos = new this.PhysX.PxVec3(...resultA.offsetPosition);
+                const rot = new this.PhysX.PxQuat(...resultA.offsetRotation);
+                const poseA = new this.PhysX.PxTransform(pos, rot);
+                pxJoint.setLocalPose(this.PhysX.PxJointActorIndexEnum.eACTOR0, poseA);
+                this.PhysX.destroy(poseA);
+                this.PhysX.destroy(pos);
+                this.PhysX.destroy(rot);
+            }
+            if (hasJointSpaceChangedB) {
+                const resultB = this.computeJointOffsetAndActor(connectedNode, simplifiedJoint);
+                const posB = new this.PhysX.PxVec3(...resultB.offsetPosition);
+                const rotB = new this.PhysX.PxQuat(...resultB.offsetRotation);
+                const poseB = new this.PhysX.PxTransform(posB, rotB);
+                pxJoint.setLocalPose(this.PhysX.PxJointActorIndexEnum.eACTOR1, poseB);
+                this.PhysX.destroy(poseB);
+                this.PhysX.destroy(posB);
+                this.PhysX.destroy(rotB);
+            }
+
+            if (
+                jointNode.extensions.KHR_physics_rigid_bodies.joint.animatedPropertyObjects
+                    .enableCollision.dirty
+            ) {
+                pxJoint.setConstraintFlag(
+                    this.PhysX.PxConstraintFlagEnum.eCOLLISION_ENABLED,
+                    jointNode.extensions.KHR_physics_rigid_bodies.joint.enableCollision
+                );
+            }
+            for (const limit of simplifiedJoint.limits) {
+                if (
+                    limit.animatedPropertyObjects.min.dirty ||
+                    limit.animatedPropertyObjects.max.dirty ||
+                    limit.animatedPropertyObjects.stiffness.dirty ||
+                    limit.animatedPropertyObjects.damping.dirty
+                ) {
+                    this._setLimitValues(pxJoint, simplifiedJoint, limit);
+                }
+            }
+
+            if (
+                simplifiedJoint.twistLimit &&
+                (simplifiedJoint.twistLimit.animatedPropertyObjects.min.dirty ||
+                    simplifiedJoint.twistLimit.animatedPropertyObjects.max.dirty ||
+                    simplifiedJoint.twistLimit.animatedPropertyObjects.stiffness.dirty ||
+                    simplifiedJoint.twistLimit.animatedPropertyObjects.damping.dirty)
+            ) {
+                this._setTwistLimitValues(pxJoint, simplifiedJoint);
+            }
+
+            if (
+                (simplifiedJoint.swingLimit1 &&
+                    (simplifiedJoint.swingLimit1.animatedPropertyObjects.min.dirty ||
+                        simplifiedJoint.swingLimit1.animatedPropertyObjects.max.dirty ||
+                        simplifiedJoint.swingLimit1.animatedPropertyObjects.stiffness.dirty ||
+                        simplifiedJoint.swingLimit1.animatedPropertyObjects.damping.dirty)) ||
+                (simplifiedJoint.swingLimit2 &&
+                    (simplifiedJoint.swingLimit2.animatedPropertyObjects.min.dirty ||
+                        simplifiedJoint.swingLimit2.animatedPropertyObjects.max.dirty ||
+                        simplifiedJoint.swingLimit2.animatedPropertyObjects.stiffness.dirty ||
+                        simplifiedJoint.swingLimit2.animatedPropertyObjects.damping.dirty))
+            ) {
+                this._setSwingLimitValues(pxJoint, simplifiedJoint);
+            }
+
+            let positionTargetDirty = false;
+            let velocityTargetDirty = false;
+            const linearVelocityTarget = new this.PhysX.PxVec3(0, 0, 0);
+            const angularVelocityTarget = new this.PhysX.PxVec3(0, 0, 0);
+            pxJoint.getDriveVelocity(linearVelocityTarget, angularVelocityTarget);
+            for (const drive of simplifiedJoint.drives) {
+                if (
+                    drive.animatedPropertyObjects.stiffness.dirty ||
+                    drive.animatedPropertyObjects.damping.dirty ||
+                    drive.animatedPropertyObjects.maxForce.dirty
+                ) {
+                    this._setDriveValues(pxJoint, simplifiedJoint, drive);
+                }
+                if (drive.animatedPropertyObjects.velocityTarget.dirty) {
+                    this._getDriveVelocityTarget(
+                        simplifiedJoint,
+                        drive,
+                        linearVelocityTarget,
+                        angularVelocityTarget
+                    );
+                    velocityTargetDirty = true;
+                }
+                if (drive.animatedPropertyObjects.positionTarget.dirty) {
+                    positionTargetDirty = true;
+                }
+            }
+
+            if (positionTargetDirty) {
+                this._setDrivePositionTarget(pxJoint, simplifiedJoint);
+            }
+            if (velocityTargetDirty) {
+                pxJoint.setDriveVelocity(linearVelocityTarget, angularVelocityTarget);
+            }
         }
     }
 
-    mapCombineMode(mode) {
-        switch (mode) {
-            case "average":
-                return this.PhysX.PxCombineModeEnum.eAVERAGE;
-            case "minimum":
-                return this.PhysX.PxCombineModeEnum.eMIN;
-            case "maximum":
-                return this.PhysX.PxCombineModeEnum.eMAX;
-            case "multiply":
-                return this.PhysX.PxCombineModeEnum.eMULTIPLY;
-        }
-    }
+    //endregion
 
+    //region Geometry
+
+    /**
+     * Creates or updates a PhysX box geometry with the given dimensions and scale.
+     * If a non-uniform scale with a non-identity axis quaternion is detected the box
+     * is approximated as a convex mesh instead.
+     *
+     * @param {number} x - Full extent along the X axis (before scaling).
+     * @param {number} y - Full extent along the Y axis (before scaling).
+     * @param {number} z - Full extent along the Z axis (before scaling).
+     * @param {number[]} scale - Per-axis scale factors as `[sx, sy, sz]`.
+     * @param {quat} scaleAxis - Quaternion describing the orientation of the scale axes.
+     * @param {object} [reference] - An existing PhysX geometry object to update in-place.
+     *   If supplied and the type matches, the geometry is mutated rather than re-created.
+     * @returns {object|undefined} A new `PxBoxGeometry` (or `PxConvexMeshGeometry`),
+     *   or `undefined` when the reference geometry was updated in-place.
+     */
     // Either create a box or update an existing one. Returns only newly created geometry
     generateBox(x, y, z, scale, scaleAxis, reference) {
         let referenceType = undefined;
@@ -66656,12 +67428,36 @@ class NvidiaPhysicsInterface extends PhysicsInterface {
         return geometry;
     }
 
-    generateCapsule(height, radiusTop, radiusBottom, scale, scaleAxis, reference) {
+    /**
+     * Creates a PhysX convex mesh geometry approximating a capsule shape.
+     *
+     * @param {number} height - The height of the cylindrical mid-section.
+     * @param {number} radiusTop - Radius of the top hemisphere.
+     * @param {number} radiusBottom - Radius of the bottom hemisphere.
+     * @param {number[]} scale - Per-axis scale factors as `[sx, sy, sz]`.
+     * @param {quat} scaleAxis - Quaternion describing the orientation of the scale axes.
+     * @param {object} _reference - Unused; reserved for API consistency.
+     * @returns {object} The created `PxConvexMeshGeometry`.
+     */
+    generateCapsule(height, radiusTop, radiusBottom, scale, scaleAxis, _reference) {
         const data = createCapsuleVertexData(radiusTop, radiusBottom, height);
         return this.createConvexPxMesh(data.vertices, scale, scaleAxis);
     }
 
-    generateCylinder(height, radiusTop, radiusBottom, scale, scaleAxis, reference) {
+    /**
+     * Creates a PhysX convex mesh geometry approximating a cylinder shape.
+     * Falls back to a scaled convex hull representation when non-uniform scaling
+     * or different top/bottom radii are detected.
+     *
+     * @param {number} height - The height of the cylinder.
+     * @param {number} radiusTop - Radius of the top face.
+     * @param {number} radiusBottom - Radius of the bottom face.
+     * @param {number[]} scale - Per-axis scale factors as `[sx, sy, sz]`.
+     * @param {quat} scaleAxis - Quaternion describing the orientation of the scale axes.
+     * @param {object} _reference - Unused; reserved for API consistency.
+     * @returns {object} The created `PxConvexMeshGeometry`.
+     */
+    generateCylinder(height, radiusTop, radiusBottom, scale, scaleAxis, _reference) {
         if (
             (equals(scaleAxis, create$1()) === false &&
                 scale.every((value) => value === scale[0]) === false) ||
@@ -66678,6 +67474,17 @@ class NvidiaPhysicsInterface extends PhysicsInterface {
         return this.createConvexPxMesh(data.vertices);
     }
 
+    /**
+     * Creates or updates a PhysX sphere geometry. If a non-uniform scale is detected
+     * the sphere is approximated as a convex mesh instead.
+     *
+     * @param {number} radius - The radius of the sphere before scaling.
+     * @param {number[]} scale - Per-axis scale factors as `[sx, sy, sz]`.
+     * @param {quat} scaleAxis - Quaternion describing the orientation of the scale axes.
+     * @param {object} [reference] - An existing PhysX geometry object to update in-place.
+     * @returns {object|undefined} A new `PxSphereGeometry` (or `PxConvexMeshGeometry`),
+     *   or `undefined` when the reference geometry was updated in-place.
+     */
     generateSphere(radius, scale, scaleAxis, reference) {
         let referenceType = undefined;
         if (reference !== undefined) {
@@ -66697,15 +67504,33 @@ class NvidiaPhysicsInterface extends PhysicsInterface {
         return geometry;
     }
 
-    generatePlane(width, height, doubleSided, scale, scaleAxis, reference) {
+    /**
+     * Creates a PhysX infinite plane geometry.
+     *
+     * @param {object} [reference] - An existing PhysX geometry object. If supplied,
+     *   no new geometry is created because plane geometry has no mutable properties.
+     * @returns {object|undefined} A new `PxPlaneGeometry`, or `undefined` if a
+     *   reference was provided.
+     */
+    generatePlane(reference) {
         if (reference !== undefined) {
-            //TODO handle update
+            // Nothing to update
             return undefined;
         }
         const geometry = new this.PhysX.PxPlaneGeometry();
         return geometry;
     }
 
+    /**
+     * Cooks a PhysX convex mesh from the provided vertex data and wraps it in a
+     * `PxConvexMeshGeometry` with the given scale and scale-axis rotation.
+     * The resulting `PxConvexMesh` is tracked in {@link convexMeshes} for later cleanup.
+     *
+     * @param {Float32Array} vertices - Flat array of vertex positions `[x, y, z, ...]`.
+     * @param {number[]} [scale] - Per-axis scale factors; defaults to `[1, 1, 1]`.
+     * @param {quat} [scaleAxis] - Quaternion for scale-axis rotation; defaults to identity.
+     * @returns {object} The created `PxConvexMeshGeometry`.
+     */
     createConvexPxMesh(vertices, scale = fromValues$3(1, 1, 1), scaleAxis = create$1()) {
         const malloc = (f, q) => {
             const nDataBytes = f.length * f.BYTES_PER_ELEMENT;
@@ -66744,6 +67569,19 @@ class NvidiaPhysicsInterface extends PhysicsInterface {
         return geometry;
     }
 
+    /**
+     * Extracts and flattens vertex position and (optionally) index data from all
+     * primitives of a glTF mesh. Morph targets are applied on the CPU using the
+     * mesh's current weights. Triangle-strip and triangle-fan primitives are
+     * converted to indexed triangles automatically.
+     *
+     * @param {object} gltf - The glTF asset.
+     * @param {object} mesh - The glTF mesh to collect data from.
+     * @param {boolean} [computeIndices=true] - Whether to collect index data in
+     *   addition to vertex positions.
+     * @returns {{ vertices: Float32Array, indices: Uint32Array }} The collected
+     *   geometry data.
+     */
     collectVerticesAndIndicesFromMesh(gltf, mesh, computeIndices = true) {
         let positionDataArray = [];
         let positionCount = 0;
@@ -66824,11 +67662,30 @@ class NvidiaPhysicsInterface extends PhysicsInterface {
         return { vertices: positionData, indices: indexData };
     }
 
+    /**
+     * Creates a PhysX convex hull mesh geometry from the vertex data of a glTF mesh.
+     *
+     * @param {object} gltf - The glTF asset.
+     * @param {object} mesh - The glTF mesh to build the convex hull from.
+     * @param {number[]} [scale] - Per-axis scale factors; defaults to `[1, 1, 1]`.
+     * @param {quat} [scaleAxis] - Quaternion for scale-axis rotation; defaults to identity.
+     * @returns {object} The created `PxConvexMeshGeometry`.
+     */
     createConvexMesh(gltf, mesh, scale = fromValues$3(1, 1, 1), scaleAxis = create$1()) {
         const result = this.collectVerticesAndIndicesFromMesh(gltf, mesh, false);
         return this.createConvexPxMesh(result.vertices, scale, scaleAxis);
     }
 
+    /**
+     * Cooks a PhysX triangle mesh from the vertex and index data of a glTF mesh.
+     * The resulting `PxTriangleMesh` is tracked in {@link triangleMeshes} for later cleanup.
+     *
+     * @param {object} gltf - The glTF asset.
+     * @param {object} mesh - The glTF mesh to build the triangle mesh from.
+     * @param {number[]} [scale] - Per-axis scale factors; defaults to `[1, 1, 1]`.
+     * @param {quat} [scaleAxis] - Quaternion for scale-axis rotation; defaults to identity.
+     * @returns {object} The created `PxTriangleMeshGeometry`.
+     */
     createPxMesh(gltf, mesh, scale = fromValues$3(1, 1, 1), scaleAxis = create$1()) {
         const { vertices, indices } = this.collectVerticesAndIndicesFromMesh(gltf, mesh, true);
         const malloc = (f, q) => {
@@ -66876,6 +67733,15 @@ class NvidiaPhysicsInterface extends PhysicsInterface {
         return geometry;
     }
 
+    /**
+     * Determines whether two collision filters should generate contacts with each other.
+     * `filterB`'s include/exclude system lists are checked against `filterA`'s
+     * collision systems.
+     *
+     * @param {object} filterA - The first collision filter descriptor.
+     * @param {object} filterB - The second collision filter descriptor whose rules are evaluated.
+     * @returns {boolean} `true` if the two filters should produce collision events.
+     */
     collidesWith(filterA, filterB) {
         if (filterB.collideWithSystems.length > 0) {
             for (const system of filterB.collideWithSystems) {
@@ -66895,6 +67761,19 @@ class NvidiaPhysicsInterface extends PhysicsInterface {
         return true;
     }
 
+    //endregion
+
+    //region Shapes
+
+    /**
+     * Pre-computes a bit-mask collision matrix for all collision filters defined in
+     * the glTF `KHR_physics_rigid_bodies` extension. Each entry `filterData[i]` is a
+     * bitmask of filter indices that filter `i` should collide with. Index 31 is
+     * reserved as the default filter (collides with everything). A maximum of 31
+     * user-defined filters are supported.
+     *
+     * @param {object} gltf - The glTF asset containing the collision filter definitions.
+     */
     computeFilterData(gltf) {
         // Default filter is sign bit
         const filters = gltf.extensions?.KHR_physics_rigid_bodies?.collisionFilters;
@@ -66922,6 +67801,14 @@ class NvidiaPhysicsInterface extends PhysicsInterface {
         }
     }
 
+    /**
+     * Creates a new PhysX material from a glTF physics material descriptor.
+     * Returns the default material when `undefined` is passed.
+     *
+     * @param {object|undefined} gltfPhysicsMaterial - The glTF physics material
+     *   (from `KHR_physics_rigid_bodies`), or `undefined` to use the default material.
+     * @returns {object} The created (or default) `PxMaterial`.
+     */
     createPhysXMaterial(gltfPhysicsMaterial) {
         if (gltfPhysicsMaterial === undefined) {
             return this.defaultMaterial;
@@ -66945,6 +67832,15 @@ class NvidiaPhysicsInterface extends PhysicsInterface {
         return physxMaterial;
     }
 
+    /**
+     * Creates a `PxFilterData` object encoding the collision filter bit-masks for a
+     * given filter index, along with CCD contact detection flags.
+     *
+     * @param {number|undefined} collisionFilter - Index into the pre-computed filter
+     *   table, or `undefined` to apply the default filter (collides with everything).
+     * @param {number} [additionalFlags=0] - Extra `PxPairFlag` bits to OR into word2.
+     * @returns {object} The created `PxFilterData`.
+     */
     createPhysXCollisionFilter(collisionFilter, additionalFlags = 0) {
         let word0 = null;
         let word1 = null;
@@ -66963,6 +67859,22 @@ class NvidiaPhysicsInterface extends PhysicsInterface {
         return new this.PhysX.PxFilterData(word0, word1, additionalFlags, 0);
     }
 
+    /**
+     * Creates a PhysX shape from an existing geometry object, assigning the correct
+     * material and collision filter data. Material and filter data are resolved from
+     * the glTF collider descriptor when not provided explicitly.
+     *
+     * @param {object} geometry - The PhysX geometry to attach to the shape.
+     * @param {object|undefined} physXMaterial - The `PxMaterial` to use, or `undefined`
+     *   to derive it from `glTFCollider`.
+     * @param {object|undefined} physXFilterData - The `PxFilterData` to use, or `undefined`
+     *   to derive it from `glTFCollider`.
+     * @param {object} shapeFlags - `PxShapeFlags` controlling the shape's role
+     *   (simulation, scene-query, trigger, etc.).
+     * @param {object} glTFCollider - The glTF collider descriptor used to resolve
+     *   material and filter data when the explicit arguments are `undefined`.
+     * @returns {object} The created `PxShape`.
+     */
     createShapeFromGeometry(geometry, physXMaterial, physXFilterData, shapeFlags, glTFCollider) {
         if (physXMaterial === undefined) {
             if (glTFCollider?.physicsMaterial !== undefined) {
@@ -66985,6 +67897,24 @@ class NvidiaPhysicsInterface extends PhysicsInterface {
         return shape;
     }
 
+    /**
+     * Creates a PhysX shape for a given glTF node and collider descriptor.
+     * Resolves the geometry from either an implicit shape index or a glTF mesh,
+     * then delegates to {@link createShapeFromGeometry} and records the
+     * shape-to-node mapping.
+     *
+     * @param {object} gltf - The glTF asset.
+     * @param {object} node - The glTF node the shape belongs to.
+     * @param {object} collider - The glTF collider descriptor.
+     * @param {object} shapeFlags - `PxShapeFlags` for the new shape.
+     * @param {object|undefined} physXMaterial - Override material, or `undefined`.
+     * @param {object|undefined} physXFilterData - Override filter data, or `undefined`.
+     * @param {boolean} convexHull - `true` to force a convex-hull mesh for mesh colliders.
+     * @param {number[]} [scale] - Per-axis scale factors; defaults to `[1, 1, 1]`.
+     * @param {quat} [scaleAxis] - Quaternion for scale-axis rotation; defaults to identity.
+     * @returns {object|undefined} The created `PxShape`, or `undefined` if no
+     *   geometry could be resolved.
+     */
     createShape(
         gltf,
         node,
@@ -67030,6 +67960,43 @@ class NvidiaPhysicsInterface extends PhysicsInterface {
         return shape;
     }
 
+    /**
+     * Maps a glTF material friction/restitution combine mode string to the
+     * corresponding PhysX `PxCombineModeEnum` value.
+     *
+     * @param {string} mode - One of `'average'`, `'minimum'`, `'maximum'`, or `'multiply'`.
+     * @returns {number} The matching `PxCombineModeEnum` constant.
+     */
+    mapCombineMode(mode) {
+        switch (mode) {
+            case "average":
+                return this.PhysX.PxCombineModeEnum.eAVERAGE;
+            case "minimum":
+                return this.PhysX.PxCombineModeEnum.eMIN;
+            case "maximum":
+                return this.PhysX.PxCombineModeEnum.eMAX;
+            case "multiply":
+                return this.PhysX.PxCombineModeEnum.eMULTIPLY;
+        }
+    }
+
+    //endregion
+
+    //region Actors
+
+    /**
+     * Creates a PhysX rigid body actor for a glTF node, attaches all collider and
+     * trigger shapes (including those from child nodes), configures mass/inertia
+     * and initial velocities, then adds the actor to the active scene.
+     *
+     * @param {object} gltf - The glTF asset.
+     * @param {object} node - The root node of the actor.
+     * @param {object} shapeFlags - `PxShapeFlags` used for simulation/query shapes.
+     * @param {object} triggerFlags - `PxShapeFlags` used for trigger shapes.
+     * @param {'static'|'kinematic'|'dynamic'|'trigger'} type - Actor type.
+     * @param {boolean} [noMeshShapes=false] - When `true`, mesh colliders are
+     *   treated as convex hulls rather than exact triangle meshes.
+     */
     createActor(gltf, node, shapeFlags, triggerFlags, type, noMeshShapes = false) {
         const worldTransform = node.worldTransform;
         const translation = create$3();
@@ -67218,7 +68185,19 @@ class NvidiaPhysicsInterface extends PhysicsInterface {
         this.nodeToActor.set(node.gltfObjectIndex, { actor, pxShapeMap: pxShapeMap });
     }
 
-    computeJointOffsetAndActor(node) {
+    /**
+     * Walks up the node hierarchy to find the nearest ancestor that owns a PhysX
+     * actor, then computes the local offset (position and rotation) of the given
+     * node relative to that actor's frame. Used to determine joint attachment frames.
+     *
+     * @param {object} node - The joint attachment node.
+     * @param {object} referencedJoint - The simplified joint descriptor, which may
+     *   supply a local rotation override.
+     * @returns {{ actor: object|undefined, offsetPosition: vec3, offsetRotation: quat }}
+     *   The resolved actor (or `undefined` for world-relative), offset position,
+     *   and offset rotation.
+     */
+    computeJointOffsetAndActor(node, referencedJoint) {
         let currentNode = node;
         while (currentNode !== undefined) {
             if (this.nodeToActor.has(currentNode.gltfObjectIndex)) {
@@ -67226,16 +68205,24 @@ class NvidiaPhysicsInterface extends PhysicsInterface {
             }
             currentNode = currentNode.parentNode;
         }
+
+        const nodeWorldRot = node.worldQuaternion;
+        const localPhysXRot = referencedJoint?.localRotation;
+        if (localPhysXRot !== undefined) {
+            multiply(nodeWorldRot, node.worldQuaternion, localPhysXRot);
+        }
+
         if (currentNode === undefined) {
             const pos = create$3();
             getTranslation(pos, node.worldTransform);
-            return { actor: undefined, offsetPosition: pos, offsetRotation: node.worldQuaternion };
+
+            return { actor: undefined, offsetPosition: pos, offsetRotation: nodeWorldRot };
         }
         const actor = this.nodeToActor.get(currentNode.gltfObjectIndex)?.actor;
         const inverseActorRotation = create$1();
         invert(inverseActorRotation, currentNode.worldQuaternion);
         const offsetRotation = create$1();
-        multiply(offsetRotation, inverseActorRotation, node.worldQuaternion);
+        multiply(offsetRotation, inverseActorRotation, nodeWorldRot);
 
         const actorPosition = create$3();
         getTranslation(actorPosition, currentNode.worldTransform);
@@ -67248,6 +68235,115 @@ class NvidiaPhysicsInterface extends PhysicsInterface {
         return { actor: actor, offsetPosition: offsetPosition, offsetRotation: offsetRotation };
     }
 
+    /**
+     * Configures the mass, inertia tensor, and center-of-mass pose of a PhysX
+     * rigid body actor from the `KHR_physics_rigid_bodies` motion properties.
+     * Falls back to automatic mass/inertia estimation via `PxRigidBodyExt` when
+     * no explicit values are provided.
+     *
+     * @param {object} motion - The glTF motion extension object containing mass,
+     *   inertiaDiagonal, inertiaOrientation, and centerOfMass properties.
+     * @param {object} actor - The PhysX `PxRigidDynamic` actor to configure.
+     */
+    calculateMassAndInertia(motion, actor) {
+        const pos = new this.PhysX.PxVec3(0, 0, 0);
+        if (motion.centerOfMass !== undefined) {
+            pos.x = motion.centerOfMass[0];
+            pos.y = motion.centerOfMass[1];
+            pos.z = motion.centerOfMass[2];
+        }
+        const rot = new this.PhysX.PxQuat(this.PhysX.PxIDENTITYEnum.PxIdentity);
+        if (motion.inertiaDiagonal !== undefined) {
+            let inertia = undefined;
+            if (
+                motion.inertiaOrientation !== undefined &&
+                !exactEquals(motion.inertiaOrientation, create$1())
+            ) {
+                const intertiaRotMat = create$5();
+
+                const inertiaDiagonalMat = create$5();
+                inertiaDiagonalMat[0] = motion.inertiaDiagonal[0];
+                inertiaDiagonalMat[4] = motion.inertiaDiagonal[1];
+                inertiaDiagonalMat[8] = motion.inertiaDiagonal[2];
+
+                if (
+                    length(motion.inertiaOrientation) > 1.0e-5 ||
+                    length(motion.inertiaOrientation) < 1.0e-5
+                ) {
+                    identity$2(intertiaRotMat);
+                    console.warn(
+                        "PhysX: Invalid inertia orientation quaternion, ignoring rotation"
+                    );
+                } else {
+                    fromQuat$1(intertiaRotMat, motion.inertiaOrientation);
+                }
+
+                const inertiaTensor = create$5();
+                multiply$3(inertiaTensor, intertiaRotMat, inertiaDiagonalMat);
+
+                const col0 = new this.PhysX.PxVec3(
+                    inertiaTensor[0],
+                    inertiaTensor[1],
+                    inertiaTensor[2]
+                );
+                const col1 = new this.PhysX.PxVec3(
+                    inertiaTensor[3],
+                    inertiaTensor[4],
+                    inertiaTensor[5]
+                );
+                const col2 = new this.PhysX.PxVec3(
+                    inertiaTensor[6],
+                    inertiaTensor[7],
+                    inertiaTensor[8]
+                );
+                const pxInertiaTensor = new this.PhysX.PxMat33(col0, col1, col2);
+                inertia = this.PhysX.PxMassProperties.prototype.getMassSpaceInertia(
+                    pxInertiaTensor,
+                    rot
+                );
+                this.PhysX.destroy(col0);
+                this.PhysX.destroy(col1);
+                this.PhysX.destroy(col2);
+                this.PhysX.destroy(pxInertiaTensor);
+                actor.setMassSpaceInertiaTensor(inertia);
+            } else {
+                inertia = new this.PhysX.PxVec3(...motion.inertiaDiagonal);
+                actor.setMassSpaceInertiaTensor(inertia);
+                this.PhysX.destroy(inertia);
+            }
+        } else {
+            if (motion.mass === undefined) {
+                this.PhysX.PxRigidBodyExt.prototype.updateMassAndInertia(actor, 1.0, pos);
+            } else {
+                this.PhysX.PxRigidBodyExt.prototype.setMassAndUpdateInertia(
+                    actor,
+                    motion.mass,
+                    pos
+                );
+            }
+        }
+
+        const pose = new this.PhysX.PxTransform(pos, rot);
+        actor.setCMassLocalPose(pose);
+        this.PhysX.destroy(pos);
+        this.PhysX.destroy(rot);
+        this.PhysX.destroy(pose);
+    }
+
+    //endregion
+
+    //region Joints
+
+    /**
+     * Converts a zero-based axis index and a motion type to the corresponding
+     * PhysX `PxD6AxisEnum` value.
+     *
+     * @param {0|1|2} axisIndex - The axis index (0 = X/Twist, 1 = Y/Swing1, 2 = Z/Swing2).
+     * @param {'linear'|'angular'} type - Whether to interpret the index as a linear
+     *   or angular axis.
+     * @returns {number|null} The matching `PxD6AxisEnum` constant, or `null` if the
+     *   combination is not recognised.
+     */
     convertAxisIndexToEnum(axisIndex, type) {
         if (type === "linear") {
             switch (axisIndex) {
@@ -67271,6 +68367,61 @@ class NvidiaPhysicsInterface extends PhysicsInterface {
         return null;
     }
 
+    /**
+     * Converts a zero-based axis index to the corresponding PhysX D6 angular drive
+     * enum value.
+     *
+     * @param {0|1|2} axisIndex - The axis index (0 = Twist, 1 = Swing1, 2 = Swing2).
+     * @returns {number|null} The matching `PxD6DriveEnum` constant (or a raw integer
+     *   for axes not yet exposed by the bindings), or `null` if not recognised.
+     */
+    convertAxisIndexToAngularDriveEnum(axisIndex) {
+        switch (axisIndex) {
+            case 0:
+                return this.PhysX.PxD6DriveEnum.eTWIST;
+            case 1:
+                return 6; // Currently not exposed via bindings
+            case 2:
+                return 7; // Currently not exposed via bindings
+        }
+        return null;
+    }
+
+    /**
+     * Checks whether the two swing limits of a simplified joint are symmetric,
+     * which determines whether a cone limit or a pyramid limit should be used in PhysX.
+     *
+     * @param {object} joint - The simplified joint descriptor containing optional
+     *   `swingLimit1` and `swingLimit2` properties.
+     * @returns {boolean} `true` if both limits are symmetric (centred around zero),
+     *   allowing a cone limit; `false` if a pyramid limit is required.
+     */
+    validateSwingLimits(joint) {
+        // Check if swing limits are symmetric (cone) or asymmetric (pyramid)
+        if (joint.swingLimit1 && joint.swingLimit2) {
+            const limit1 = joint.swingLimit1;
+            const limit2 = joint.swingLimit2;
+
+            const isSymmetric1 =
+                Math.abs(limit1.min + limit1.max) < 1e-6 || limit1.min === undefined; // Centered around 0
+            const isSymmetric2 =
+                Math.abs(limit2.min + limit2.max) < 1e-6 || limit2.min === undefined;
+
+            // Return if this is a cone limit (symmetric and same range) vs pyramid limit
+            return isSymmetric1 && isSymmetric2;
+        }
+        return false;
+    }
+
+    /**
+     * Creates the PhysX `PxD6Joint` constraints for a glTF joint node. Each simplified
+     * physics joint defined on the referenced glTF joint is converted to one PhysX joint,
+     * and the results are stored in {@link nodeToSimplifiedJoints}.
+     *
+     * @param {object} gltf - The glTF asset.
+     * @param {object} node - The glTF node carrying the `KHR_physics_rigid_bodies.joint`
+     *   extension data.
+     */
     createJoint(gltf, node) {
         const joint = node.extensions?.KHR_physics_rigid_bodies?.joint;
         const referencedJoint =
@@ -67280,9 +68431,323 @@ class NvidiaPhysicsInterface extends PhysicsInterface {
             console.error("Referenced joint not found:", joint.joint);
             return;
         }
+        const simplifiedJoints = [];
+        for (const simplifiedJoint of referencedJoint.simplifiedPhysicsJoints) {
+            const physxJoint = this.createSimplifiedJoint(gltf, node, joint, simplifiedJoint);
+            simplifiedJoints.push(physxJoint);
+        }
+        this.nodeToSimplifiedJoints.set(node.gltfObjectIndex, simplifiedJoints);
+    }
 
-        const resultA = this.computeJointOffsetAndActor(node);
-        const resultB = this.computeJointOffsetAndActor(gltf.nodes[joint.connectedNode]);
+    /**
+     * Applies the motion and limit parameters for a single simplified-joint limit to
+     * a PhysX D6 joint. Handles linear pair limits, distance limits (3-axis linear
+     * constraint), and angular axis locks.
+     *
+     * @param {object} physxJoint - The PhysX `PxD6Joint` to configure.
+     * @param {object} simplifiedJoint - The simplified joint descriptor supplying
+     *   axis-mapping helpers.
+     * @param {object} limit - The individual limit descriptor (with `linearAxes`,
+     *   `angularAxes`, `min`, `max`, `stiffness`, `damping`).
+     */
+    _setLimitValues(physxJoint, simplifiedJoint, limit) {
+        const lock = limit.min === 0 && limit.max === 0;
+        const spring = new this.PhysX.PxSpring(limit.stiffness ?? 0, limit.damping);
+        const isDistanceLimit =
+            limit.linearAxes &&
+            limit.linearAxes.length === 3 &&
+            (limit.min === undefined || limit.min === 0) &&
+            limit.max !== 0;
+        if (limit.linearAxes && limit.linearAxes.length > 0 && !isDistanceLimit) {
+            const linearLimitPair = new this.PhysX.PxJointLinearLimitPair(
+                limit.min ?? -this.MAX_FLOAT,
+                limit.max ?? this.MAX_FLOAT,
+                spring
+            );
+            for (const axis of limit.linearAxes) {
+                const result = simplifiedJoint.getRotatedAxisAndSign(axis);
+                const physxAxis = this.convertAxisIndexToEnum(result.axis, "linear");
+                physxJoint.setMotion(
+                    physxAxis,
+                    lock ? this.PhysX.PxD6MotionEnum.eLOCKED : this.PhysX.PxD6MotionEnum.eLIMITED
+                );
+                if (!lock) {
+                    physxJoint.setLinearLimit(physxAxis, linearLimitPair);
+                }
+            }
+            this.PhysX.destroy(linearLimitPair);
+        }
+        if (isDistanceLimit) {
+            const linearLimit = new this.PhysX.PxJointLinearLimit(
+                limit.max ?? this.MAX_FLOAT,
+                spring
+            );
+            physxJoint.setMotion(this.PhysX.PxD6AxisEnum.eX, this.PhysX.PxD6MotionEnum.eLIMITED);
+            physxJoint.setMotion(this.PhysX.PxD6AxisEnum.eY, this.PhysX.PxD6MotionEnum.eLIMITED);
+            physxJoint.setMotion(this.PhysX.PxD6AxisEnum.eZ, this.PhysX.PxD6MotionEnum.eLIMITED);
+            physxJoint.setDistanceLimit(linearLimit);
+            this.PhysX.destroy(linearLimit);
+        }
+        if (limit.angularAxes && limit.angularAxes.length > 0) {
+            for (const axis of limit.angularAxes) {
+                const result = simplifiedJoint.getRotatedAxisAndSign(axis);
+                const physxAxis = this.convertAxisIndexToEnum(result.axis, "angular");
+                physxJoint.setMotion(
+                    physxAxis,
+                    lock ? this.PhysX.PxD6MotionEnum.eLOCKED : this.PhysX.PxD6MotionEnum.eLIMITED
+                );
+            }
+        }
+        this.PhysX.destroy(spring);
+    }
+
+    /**
+     * Applies the twist-limit angular range from a simplified joint to a PhysX D6
+     * joint. Does nothing if the simplified joint has no twist limit defined.
+     *
+     * @param {object} physxJoint - The PhysX `PxD6Joint` to configure.
+     * @param {object} simplifiedJoint - The simplified joint descriptor containing
+     *   the optional `twistLimit` property.
+     */
+    _setTwistLimitValues(physxJoint, simplifiedJoint) {
+        if (simplifiedJoint.twistLimit !== undefined) {
+            if (!(simplifiedJoint.twistLimit.min === 0 && simplifiedJoint.twistLimit.max === 0)) {
+                const limitPair = new this.PhysX.PxJointAngularLimitPair(
+                    simplifiedJoint.twistLimit.min ?? -Math.PI,
+                    simplifiedJoint.twistLimit.max ?? Math.PI,
+                    new this.PhysX.PxSpring(
+                        simplifiedJoint.twistLimit.stiffness ?? 0,
+                        simplifiedJoint.twistLimit.damping
+                    )
+                );
+                physxJoint.setTwistLimit(limitPair);
+                this.PhysX.destroy(limitPair);
+            }
+        }
+    }
+
+    /**
+     * Applies the swing-limit angular ranges from a simplified joint to a PhysX D6
+     * joint. Uses a cone limit when both swing axes are symmetric, a pyramid limit
+     * when they are asymmetric, and falls back to a single-axis cone when only one
+     * swing limit is defined.
+     *
+     * @param {object} physxJoint - The PhysX `PxD6Joint` to configure.
+     * @param {object} simplifiedJoint - The simplified joint descriptor containing
+     *   optional `swingLimit1` and/or `swingLimit2` properties.
+     */
+    _setSwingLimitValues(physxJoint, simplifiedJoint) {
+        if (
+            simplifiedJoint.swingLimit1 !== undefined &&
+            simplifiedJoint.swingLimit2 !== undefined
+        ) {
+            if (
+                simplifiedJoint.swingLimit1.stiffness !== simplifiedJoint.swingLimit2.stiffness ||
+                simplifiedJoint.swingLimit1.damping !== simplifiedJoint.swingLimit2.damping
+            ) {
+                console.warn(
+                    "PhysX does not support different stiffness/damping for swing limits."
+                );
+            } else {
+                const spring = new this.PhysX.PxSpring(
+                    simplifiedJoint.swingLimit1.stiffness ?? 0,
+                    simplifiedJoint.swingLimit1.damping
+                );
+                let yMin = -Math.PI / 2;
+                let yMax = Math.PI / 2;
+                let zMin = -Math.PI / 2;
+                let zMax = Math.PI / 2;
+                if (simplifiedJoint.swingLimit1.min !== undefined) {
+                    yMin = simplifiedJoint.swingLimit1.min;
+                }
+                if (simplifiedJoint.swingLimit1.max !== undefined) {
+                    yMax = simplifiedJoint.swingLimit1.max;
+                }
+                if (simplifiedJoint.swingLimit2.min !== undefined) {
+                    zMin = simplifiedJoint.swingLimit2.min;
+                }
+                if (simplifiedJoint.swingLimit2.max !== undefined) {
+                    zMax = simplifiedJoint.swingLimit2.max;
+                }
+
+                const isSymmetric = this.validateSwingLimits(simplifiedJoint);
+                if (yMin === 0 && yMax === 0 && zMin === 0 && zMax === 0) ; else if (isSymmetric) {
+                    const swing1Angle = Math.max(Math.abs(yMin), Math.abs(yMax));
+                    const swing2Angle = Math.max(Math.abs(zMin), Math.abs(zMax));
+                    const jointLimitCone = new this.PhysX.PxJointLimitCone(
+                        swing1Angle,
+                        swing2Angle,
+                        spring
+                    );
+                    physxJoint.setSwingLimit(jointLimitCone);
+                    this.PhysX.destroy(jointLimitCone);
+                } else {
+                    const jointLimitCone = new this.PhysX.PxJointLimitPyramid(
+                        yMin,
+                        yMax,
+                        zMin,
+                        zMax,
+                        spring
+                    );
+                    physxJoint.setPyramidSwingLimit(jointLimitCone);
+                    this.PhysX.destroy(jointLimitCone);
+                }
+                this.PhysX.destroy(spring);
+            }
+        } else if (
+            simplifiedJoint.swingLimit1 !== undefined ||
+            simplifiedJoint.swingLimit2 !== undefined
+        ) {
+            const singleLimit = simplifiedJoint.swingLimit1 ?? simplifiedJoint.swingLimit2;
+            if (singleLimit.min === 0 && singleLimit.max === 0) ; else if (singleLimit.min && -1 * singleLimit.min !== singleLimit.max) {
+                console.warn(
+                    "PhysX requires symmetric limits for swing limits in single axis mode."
+                );
+            } else {
+                const spring = new this.PhysX.PxSpring(
+                    singleLimit.stiffness ?? 0,
+                    singleLimit.damping
+                );
+                const maxY = simplifiedJoint.swingLimit1?.max ?? Math.PI;
+                const maxZ = simplifiedJoint.swingLimit2?.max ?? Math.PI;
+                const jointLimitCone = new this.PhysX.PxJointLimitCone(maxY, maxZ, spring);
+                physxJoint.setSwingLimit(jointLimitCone);
+                this.PhysX.destroy(spring);
+                this.PhysX.destroy(jointLimitCone);
+            }
+        }
+    }
+
+    /**
+     * Creates and assigns a `PxD6JointDrive` to the appropriate axis of a PhysX D6
+     * joint, configuring its stiffness, damping, maximum force, and drive mode.
+     *
+     * @param {object} physxJoint - The PhysX `PxD6Joint` to configure.
+     * @param {object} simplifiedJoint - The simplified joint descriptor supplying
+     *   axis-mapping helpers.
+     * @param {object} drive - The drive descriptor with `stiffness`, `damping`,
+     *   `maxForce`, `mode`, `type`, and `axis`.
+     */
+    _setDriveValues(physxJoint, simplifiedJoint, drive) {
+        const physxDrive = new this.PhysX.PxD6JointDrive(
+            drive.stiffness,
+            drive.damping,
+            drive.maxForce ?? this.MAX_FLOAT,
+            drive.mode === "acceleration"
+        );
+        const result = simplifiedJoint.getRotatedAxisAndSign(drive.axis);
+        if (drive.type === "linear") {
+            const axis = this.convertAxisIndexToEnum(result.axis, "linear");
+            physxJoint.setDrive(axis, physxDrive);
+        } else if (drive.type === "angular") {
+            const axis = this.convertAxisIndexToAngularDriveEnum(result.axis);
+            physxJoint.setDrive(axis, physxDrive);
+        }
+        this.PhysX.destroy(physxDrive);
+    }
+
+    /**
+     * Accumulates the velocity target for a single drive axis into the provided
+     * mutable velocity target vectors. Linear and angular axes are handled separately.
+     *
+     * @param {object} simplifiedJoint - The simplified joint descriptor supplying
+     *   axis-mapping helpers.
+     * @param {object} drive - The drive descriptor containing `type`, `axis`, and
+     *   `velocityTarget`.
+     * @param {object} linearVelocityTarget - `PxVec3` accumulator for linear targets;
+     *   mutated in place.
+     * @param {object} angularVelocityTarget - `PxVec3` accumulator for angular targets;
+     *   mutated in place.
+     */
+    _getDriveVelocityTarget(simplifiedJoint, drive, linearVelocityTarget, angularVelocityTarget) {
+        const result = simplifiedJoint.getRotatedAxisAndSign(drive.axis);
+        if (drive.type === "linear") {
+            if (drive.velocityTarget !== undefined) {
+                linearVelocityTarget[result.axis] = drive.velocityTarget * result.sign;
+            }
+        } else if (drive.type === "angular") {
+            if (drive.velocityTarget !== undefined) {
+                angularVelocityTarget[result.axis] = drive.velocityTarget * result.sign * -1; // PhysX angular velocity is in opposite direction of rotation
+            }
+        }
+    }
+
+    /**
+     * Computes the aggregate position and orientation drive targets from all drives
+     * defined on a simplified joint and applies them to the PhysX D6 joint via `setDrivePosition`.
+     *
+     * @param {object} physxJoint - The PhysX `PxD6Joint` to configure.
+     * @param {object} simplifiedJoint - The simplified joint descriptor containing
+     *   the `drives` array.
+     */
+    _setDrivePositionTarget(physxJoint, simplifiedJoint) {
+        const positionTarget = fromValues$3(0, 0, 0);
+        const angleTarget = create$1();
+        for (const drive of simplifiedJoint.drives) {
+            const result = simplifiedJoint.getRotatedAxisAndSign(drive.axis);
+            if (drive.type === "linear") {
+                if (drive.positionTarget !== undefined) {
+                    positionTarget[result.axis] = drive.positionTarget * result.sign;
+                }
+            } else if (drive.type === "angular") {
+                if (drive.positionTarget !== undefined) {
+                    // gl-matrix seems to apply rotations clockwise for positive angles, gltf uses counter-clockwise
+                    switch (result.axis) {
+                        case 0: {
+                            rotateX(
+                                angleTarget,
+                                angleTarget,
+                                -drive.positionTarget * result.sign
+                            );
+                            break;
+                        }
+                        case 1: {
+                            rotateY(
+                                angleTarget,
+                                angleTarget,
+                                -drive.positionTarget * result.sign
+                            );
+                            break;
+                        }
+                        case 2: {
+                            rotateZ(
+                                angleTarget,
+                                angleTarget,
+                                -drive.positionTarget * result.sign
+                            );
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+        const posTarget = new this.PhysX.PxVec3(...positionTarget);
+        const rotTarget = new this.PhysX.PxQuat(...angleTarget);
+        const targetTransform = new this.PhysX.PxTransform(posTarget, rotTarget);
+        physxJoint.setDrivePosition(targetTransform);
+        this.PhysX.destroy(posTarget);
+        this.PhysX.destroy(rotTarget);
+        this.PhysX.destroy(targetTransform);
+    }
+
+    /**
+     * Creates a fully configured PhysX `PxD6Joint` for a single simplified joint
+     * descriptor. Resolves actor references and frame offsets for both bodies,
+     * sets all motion axes to free, then applies limits, drives, and drive targets
+     * from the simplified joint data.
+     *
+     * @param {object} gltf - The glTF asset.
+     * @param {object} node - The glTF node that owns the joint.
+     * @param {object} joint - The `KHR_physics_rigid_bodies.joint` extension data.
+     * @param {object} simplifiedJoint - The simplified joint descriptor to materialise.
+     * @returns {object} The created `PxD6Joint`.
+     */
+    createSimplifiedJoint(gltf, node, joint, simplifiedJoint) {
+        const resultA = this.computeJointOffsetAndActor(node, simplifiedJoint);
+        const resultB = this.computeJointOffsetAndActor(
+            gltf.nodes[joint.connectedNode],
+            simplifiedJoint
+        );
 
         const pos = new this.PhysX.PxVec3(...resultA.offsetPosition);
         const rot = new this.PhysX.PxQuat(...resultA.offsetRotation);
@@ -67306,12 +68771,12 @@ class NvidiaPhysicsInterface extends PhysicsInterface {
         this.PhysX.destroy(poseA);
         this.PhysX.destroy(poseB);
 
+        physxJoint.setAngularDriveConfig(this.PhysX.PxD6AngularDriveConfigEnum.eSWING_TWIST);
+
         physxJoint.setConstraintFlag(
             this.PhysX.PxConstraintFlagEnum.eVISUALIZATION,
             this.debugJoints
         );
-
-        this.nodeToJoint.set(node.gltfObjectIndex, physxJoint);
 
         physxJoint.setConstraintFlag(
             this.PhysX.PxConstraintFlagEnum.eCOLLISION_ENABLED,
@@ -67326,814 +68791,498 @@ class NvidiaPhysicsInterface extends PhysicsInterface {
         physxJoint.setMotion(this.PhysX.PxD6AxisEnum.eSWING1, this.PhysX.PxD6MotionEnum.eFREE);
         physxJoint.setMotion(this.PhysX.PxD6AxisEnum.eSWING2, this.PhysX.PxD6MotionEnum.eFREE);
 
-        let angularYLimit = undefined;
-        let angularZLimit = undefined;
-
-        for (const limit of referencedJoint.limits) {
-            const lock = limit.min === 0 && limit.max === 0;
-            const spring = new this.PhysX.PxSpring(limit.stiffness ?? 0, limit.damping);
-            if (limit.linearAxes && limit.linearAxes.length > 0) {
-                const linearLimitPair = new this.PhysX.PxJointLinearLimitPair(
-                    limit.min ?? -this.MAX_FLOAT,
-                    limit.max ?? this.MAX_FLOAT,
-                    spring
-                );
-                if (limit.linearAxes.includes(0)) {
-                    physxJoint.setMotion(
-                        this.PhysX.PxD6AxisEnum.eX,
-                        lock
-                            ? this.PhysX.PxD6MotionEnum.eLOCKED
-                            : this.PhysX.PxD6MotionEnum.eLIMITED
-                    );
-                    physxJoint.setLinearLimit(this.PhysX.PxD6AxisEnum.eX, linearLimitPair);
-                }
-                if (limit.linearAxes.includes(1)) {
-                    physxJoint.setMotion(
-                        this.PhysX.PxD6AxisEnum.eY,
-                        lock
-                            ? this.PhysX.PxD6MotionEnum.eLOCKED
-                            : this.PhysX.PxD6MotionEnum.eLIMITED
-                    );
-                    physxJoint.setLinearLimit(this.PhysX.PxD6AxisEnum.eY, linearLimitPair);
-                }
-                if (limit.linearAxes.includes(2)) {
-                    physxJoint.setMotion(
-                        this.PhysX.PxD6AxisEnum.eZ,
-                        lock
-                            ? this.PhysX.PxD6MotionEnum.eLOCKED
-                            : this.PhysX.PxD6MotionEnum.eLIMITED
-                    );
-                    physxJoint.setLinearLimit(this.PhysX.PxD6AxisEnum.eZ, linearLimitPair);
-                }
-                this.PhysX.destroy(linearLimitPair);
-            }
-            if (limit.angularAxes && limit.angularAxes.length > 0) {
-                const angularLimitPair = new this.PhysX.PxJointAngularLimitPair(
-                    limit.min ?? -Math.PI / 2,
-                    limit.max ?? Math.PI / 2,
-                    spring
-                );
-                if (lock) {
-                    if (limit.angularAxes.includes(0)) {
-                        physxJoint.setMotion(
-                            this.PhysX.PxD6AxisEnum.eTWIST,
-                            this.PhysX.PxD6MotionEnum.eLOCKED
-                        );
-                        physxJoint.setTwistLimit(angularLimitPair);
-                    }
-                    if (limit.angularAxes.includes(1)) {
-                        physxJoint.setMotion(
-                            this.PhysX.PxD6AxisEnum.eSWING1,
-                            this.PhysX.PxD6MotionEnum.eLOCKED
-                        );
-                        angularYLimit = limit;
-                    }
-                    if (limit.angularAxes.includes(2)) {
-                        physxJoint.setMotion(
-                            this.PhysX.PxD6AxisEnum.eSWING2,
-                            this.PhysX.PxD6MotionEnum.eLOCKED
-                        );
-                        angularZLimit = limit;
-                    }
-                } else if (limit.angularAxes.includes(0)) {
-                    physxJoint.setMotion(
-                        this.PhysX.PxD6AxisEnum.eTWIST,
-                        this.PhysX.PxD6MotionEnum.eLIMITED
-                    );
-                    physxJoint.setTwistLimit(angularLimitPair);
-                } else if (limit.angularAxes.includes(1)) {
-                    angularYLimit = limit;
-                } else if (limit.angularAxes.includes(2)) {
-                    angularZLimit = limit;
-                }
-                this.PhysX.destroy(angularLimitPair);
-            }
-            this.PhysX.destroy(spring);
+        for (const limit of simplifiedJoint.limits) {
+            this._setLimitValues(physxJoint, simplifiedJoint, limit);
         }
 
-        if (angularYLimit !== undefined && angularZLimit !== undefined) {
-            if (
-                angularYLimit.stiffness !== angularZLimit.stiffness ||
-                angularYLimit.damping !== angularZLimit.damping
-            ) {
-                console.warn(
-                    "PhysX does not support different stiffness/damping for swing limits."
-                );
-            } else {
-                const spring = new this.PhysX.PxSpring(
-                    angularYLimit.stiffness ?? 0,
-                    angularYLimit.damping
-                );
-                let yMin = -Math.PI / 2;
-                let yMax = Math.PI / 2;
-                let zMin = -Math.PI / 2;
-                let zMax = Math.PI / 2;
-                if (angularYLimit.min !== undefined) {
-                    yMin = angularYLimit.min;
-                }
-                if (angularYLimit.max !== undefined) {
-                    yMax = angularYLimit.max;
-                }
-                if (angularZLimit.min !== undefined) {
-                    zMin = angularZLimit.min;
-                }
-                if (angularZLimit.max !== undefined) {
-                    zMax = angularZLimit.max;
-                }
-                const jointLimitCone = new this.PhysX.PxJointLimitPyramid(
-                    yMin,
-                    yMax,
-                    zMin,
-                    zMax,
-                    spring
-                );
-                physxJoint.setPyramidSwingLimit(jointLimitCone);
-                this.PhysX.destroy(spring);
+        this._setTwistLimitValues(physxJoint, simplifiedJoint);
+        this._setSwingLimitValues(physxJoint, simplifiedJoint);
 
-                if (yMin !== yMax) {
-                    physxJoint.setMotion(
-                        this.PhysX.PxD6AxisEnum.eSWING1,
-                        this.PhysX.PxD6MotionEnum.eLIMITED
-                    );
-                }
-                if (zMin !== zMax) {
-                    physxJoint.setMotion(
-                        this.PhysX.PxD6AxisEnum.eSWING2,
-                        this.PhysX.PxD6MotionEnum.eLIMITED
-                    );
-                }
-            }
-        } else if (angularYLimit !== undefined || angularZLimit !== undefined) {
-            const singleLimit = angularYLimit ?? angularZLimit;
-            if (singleLimit.min && -1 * singleLimit.min !== singleLimit.max) {
-                console.warn(
-                    "PhysX requires symmetric limits for swing limits in single axis mode."
-                );
-            } else {
-                const spring = new this.PhysX.PxSpring(
-                    singleLimit.stiffness ?? 0,
-                    singleLimit.damping
-                );
-                const maxY = angularYLimit?.max ?? Math.PI / 2;
-                const maxZ = angularZLimit?.max ?? Math.PI / 2;
-                const jointLimitCone = new this.PhysX.PxJointLimitCone(maxY, maxZ, spring);
-                if (angularYLimit !== undefined) {
-                    physxJoint.setMotion(
-                        this.PhysX.PxD6AxisEnum.eSWING1,
-                        this.PhysX.PxD6MotionEnum.eLIMITED
-                    );
-                }
-                if (angularZLimit !== undefined) {
-                    physxJoint.setMotion(
-                        this.PhysX.PxD6AxisEnum.eSWING2,
-                        this.PhysX.PxD6MotionEnum.eLIMITED
-                    );
-                }
-                physxJoint.setSwingLimit(jointLimitCone);
-                this.PhysX.destroy(spring);
-                this.PhysX.destroy(jointLimitCone);
-            }
-        }
-
-        const positionTarget = fromValues$3(0, 0, 0);
-        const angleTarget = create$1();
         const linearVelocityTarget = fromValues$3(0, 0, 0);
         const angularVelocityTarget = fromValues$3(0, 0, 0);
 
-        for (const drive of referencedJoint.drives) {
-            const physxDrive = new this.PhysX.PxD6JointDrive(
-                drive.stiffness,
-                drive.damping,
-                drive.maxForce ?? this.MAX_FLOAT,
-                drive.mode === "acceleration"
+        for (const drive of simplifiedJoint.drives) {
+            this._setDriveValues(physxJoint, simplifiedJoint, drive);
+            this._getDriveVelocityTarget(
+                simplifiedJoint,
+                drive,
+                linearVelocityTarget,
+                angularVelocityTarget
             );
-            if (drive.type === "linear") {
-                const axis = this.convertAxisIndexToEnum(drive.axis, "linear");
-                physxJoint.setDrive(axis, physxDrive);
-                if (drive.positionTarget !== undefined) {
-                    positionTarget[drive.axis] = drive.positionTarget;
-                }
-                if (drive.velocityTarget !== undefined) {
-                    linearVelocityTarget[drive.axis] = drive.velocityTarget;
-                }
-            } else if (drive.type === "angular") {
-                if (drive.positionTarget !== undefined) {
-                    // gl-matrix seems to apply rotations clockwise for positive angles, gltf uses counter-clockwise
-                    switch (drive.axis) {
-                        case 0: {
-                            rotateX(angleTarget, angleTarget, -drive.positionTarget);
-                            break;
-                        }
-                        case 1: {
-                            rotateY(angleTarget, angleTarget, -drive.positionTarget);
-                            break;
-                        }
-                        case 2: {
-                            rotateZ(angleTarget, angleTarget, -drive.positionTarget);
-                            break;
-                        }
-                    }
-                }
-
-                if (drive.velocityTarget !== undefined) {
-                    angularVelocityTarget[drive.axis] = drive.velocityTarget;
-                }
-
-                const axis = this.convertAxisIndexToEnum(drive.axis, "angular");
-                physxJoint.setDrive(axis, physxDrive);
-            }
-            this.PhysX.destroy(physxDrive);
         }
-
-        const posTarget = new this.PhysX.PxVec3(...positionTarget);
-        const rotTarget = new this.PhysX.PxQuat(...angleTarget);
-        const targetTransform = new this.PhysX.PxTransform(posTarget, rotTarget);
-        physxJoint.setDrivePosition(targetTransform);
+        this._setDrivePositionTarget(physxJoint, simplifiedJoint);
 
         const linVel = new this.PhysX.PxVec3(...linearVelocityTarget);
         const angVel = new this.PhysX.PxVec3(...angularVelocityTarget);
         physxJoint.setDriveVelocity(linVel, angVel);
-
-        this.PhysX.destroy(posTarget);
-        this.PhysX.destroy(rotTarget);
         this.PhysX.destroy(linVel);
         this.PhysX.destroy(angVel);
-        this.PhysX.destroy(targetTransform);
 
         return physxJoint;
     }
 
-    changeDebugVisualization() {
-        if (!this.scene || !this.debugStateChanged) {
-            return;
-        }
-        this.debugStateChanged = false;
-        this.scene.setVisualizationParameter(
-            this.PhysX.eSCALE,
-            this.debugColliders || this.debugJoints ? 1 : 0
-        );
-        this.scene.setVisualizationParameter(
-            this.PhysX.eWORLD_AXES,
-            this.debugColliders || this.debugJoints ? 1 : 0
-        );
-        this.scene.setVisualizationParameter(
-            this.PhysX.eACTOR_AXES,
-            this.debugColliders || this.debugJoints ? 1 : 0
-        );
-        this.scene.setVisualizationParameter(
-            this.PhysX.eCOLLISION_SHAPES,
-            this.debugColliders ? 1 : 0
-        );
-        this.scene.setVisualizationParameter(
-            this.PhysX.eJOINT_LOCAL_FRAMES,
-            this.debugJoints ? 1 : 0
-        );
-        this.scene.setVisualizationParameter(this.PhysX.eJOINT_LIMITS, this.debugJoints ? 1 : 0);
-        for (const joint of this.nodeToJoint.values()) {
-            joint.setConstraintFlag(
-                this.PhysX.PxConstraintFlagEnum.eVISUALIZATION,
-                this.debugJoints
-            );
-        }
-        for (const shapePtr of this.shapeToNode.keys()) {
-            const shape = this.PhysX.wrapPointer(shapePtr, this.PhysX.PxShape);
-            shape.setFlag(this.PhysX.PxShapeFlagEnum.eVISUALIZATION, this.debugColliders);
+    // endregion
+}
+
+/**
+ * Controller for managing the physics simulation of a glTF scene.
+ */
+class PhysicsController {
+    constructor() {
+        this.engine = undefined;
+        this.staticActors = [];
+        this.kinematicActors = []; // This list is not updated if a dynamic actor is switched to kinematic at runtime
+        this.dynamicActors = [];
+        this.triggerNodes = [];
+        this.independentTriggerNodes = []; // Trigger nodes that are not not part of another actor
+        this.compoundTriggerNodes = new Map(); // Map of compound trigger node index to set of included colliders
+        this.triggerToCompound = new Map(); // Map of trigger node index to compound trigger node index
+        this.nodeToMotion = new Map();
+        this.jointNodes = [];
+        this.morphedColliders = [];
+        this.skinnedColliders = [];
+        this.hasRuntimeAnimationTargets = false;
+        this.morphWeights = new Map();
+
+        this.playing = false;
+        this.enabled = false;
+        this.simulationStepTime = 1 / 60;
+        this.timeAccumulator = 0;
+        this.pauseTime = undefined;
+        this.skipFrames = 2; // Skip the first two simulation frames to allow engine to initialize
+        this.loading = false;
+    }
+
+    // Morphing colliders was dropped from the spec, but we keep the code here in case we want to add support for it in the future.
+    calculateMorphColliders(gltf) {
+        for (const node of this.morphedColliders) {
+            const mesh = gltf.meshes[node.mesh];
+            let morphWeights = node.weights ?? mesh.weights;
+            if (morphWeights === undefined) {
+                continue;
+            }
+            morphWeights = morphWeights.slice();
+            const oldMorphWeights = this.morphWeights.get(node.gltfObjectIndex);
+
+            // Check if morph weights have changed
+            if (
+                oldMorphWeights !== undefined &&
+                oldMorphWeights.length === morphWeights.length &&
+                oldMorphWeights.every((value, index) => value === morphWeights[index])
+            ) {
+                continue;
+            }
+
+            this.morphWeights.set(node.gltfObjectIndex, morphWeights);
+
+            const vertices = new Float32Array();
+
+            for (const primitive of mesh.primitives) {
+                const positionAccessor = gltf.accessors[primitive.attributes.POSITION];
+                const positionData = positionAccessor.getNormalizedDeinterlacedView(gltf);
+                const morphData = [];
+                for (let i = 0; i < morphWeights.length; i++) {
+                    const morphAccessor = gltf.accessors[primitive.targets[i].POSITION];
+                    morphData.push(morphAccessor.getNormalizedDeinterlacedView(gltf));
+                }
+
+                // Calculate morphed vertex positions on CPU
+                for (let i = 0; i < positionData.length; i++) {
+                    let position = positionData[i];
+                    for (let j = 0; j < morphWeights.length; j++) {
+                        const morphValue = morphData[j];
+                        position += morphValue[i] * morphWeights[j];
+                    }
+                    vertices.push(position);
+                }
+            }
+
+            this.engine.updateMorphedColliderGeometry(node, vertices);
         }
     }
 
-    initializeSimulation(
-        state,
-        staticActors,
-        kinematicActors,
-        dynamicActors,
-        jointNodes,
-        triggerNodes,
-        independentTriggerNodes,
-        nodeToMotion,
-        hasRuntimeAnimationTargets,
-        staticMeshColliderCount,
-        dynamicMeshColliderCount
-    ) {
-        if (!this.PhysX) {
+    /**
+     * Initializes the physics engine. This must be called before loading any scenes.
+     * Currently, only "NvidiaPhysX" is supported.
+     * @param {string} engine
+     */
+    async initializeEngine(engine) {
+        if (engine === "NvidiaPhysX") {
+            this.engine = new NvidiaPhysicsInterface();
+            await this.engine.initializeEngine();
+        }
+    }
+
+    /**
+     * Resets the current physics state and loads the physics data for a given scene and initializes the physics simulation.
+     * The first two frames of the simulation are skipped to allow the physics engine to initialize before applying any physics updates.
+     * Resets all dirty flags.
+     * @param {GltfState} state
+     * @param {number} sceneIndex
+     */
+    loadScene(state, sceneIndex) {
+        this.resetScene(state.gltf);
+        if (
+            state.gltf.extensionsUsed === undefined ||
+            state.gltf.extensionsUsed.includes("KHR_physics_rigid_bodies") === false
+        ) {
+            this.enabled = false;
             return;
         }
-        this.nodeToMotion = nodeToMotion;
-        this.generateSimpleShapes(state.gltf);
-        this.computeFilterData(state.gltf);
-        for (let i = 0; i < this.filterData.length; i++) {
-            const physXFilterData = this.createPhysXCollisionFilter(i);
-            this.physXFilterData.push(physXFilterData);
+        const scene = state.gltf.scenes[sceneIndex];
+        if (!scene.nodes) {
+            this.enabled = false;
+            return;
         }
+        this.skipFrames = 2;
+        this.loading = true;
 
-        const materials = state.gltf.extensions?.KHR_physics_rigid_bodies?.physicsMaterials;
-        if (materials !== undefined) {
-            for (const gltfMaterial of materials) {
-                const physxMaterial = this.createPhysXMaterial(gltfMaterial);
-                this.physXMaterials.push(physxMaterial);
-            }
-        }
-
-        const tmpVec = new this.PhysX.PxVec3(0, -9.81, 0);
-        const sceneDesc = new this.PhysX.PxSceneDesc(this.tolerances);
-        sceneDesc.set_gravity(tmpVec);
-        sceneDesc.set_cpuDispatcher(this.PhysX.DefaultCpuDispatcherCreate(0));
-        sceneDesc.set_filterShader(this.PhysX.DefaultFilterShader());
-        const sceneFlags = new this.PhysX.PxSceneFlags(
-            this.PhysX.PxSceneFlagEnum.eENABLE_CCD | this.PhysX.PxSceneFlagEnum.eENABLE_PCM
-        );
-        sceneDesc.flags = sceneFlags;
-
-        this.scene = this.physics.createScene(sceneDesc);
-        let triggerCallback = undefined;
-
-        if (triggerNodes.length > 0) {
-            console.log("Enabling trigger report callback");
-            triggerCallback = new this.PhysX.PxSimulationEventCallbackImpl();
-            triggerCallback.onTrigger = (pairs, count) => {
-                for (const compoundTrigger of state.physicsController.compoundTriggerNodes.values()) {
-                    compoundTrigger.added.clear();
-                    compoundTrigger.removed.clear();
-                }
-                console.log("Trigger callback called with", count, "pairs");
-                for (let i = 0; i < count; i++) {
-                    const pair = this.PhysX.NativeArrayHelpers.prototype.getTriggerPairAt(pairs, i);
-                    const triggerShape = pair.triggerShape;
-                    const otherShape = pair.otherShape;
-                    const triggerNodeIndex = this.shapeToNode.get(triggerShape.ptr);
-                    const otherNodeIndex = this.shapeToNode.get(otherShape.ptr);
-                    if (pair.status === this.PhysX.PxPairFlagEnum.eNOTIFY_TOUCH_FOUND) {
-                        state.graphController.rigidBodyTriggerEntered(
-                            triggerNodeIndex,
-                            otherNodeIndex,
-                            nodeToMotion.get(otherNodeIndex)
-                        );
-                    } else if (pair.status === this.PhysX.PxPairFlagEnum.eNOTIFY_TOUCH_LOST) {
-                        state.graphController.rigidBodyTriggerExited(
-                            triggerNodeIndex,
-                            otherNodeIndex,
-                            nodeToMotion.get(otherNodeIndex)
-                        );
+        // Morphing physics colliders was dropped from the spec.
+        // const morphedNodeIndices = getMorphedNodeIndices(state.gltf);
+        const result = getAnimatedIndices(state.gltf, "/nodes/", [
+            "translation",
+            "rotation",
+            "scale"
+        ]);
+        let dynamicMeshColliderCount = 0;
+        let staticMeshColliderCount = 0;
+        this.hasRuntimeAnimationTargets = result.runtimeChanges;
+        const gatherRigidBodies = (nodeIndex, currentRigidBody) => {
+            let parentRigidBody = currentRigidBody;
+            const node = state.gltf.nodes[nodeIndex];
+            const rigidBody = node.extensions?.KHR_physics_rigid_bodies;
+            if (rigidBody) {
+                if (rigidBody.motion) {
+                    if (rigidBody.motion.isKinematic) {
+                        this.kinematicActors.push(node);
+                    } else {
+                        this.dynamicActors.push(node);
                     }
-                    const compoundTriggers =
-                        state.physicsController.triggerToCompound.get(triggerNodeIndex);
-                    if (compoundTriggers !== undefined) {
-                        for (const compoundTriggerIndex of compoundTriggers) {
-                            const compoundTriggerInfo =
-                                state.physicsController.compoundTriggerNodes.get(
-                                    compoundTriggerIndex
-                                );
-                            if (pair.status === this.PhysX.PxPairFlagEnum.eNOTIFY_TOUCH_FOUND) {
-                                compoundTriggerInfo.added.add(otherNodeIndex);
-                            } else if (
-                                pair.status === this.PhysX.PxPairFlagEnum.eNOTIFY_TOUCH_LOST
+                    parentRigidBody = node;
+                } else if (currentRigidBody === undefined && rigidBody.collider !== undefined) {
+                    this.staticActors.push(node);
+                }
+                if (rigidBody.collider?.geometry?.mesh !== undefined) {
+                    if (!rigidBody.collider.geometry.convexHull) {
+                        if (
+                            parentRigidBody === undefined ||
+                            parentRigidBody.extensions.KHR_physics_rigid_bodies.motion.isKinematic
+                        ) {
+                            staticMeshColliderCount++;
+                        } else {
+                            if (
+                                currentRigidBody?.gltfObjectIndex !==
+                                parentRigidBody.gltfObjectIndex
                             ) {
-                                compoundTriggerInfo.removed.add(otherNodeIndex);
+                                dynamicMeshColliderCount++;
                             }
                         }
                     }
                 }
-
-                for (const [
-                    idx,
-                    compoundTrigger
-                ] of state.physicsController.compoundTriggerNodes.entries()) {
-                    for (const addedNodeIndex of compoundTrigger.added) {
-                        if (!compoundTrigger.previous.has(addedNodeIndex)) {
-                            compoundTrigger.previous.set(addedNodeIndex, 1);
-                            state.graphController.rigidBodyTriggerEntered(
-                                idx,
-                                addedNodeIndex,
-                                nodeToMotion.get(addedNodeIndex)
-                            );
-                        } else {
-                            const currentCount = compoundTrigger.previous.get(addedNodeIndex);
-                            compoundTrigger.previous.set(addedNodeIndex, currentCount + 1);
-                        }
-                    }
-                    for (const removedNodeIndex of compoundTrigger.removed) {
-                        const currentCount = compoundTrigger.previous.get(removedNodeIndex);
-                        if (currentCount > 1) {
-                            compoundTrigger.previous.set(removedNodeIndex, currentCount - 1);
-                        } else {
-                            compoundTrigger.previous.delete(removedNodeIndex);
-                            state.graphController.rigidBodyTriggerExited(
-                                idx,
-                                removedNodeIndex,
-                                nodeToMotion.get(removedNodeIndex)
-                            );
-                        }
-                    }
+                if (rigidBody.joint !== undefined) {
+                    this.jointNodes.push(node);
                 }
-            };
-            triggerCallback.onConstraintBreak = (constraints, count) => {};
-            triggerCallback.onWake = (actors, count) => {};
-            triggerCallback.onSleep = (actors, count) => {};
-            triggerCallback.onContact = (pairHeaders, pairs, count) => {};
-            sceneDesc.simulationEventCallback = triggerCallback;
-        }
-
-        this.scene = this.physics.createScene(sceneDesc);
-
-        console.log("Created scene");
-        const shapeFlags = new this.PhysX.PxShapeFlags(
-            this.PhysX.PxShapeFlagEnum.eSCENE_QUERY_SHAPE |
-                this.PhysX.PxShapeFlagEnum.eSIMULATION_SHAPE
-        );
-
-        const triggerFlags = new this.PhysX.PxShapeFlags(this.PhysX.PxShapeFlagEnum.eTRIGGER_SHAPE);
-
-        for (const node of staticActors) {
-            this.createActor(state.gltf, node, shapeFlags, triggerFlags, "static");
-        }
-        for (const node of kinematicActors) {
-            this.createActor(state.gltf, node, shapeFlags, triggerFlags, "kinematic");
-        }
-        for (const node of dynamicActors) {
-            this.createActor(state.gltf, node, shapeFlags, triggerFlags, "dynamic", true);
-        }
-        for (const node of independentTriggerNodes) {
-            if (
-                this.nodeToActor.has(node.gltfObjectIndex) ||
-                this.nodeToMotion.has(node.gltfObjectIndex)
-            ) {
-                continue;
-            }
-            this.createActor(state.gltf, node, shapeFlags, triggerFlags, "trigger", true);
-        }
-        for (const node of jointNodes) {
-            this.createJoint(state.gltf, node);
-        }
-
-        this.PhysX.destroy(tmpVec);
-        this.PhysX.destroy(sceneDesc);
-        this.PhysX.destroy(shapeFlags);
-        this.PhysX.destroy(triggerFlags);
-
-        this.debugStateChanged = true;
-        this.changeDebugVisualization();
-    }
-
-    enableDebugColliders(enable) {
-        this.debugColliders = enable;
-        this.debugStateChanged = true;
-    }
-
-    enableDebugJoints(enable) {
-        this.debugJoints = enable;
-        this.debugStateChanged = true;
-    }
-
-    applyTransformRecursively(gltf, node, parentTransform) {
-        if (node.extensions?.KHR_physics_rigid_bodies?.motion !== undefined) {
-            return;
-        }
-        const localTransform = node.getLocalTransform();
-        const globalTransform = create$4();
-        multiply$2(globalTransform, parentTransform, localTransform);
-        node.scaledPhysicsTransform = globalTransform;
-        for (const childIndex of node.children) {
-            const childNode = gltf.nodes[childIndex];
-            this.applyTransformRecursively(gltf, childNode, globalTransform);
-        }
-    }
-
-    subStepSimulation(state, deltaTime) {
-        for (const [nodeIndex, { actor, pxShapeMap }] of this.nodeToActor.entries()) {
-            const node = state.gltf.nodes[nodeIndex];
-            if (node.dirtyTransform) {
-                // Node transform is currently animated
-                continue;
-            }
-            const motion = node.extensions?.KHR_physics_rigid_bodies?.motion;
-            if (motion && motion.isKinematic) {
-                const linearVelocity = motion.computedLinearVelocity ?? motion.linearVelocity;
-                const angularVelocity = motion.computedAngularVelocity ?? motion.angularVelocity;
-                if (linearVelocity !== undefined || angularVelocity !== undefined) {
-                    const worldTransform = node.physicsTransform ?? node.worldTransform;
-                    const targetPosition = create$3();
-                    targetPosition[0] = worldTransform[12];
-                    targetPosition[1] = worldTransform[13];
-                    targetPosition[2] = worldTransform[14];
-                    let nodeRotation = create$1();
-                    if (node.physicsTransform !== undefined) {
-                        getRotation(nodeRotation, worldTransform);
+                if (rigidBody.trigger !== undefined) {
+                    if (rigidBody.trigger.nodes !== undefined) {
+                        this.compoundTriggerNodes.set(node.gltfObjectIndex, {
+                            previous: new Map(), //ref counting
+                            added: new Set(),
+                            removed: new Set()
+                        });
+                        for (const triggerNodeIndex of rigidBody.trigger.nodes) {
+                            if (this.triggerToCompound.has(triggerNodeIndex)) {
+                                this.triggerToCompound
+                                    .get(triggerNodeIndex)
+                                    .add(node.gltfObjectIndex);
+                            } else {
+                                this.triggerToCompound.set(
+                                    triggerNodeIndex,
+                                    new Set([node.gltfObjectIndex])
+                                );
+                            }
+                        }
                     } else {
-                        nodeRotation = node.worldQuaternion;
+                        this.triggerNodes.push(node);
+                        if (parentRigidBody === undefined) {
+                            this.independentTriggerNodes.push(node);
+                        }
                     }
-                    if (linearVelocity !== undefined) {
-                        const acceleration = create$3();
-                        scale(acceleration, linearVelocity, deltaTime);
-                        transformQuat(acceleration, acceleration, nodeRotation);
-                        targetPosition[0] += acceleration[0];
-                        targetPosition[1] += acceleration[1];
-                        targetPosition[2] += acceleration[2];
-                    }
-                    if (angularVelocity !== undefined) {
-                        // Transform angular velocity from local space to world space
-                        // by rotating the velocity axes by the current node rotation.
-                        const localX = fromValues$3(1, 0, 0);
-                        const localY = fromValues$3(0, 1, 0);
-                        const localZ = fromValues$3(0, 0, 1);
-                        transformQuat(localX, localX, nodeRotation);
-                        transformQuat(localY, localY, nodeRotation);
-                        transformQuat(localZ, localZ, nodeRotation);
-
-                        const angularAcceleration = create$1();
-                        const qX = create$1();
-                        const qY = create$1();
-                        const qZ = create$1();
-                        setAxisAngle(qX, localX, angularVelocity[0] * deltaTime);
-                        setAxisAngle(qY, localY, angularVelocity[1] * deltaTime);
-                        setAxisAngle(qZ, localZ, angularVelocity[2] * deltaTime);
-                        multiply(angularAcceleration, qX, angularAcceleration);
-                        multiply(angularAcceleration, qY, angularAcceleration);
-                        multiply(angularAcceleration, qZ, angularAcceleration);
-
-                        multiply(nodeRotation, angularAcceleration, nodeRotation);
-                    }
-                    const pos = new this.PhysX.PxVec3(...targetPosition);
-                    const rot = new this.PhysX.PxQuat(...nodeRotation);
-                    const transform = new this.PhysX.PxTransform(pos, rot);
-
-                    actor.setKinematicTarget(transform);
-                    this.PhysX.destroy(pos);
-                    this.PhysX.destroy(rot);
-                    this.PhysX.destroy(transform);
-
-                    const physicsTransform = create$4();
-                    fromRotationTranslation(physicsTransform, nodeRotation, targetPosition);
-
-                    const scaledPhysicsTransform = create$4();
-                    scale$1(scaledPhysicsTransform, physicsTransform, node.worldScale);
-
-                    node.physicsTransform = physicsTransform;
-                    node.scaledPhysicsTransform = scaledPhysicsTransform;
                 }
-            } else if (motion && motion.gravityFactor !== 1.0) {
-                const force = new this.PhysX.PxVec3(0, -9.81 * motion.gravityFactor, 0);
-                actor.addForce(force, this.PhysX.PxForceModeEnum.eACCELERATION);
-                this.PhysX.destroy(force);
             }
-        }
 
-        this.scene.simulate(deltaTime);
-        if (!this.scene.fetchResults(true)) {
-            console.warn("PhysX: fetchResults failed");
+            if (parentRigidBody !== undefined) {
+                this.nodeToMotion.set(node.gltfObjectIndex, parentRigidBody.gltfObjectIndex);
+            }
+            for (const childIndex of node.children) {
+                gatherRigidBodies(childIndex, parentRigidBody);
+            }
+        };
+
+        for (const nodeIndex of scene.nodes) {
+            gatherRigidBodies(nodeIndex, undefined);
+        }
+        if (
+            !this.engine ||
+            (this.staticActors.length === 0 &&
+                this.kinematicActors.length === 0 &&
+                this.dynamicActors.length === 0 &&
+                this.triggerNodes.length === 0)
+        ) {
+            this.enabled = false;
+            return;
+        }
+        this.enabled = true;
+        this.engine.initializeSimulation(
+            state,
+            this.staticActors,
+            this.kinematicActors,
+            this.dynamicActors,
+            this.jointNodes,
+            this.triggerNodes,
+            this.independentTriggerNodes,
+            this.nodeToMotion,
+            this.hasRuntimeAnimationTargets,
+            staticMeshColliderCount,
+            dynamicMeshColliderCount
+        );
+        this.loading = false;
+        state.gltf.resetAllDirtyFlags();
+        this.simulateStep(state, 0); // Simulate an initial step to ensure everything is up to date before rendering
+    }
+
+    /**
+     * Resets the current physics state.
+     * @param {glTF} gltf
+     */
+    resetScene(gltf) {
+        this.staticActors = [];
+        this.kinematicActors = [];
+        this.dynamicActors = [];
+        this.jointNodes = [];
+        this.triggerNodes = [];
+        this.independentTriggerNodes = [];
+        this.nodeToMotion.clear();
+        this.compoundTriggerNodes.clear();
+        this.triggerToCompound.clear();
+        this.morphedColliders = [];
+        this.skinnedColliders = [];
+        this.hasRuntimeAnimationTargets = false;
+        this.morphWeights.clear();
+        this.timeAccumulator = 0;
+        for (const node of gltf?.nodes ?? []) {
+            node.physicsTransform = undefined;
+            node.scaledPhysicsTransform = undefined;
+        }
+        if (this.engine) {
+            this.engine.resetSimulation();
         }
     }
 
+    /**
+     * Resumes the physics simulation if it was paused. If the simulation is not paused, this function does nothing.
+     */
+    resumeSimulation() {
+        if (this.engine && this.enabled) {
+            this.playing = true;
+        }
+    }
+
+    /**
+     * Pauses the physics simulation. If the simulation is already paused, this function does nothing.
+     */
+    pauseSimulation() {
+        if (this.engine && this.enabled && this.playing) {
+            this.pauseTime = performance.now();
+            this.playing = false;
+        }
+    }
+
+    /**
+     * Simulates a single step of the physics simulation,
+     * if the initial loading is done.
+     * A step will only be simulated if enough time has passed since the last simulated step,
+     * based on the configured simulation step time.
+     * Can also be used to manually advance the simulation when it is paused.
+     * @param {GltfState} state
+     * @param {number} deltaTime
+     */
     simulateStep(state, deltaTime) {
-        if (!this.scene) {
-            this.reset = false;
+        if (state === undefined) {
             return;
         }
-        if (this.reset === true) {
-            this._resetSimulation();
-            this.reset = false;
+        if (this.loading) {
             return;
         }
-
-        this.changeDebugVisualization();
-
-        this.subStepSimulation(state, deltaTime);
-
-        for (const [nodeIndex, { actor, pxShapeMap }] of this.nodeToActor.entries()) {
-            const node = state.gltf.nodes[nodeIndex];
-            const motion = node.extensions?.KHR_physics_rigid_bodies?.motion;
-            if (motion && !motion.isKinematic && !node.dirtyTransform) {
-                const transform = actor.getGlobalPose();
-                const position = fromValues$3(transform.p.x, transform.p.y, transform.p.z);
-                const rotation = fromValues$1(
-                    transform.q.x,
-                    transform.q.y,
-                    transform.q.z,
-                    transform.q.w
-                );
-
-                const physicsTransform = create$4();
-                fromRotationTranslation(physicsTransform, rotation, position);
-
-                node.physicsTransform = physicsTransform;
-
-                const rotationBetween = create$1();
-
-                let parentNode = node;
-                while (parentNode.parentNode !== undefined) {
-                    parentNode = parentNode.parentNode;
-                }
-
-                invert(rotationBetween, node.worldQuaternion);
-                multiply(rotationBetween, rotation, rotationBetween);
-
-                const rotMat = create$5();
-                fromQuat$1(rotMat, rotationBetween);
-
-                const scaleRot = create$5();
-                fromMat4(scaleRot, node.worldTransform);
-
-                multiply$3(scaleRot, rotMat, scaleRot);
-
-                const scaledPhysicsTransform = create$4();
-                scaledPhysicsTransform[0] = scaleRot[0];
-                scaledPhysicsTransform[1] = scaleRot[1];
-                scaledPhysicsTransform[2] = scaleRot[2];
-                scaledPhysicsTransform[4] = scaleRot[3];
-                scaledPhysicsTransform[5] = scaleRot[4];
-                scaledPhysicsTransform[6] = scaleRot[5];
-                scaledPhysicsTransform[8] = scaleRot[6];
-                scaledPhysicsTransform[9] = scaleRot[7];
-                scaledPhysicsTransform[10] = scaleRot[8];
-                scaledPhysicsTransform[12] = position[0];
-                scaledPhysicsTransform[13] = position[1];
-                scaledPhysicsTransform[14] = position[2];
-
-                node.scaledPhysicsTransform = scaledPhysicsTransform;
-                for (const childIndex of node.children) {
-                    const childNode = state.gltf.nodes[childIndex];
-                    this.applyTransformRecursively(
-                        state.gltf,
-                        childNode,
-                        node.scaledPhysicsTransform
-                    );
-                }
-            }
+        // We always need to apply animations, since the dirty flags get cleared each frame.
+        this._applyAnimations(state);
+        if (this.skipFrames > 0) {
+            this.skipFrames -= 1;
+            return;
+        }
+        this.timeAccumulator += deltaTime;
+        if (this.pauseTime !== undefined && this.playing) {
+            this.timeAccumulator = this.simulationStepTime;
+            this.pauseTime = undefined;
+        }
+        if (
+            this.enabled &&
+            this.engine &&
+            state &&
+            this.timeAccumulator >= this.simulationStepTime * 0.9
+        ) {
+            this.engine.simulateStep(state, this.timeAccumulator);
+            this.timeAccumulator = 0;
         }
     }
 
-    resetSimulation() {
-        this.reset = true;
-        this.simulateStep({}, 0);
-    }
+    _updateColliders(state, node, isTrigger = false) {
+        this.engine.updateActorTransform(node);
 
-    _resetSimulation() {
-        const scenePointer = this.scene;
-        this.scene = undefined;
-        this.filterData = [];
-        for (const physXFilterData of this.physXFilterData) {
-            this.PhysX.destroy(physXFilterData);
-        }
-        this.physXFilterData = [];
-
-        for (const material of this.physXMaterials) {
-            material.release();
-        }
-        this.physXMaterials = [];
-
-        for (const shape of this.simpleShapes) {
-            shape.destroy?.();
-        }
-        this.simpleShapes = [];
-
-        for (const convexMesh of this.convexMeshes) {
-            convexMesh.release();
-        }
-        this.convexMeshes = [];
-
-        for (const triangleMesh of this.triangleMeshes) {
-            triangleMesh.release();
-        }
-        this.triangleMeshes = [];
-
-        for (const joint of this.nodeToJoint.values()) {
-            joint.release();
-        }
-        this.nodeToJoint.clear();
-
-        for (const actor of this.nodeToActor.values()) {
-            actor.actor.release();
-        }
-
-        this.nodeToActor.clear();
-
-        if (scenePointer) {
-            scenePointer.release();
-        }
-
-        this.shapeToNode.clear();
-    }
-
-    getDebugLineData() {
-        if (!this.scene || (this.debugColliders === false && this.debugJoints === false)) {
-            return [];
-        }
-        const result = [];
-        const rb = this.scene.getRenderBuffer();
-        for (let i = 0; i < rb.getNbLines(); i++) {
-            const line = this.PhysX.NativeArrayHelpers.prototype.getDebugLineAt(rb.getLines(), i);
-
-            result.push(line.pos0.x);
-            result.push(line.pos0.y);
-            result.push(line.pos0.z);
-            result.push(line.pos1.x);
-            result.push(line.pos1.y);
-            result.push(line.pos1.z);
-        }
-        return result;
-    }
-
-    applyImpulse(nodeIndex, linearImpulse, angularImpulse) {
-        if (!this.scene) {
-            return;
-        }
-        const motionNode = this.nodeToMotion.get(nodeIndex);
-        if (!motionNode) {
-            return;
-        }
-        const actorEntry = this.nodeToActor.get(nodeIndex);
-        if (!actorEntry) {
-            return;
-        }
-        const actor = actorEntry.actor;
-
-        const linImpulse = new this.PhysX.PxVec3(...linearImpulse);
-        const angImpulse = new this.PhysX.PxVec3(...angularImpulse);
-        actor.addForce(linImpulse, this.PhysX.PxForceModeEnum.eIMPULSE);
-        actor.addTorque(angImpulse, this.PhysX.PxForceModeEnum.eIMPULSE);
-        this.PhysX.destroy(linImpulse);
-        this.PhysX.destroy(angImpulse);
-    }
-
-    applyPointImpulse(nodeIndex, impulse, position) {
-        if (!this.scene) {
-            return;
-        }
-        const motionNode = this.nodeToMotion.get(nodeIndex);
-        if (!motionNode) {
-            return;
-        }
-        const actorEntry = this.nodeToActor.get(nodeIndex);
-        if (!actorEntry) {
-            return;
-        }
-        const actor = actorEntry.actor;
-
-        const pxImpulse = new this.PhysX.PxVec3(...impulse);
-        const pxPosition = new this.PhysX.PxVec3(...position);
-        this.PhysX.PxRigidBodyExt.prototype.addForceAtPos(
-            actor,
-            pxImpulse,
-            pxPosition,
-            this.PhysX.PxForceModeEnum.eIMPULSE
-        );
-        this.PhysX.destroy(pxImpulse);
-        this.PhysX.destroy(pxPosition);
-    }
-
-    rayCast(rayStart, rayEnd) {
-        const result = {};
-        result.hitNodeIndex = -1;
-        if (!this.scene) {
-            return result;
-        }
-        const origin = new this.PhysX.PxVec3(...rayStart);
-        const directionVec = create$3();
-        subtract(directionVec, rayEnd, rayStart);
-        normalize$2(directionVec, directionVec);
-        const direction = new this.PhysX.PxVec3(...directionVec);
-        const maxDistance = distance$1(rayStart, rayEnd);
-
-        const hitBuffer = new this.PhysX.PxRaycastBuffer10();
-        const hitFlags = new this.PhysX.PxHitFlags(this.PhysX.PxHitFlagEnum.eDEFAULT);
-
-        const queryFilterData = new this.PhysX.PxQueryFilterData();
-        queryFilterData.set_flags(
-            this.PhysX.PxQueryFlagEnum.eSTATIC | this.PhysX.PxQueryFlagEnum.eDYNAMIC
-        );
-
-        const hasHit = this.scene.raycast(
-            origin,
-            direction,
-            maxDistance,
-            hitBuffer,
-            hitFlags,
-            queryFilterData
-        );
-
-        this.PhysX.destroy(origin);
-        this.PhysX.destroy(direction);
-        this.PhysX.destroy(hitFlags);
-        this.PhysX.destroy(queryFilterData);
-
-        if (hasHit) {
-            const hitCount = hitBuffer.getNbAnyHits();
-            if (hitCount > 1) {
-                console.warn("Raycast hit multiple objects, only the first hit is returned.");
-            }
-            const hit = hitBuffer.getAnyHit(0);
-            const fraction = hit.distance / maxDistance;
-            const hitNormal = fromValues$3(hit.normal.x, hit.normal.y, hit.normal.z);
-            const hitNodeIndex = this.shapeToNode.get(hit.shape.ptr);
-            if (hitNodeIndex === undefined) {
-                return result;
-            }
-            return {
-                hitNodeIndex: hitNodeIndex,
-                hitFraction: fraction,
-                hitNormal: hitNormal
-            };
+        let collider = undefined;
+        if (isTrigger) {
+            collider = node.extensions?.KHR_physics_rigid_bodies?.trigger;
         } else {
-            return result;
+            collider = node.extensions?.KHR_physics_rigid_bodies?.collider;
         }
+
+        if (collider?.geometry?.shape !== undefined || collider?.geometry?.mesh !== undefined) {
+            this.engine.updateCollider(
+                state.gltf,
+                node,
+                collider,
+                node,
+                node.worldTransform,
+                false,
+                node.dirtyScale,
+                isTrigger
+            );
+        }
+
+        if (
+            !isTrigger &&
+            (node.extensions?.KHR_physics_rigid_bodies?.trigger?.mesh !== undefined ||
+                node.extensions?.KHR_physics_rigid_bodies?.trigger?.shape !== undefined)
+        ) {
+            this.engine.updateCollider(
+                state.gltf,
+                node,
+                node.extensions?.KHR_physics_rigid_bodies?.trigger,
+                node,
+                node.worldTransform,
+                false,
+                node.dirtyScale,
+                true
+            );
+        }
+        if (!isTrigger) {
+            for (const childIndex of node.children) {
+                const childNode = state.gltf.nodes[childIndex];
+                if (isTrigger) {
+                    collider = childNode.extensions?.KHR_physics_rigid_bodies?.trigger;
+                } else {
+                    collider = childNode.extensions?.KHR_physics_rigid_bodies?.collider;
+                }
+                PhysicsUtils.recurseCollider(
+                    state.gltf,
+                    childNode,
+                    collider,
+                    node,
+                    node.dirtyScale,
+                    node.dirtyScale,
+                    this.engine.updateCollider.bind(this.engine)
+                );
+            }
+        }
+    }
+
+    _applyAnimations(state) {
+        this.engine.updatePhysicMaterials(state.gltf);
+
+        for (const actorNode of this.staticActors) {
+            this._updateColliders(state, actorNode);
+        }
+
+        for (const actorNode of this.kinematicActors) {
+            this.engine.updateMotion(actorNode);
+            this._updateColliders(state, actorNode);
+        }
+
+        for (const actorNode of this.dynamicActors) {
+            this.engine.updateMotion(actorNode);
+            this._updateColliders(state, actorNode);
+        }
+
+        for (const node of this.independentTriggerNodes) {
+            this._updateColliders(state, node, true);
+        }
+
+        for (const jointNode of this.jointNodes) {
+            this.engine.updatePhysicsJoint(state, jointNode);
+        }
+    }
+
+    /**
+     * Enable debug visualization of physics colliders.
+     * The exact visualization depends on the physics engine implementation.
+     * @param {boolean} enable
+     */
+    enableDebugColliders(enable) {
+        this.engine.enableDebugColliders(enable);
+    }
+
+    /**
+     * Enable debug visualization of physics joints.
+     * The exact visualization depends on the physics engine implementation.
+     * @param {boolean} enable
+     */
+    enableDebugJoints(enable) {
+        this.engine.enableDebugJoints(enable);
+    }
+
+    // Used by the renderer to get debug lines for physics visualization, if supported by the physics engine.
+    getDebugLineData() {
+        if (this.engine) {
+            return this.engine.getDebugLineData();
+        }
+        return [];
+    }
+
+    // Functions called by KHR_interactivity
+
+    /**
+     * Applies a linear and/or angular impulse to the actor associated with the given node.
+     * An impulse causes an instantaneous change in the actor's velocity proportional to its mass.
+     * @param {number} nodeIndex - glTF node index of the target dynamic actor.
+     * @param {vec3} linearImpulse - Impulse vector applied to the center of mass, in world space (kg⋅m/s).
+     * @param {vec3} angularImpulse - Angular impulse vector applied around the center of mass, in world space (kg⋅m²/s).
+     */
+    applyImpulse(nodeIndex, linearImpulse, angularImpulse) {
+        this.engine.applyImpulse(nodeIndex, linearImpulse, angularImpulse);
+    }
+
+    /**
+     * Applies a linear impulse to the actor associated with the given node at a specific world-space position.
+     * Applying the impulse off-center will also induce a torque on the actor.
+     * @param {number} nodeIndex - glTF node index of the target dynamic actor.
+     * @param {vec3} impulse - Impulse vector to apply, in world space (kg⋅m/s).
+     * @param {vec3} position - World-space position at which the impulse is applied.
+     */
+    applyPointImpulse(nodeIndex, impulse, position) {
+        this.engine.applyPointImpulse(nodeIndex, impulse, position);
+    }
+
+    /**
+     * Performs a ray-cast between two world-space points and returns information
+     * about the first shape hit.
+     *
+     * @param {number[]} rayStart - World-space ray origin as `[x, y, z]`.
+     * @param {number[]} rayEnd - World-space ray terminus as `[x, y, z]`.
+     * @returns {{ hitNodeIndex: number, hitFraction: number | undefined, hitNormal: Float32Array | undefined}}
+     *   An object containing the index of the hit node (`-1` on miss), the normalised
+     *   hit fraction along the ray, and the surface normal at the hit point.
+     */
+    rayCast(rayStart, rayEnd) {
+        return this.engine.rayCast(rayStart, rayEnd);
     }
 }
 
@@ -68881,7 +70030,7 @@ class gltfLight extends GltfObject {
     }
 
     toUniform(node) {
-        const matrix = node?.getRenderedWorldTransform() ?? identity$2;
+        const matrix = node?.getRenderedWorldTransform() ?? identity$1;
 
         // To extract a correct rotation, the scaling component must be eliminated.
         var scale = fromValues$3(1, 1, 1);
@@ -71160,11 +72309,15 @@ class gltfRenderer {
         }
 
         const worldTransform = node.getRenderedWorldTransform();
+      
+        const normalMatrix = create$4();
+        invert$1(normalMatrix, node.getRenderedWorldTransform());
+        transpose(normalMatrix, normalMatrix);
 
         // update model dependant matrices once per node
         this.shader.updateUniform("u_ViewProjectionMatrix", viewProjectionMatrix);
         this.shader.updateUniform("u_ModelMatrix", worldTransform);
-        this.shader.updateUniform("u_NormalMatrix", node.normalMatrix, false);
+        this.shader.updateUniform("u_NormalMatrix", normalMatrix, false);
         this.shader.updateUniform("u_Exposure", state.renderingParameters.exposure, false);
         this.shader.updateUniform("u_Camera", this.currentCameraPosition, false);
         if (renderpassConfiguration.picking) {
@@ -79897,7 +81050,6 @@ class gltfNode extends GltfObject {
         this.worldQuaternion = create$1();
         this.worldScale = create$3();
         this.inverseWorldTransform = create$4();
-        this.normalMatrix = create$4();
         this.light = undefined;
         this.instanceMatrices = undefined;
         this.instanceWorldTransforms = undefined;
@@ -80220,7 +81372,6 @@ class gltfScene extends GltfObject {
             if (nodeDirty) {
                 multiply$2(node.worldTransform, parentTransform, node.getLocalTransform());
                 invert$1(node.inverseWorldTransform, node.worldTransform);
-                transpose(node.normalMatrix, node.inverseWorldTransform);
                 multiply(node.worldQuaternion, parentRotation, node.rotation);
                 getScaling(node.worldScale, node.worldTransform);
                 if (parentScaleDirty || node.animatedPropertyObjects["scale"].dirty) {
@@ -82133,7 +83284,7 @@ class glTF extends GltfObject {
         return nonDisjointAnimations;
     }
 
-    resetAnimatedProperties() {
+    resetAnimatedProperties(sceneIndex = -1) {
         const resetAnimatedProperty = (path, propertyName, parent, readOnly) => {
             if (readOnly) {
                 return;
@@ -82141,6 +83292,10 @@ class glTF extends GltfObject {
             parent.animatedPropertyObjects[propertyName].rest();
         };
         recurseAllAnimatedProperties(this, resetAnimatedProperty);
+        if (sceneIndex >= 0) {
+            const scene = this.scenes[sceneIndex];
+            scene.applyTransformHierarchy(this);
+        }
     }
 
     /**
@@ -137633,7 +138788,7 @@ var main = async () => {
 
     uiModel.physicsReset.subscribe(() => {
         state.physicsController.resetScene(state.gltf);
-        state.gltf.resetAnimatedProperties();
+        state.gltf.resetAnimatedProperties(state.sceneIndex);
         state.physicsController.loadScene(state, state.sceneIndex);
         redraw = true;
     });
