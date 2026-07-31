@@ -1319,6 +1319,40 @@ function fromMat4(out, a) {
   return out;
 }
 /**
+ * Transpose the values of a mat3
+ *
+ * @param {mat3} out the receiving matrix
+ * @param {ReadonlyMat3} a the source matrix
+ * @returns {mat3} out
+ */
+
+function transpose$1(out, a) {
+  // If we are transposing ourselves we can skip a few steps but have to cache some values
+  if (out === a) {
+    var a01 = a[1],
+        a02 = a[2],
+        a12 = a[5];
+    out[1] = a[3];
+    out[2] = a[6];
+    out[3] = a01;
+    out[5] = a[7];
+    out[6] = a02;
+    out[7] = a12;
+  } else {
+    out[0] = a[0];
+    out[1] = a[3];
+    out[2] = a[6];
+    out[3] = a[1];
+    out[4] = a[4];
+    out[5] = a[7];
+    out[6] = a[2];
+    out[7] = a[5];
+    out[8] = a[8];
+  }
+
+  return out;
+}
+/**
  * Multiplies two mat3's
  *
  * @param {mat3} out the receiving matrix
@@ -1355,6 +1389,43 @@ function multiply$2(out, a, b) {
   out[6] = b20 * a00 + b21 * a10 + b22 * a20;
   out[7] = b20 * a01 + b21 * a11 + b22 * a21;
   out[8] = b20 * a02 + b21 * a12 + b22 * a22;
+  return out;
+}
+/**
+ * Calculates a 3x3 matrix from the given quaternion
+ *
+ * @param {mat3} out mat3 receiving operation result
+ * @param {ReadonlyQuat} q Quaternion to create matrix from
+ *
+ * @returns {mat3} out
+ */
+
+function fromQuat(out, q) {
+  var x = q[0],
+      y = q[1],
+      z = q[2],
+      w = q[3];
+  var x2 = x + x;
+  var y2 = y + y;
+  var z2 = z + z;
+  var xx = x * x2;
+  var yx = y * x2;
+  var yy = y * y2;
+  var zx = z * x2;
+  var zy = z * y2;
+  var zz = z * z2;
+  var wx = w * x2;
+  var wy = w * y2;
+  var wz = w * z2;
+  out[0] = 1 - yy - zz;
+  out[3] = yx - wz;
+  out[6] = zx + wy;
+  out[1] = yx + wz;
+  out[4] = 1 - xx - zz;
+  out[7] = zy - wx;
+  out[2] = zx - wy;
+  out[5] = zy + wx;
+  out[8] = 1 - xx - yy;
   return out;
 }
 
@@ -4394,6 +4465,9 @@ class GltfState {
         /** KHR_materials_variants */
         this.variant = undefined;
 
+        /** Indicates whether the view needs to be redrawn, currently used to indicate new sorting orders for gaussian splatting */
+        this.needsRedraw = false;
+
         /** parameters used to configure the rendering */
         this.renderingParameters = {
             /** morphing between vertices */
@@ -4418,15 +4492,19 @@ class GltfState {
                 KHR_materials_specular: true,
                 /** KHR_materials_iridescence adds a thin-film iridescence effect */
                 KHR_materials_iridescence: true,
+                /** KHR_materials_diffuse_transmission */
                 KHR_materials_diffuse_transmission: true,
                 /** KHR_materials_anisotropy defines microfacet grooves in the surface, stretching the specular reflection on the surface */
                 KHR_materials_anisotropy: true,
                 /** KHR_materials_dispersion defines configuring the strength of the angular separation of colors (chromatic abberation)*/
                 KHR_materials_dispersion: true,
-                KHR_materials_emissive_strength: true
+                /** KHR_materials_emissive_strength allows configuring the strength of the emissive component */
+                KHR_materials_emissive_strength: true,
+                /** KHR_gaussian_splatting */
+                KHR_gaussian_splatting: true
             },
-            /** clear color expressed as list of ints in the range [0, 255] */
-            clearColor: [58, 64, 74, 255],
+            /** clear color expressed as list of floats in the range [0, 1] */
+            clearColor: [0.22, 0.25, 0.29, 1],
             /** exposure factor */
             exposure: 1.0,
             /** KHR_lights_punctual */
@@ -4455,7 +4533,9 @@ class GltfState {
             /** If this is set to true, directional lights will be generated if IBL is disabled */
             useDirectionalLightsWithDisabledIBL: false,
             /** MSAA used for cases which are not handled by the browser (e.g. Transmission)*/
-            internalMSAA: 4
+            internalMSAA: 4,
+            /** Use RGBA16F floating-point main framebuffer instead of RGBA8 */
+            floatingPointFramebuffer: true
         };
 
         // retain a reference to the view with which the state was created, so that it can be validated
@@ -4589,6 +4669,17 @@ GltfState.DebugOutput = {
         SINGLE_SCATTER_COLOR: "Single-Scatter Color",
         /** output for the pre scatter pass, which collects all lighting contribution for scattering */
         PRE_SCATTER_PASS: "Pre-Scatter Pass"
+    },
+
+    gaussianSplatting: {
+        /** output the spherical harmonics degree 0 */
+        SH_DEGREE_0: "SH Degree 0",
+        /** output the spherical harmonics degree 0-1 */
+        SH_DEGREE_1: "SH Degree 1",
+        /** output the spherical harmonics degree 0-2 */
+        SH_DEGREE_2: "SH Degree 2",
+        /** output the spherical harmonics degree 0-3 */
+        SH_DEGREE_3: "SH Degree 3"
     }
 };
 
@@ -4742,6 +4833,18 @@ class gltfShader {
                         this.gl.context.uniform1iv(uniform.loc, value);
                     } else {
                         this.gl.context.uniform1i(uniform.loc, value);
+                    }
+                    break;
+                }
+                case GL.UNSIGNED_INT: {
+                    if (
+                        Array.isArray(value) ||
+                        value instanceof Uint32Array ||
+                        value instanceof Int32Array
+                    ) {
+                        this.gl.context.uniform1uiv(uniform.loc, value);
+                    } else {
+                        this.gl.context.uniform1ui(uniform.loc, value);
                     }
                     break;
                 }
@@ -4987,7 +5090,7 @@ class EnvironmentRenderer {
     }
 }
 
-var pbrShader = "precision highp float;\n#define GLSLIFY 1\n#include <tonemapping.glsl>\n#include <textures.glsl>\n#include <functions.glsl>\n#include <brdf.glsl>\n#include <punctual.glsl>\n#include <ibl.glsl>\n#include <material_info.glsl>\n#ifdef MATERIAL_IRIDESCENCE\n#include <iridescence.glsl>\n#endif\nout vec4 g_finalColor;void main(){vec4 baseColor=getBaseColor();\n#if ALPHAMODE == ALPHAMODE_OPAQUE\nbaseColor.a=1.0;\n#endif\n#ifdef MATERIAL_UNLIT\n#if ALPHAMODE == ALPHAMODE_MASK\nif(baseColor.a<u_AlphaCutoff){discard;}baseColor.a=1.0;\n#endif\n#ifdef LINEAR_OUTPUT\ng_finalColor=vec4(toneMapInverse(baseColor.rgb),baseColor.a);\n#else\ng_finalColor=vec4(linearTosRGB(baseColor.rgb),baseColor.a);\n#endif\n#else\nvec3 color=vec3(0);vec3 v=normalize(u_Camera-v_Position);NormalInfo normalInfo=getNormalInfo(v);vec3 n=normalInfo.n;vec3 t=normalInfo.t;vec3 b=normalInfo.b;float NdotV=clampedDot(n,v);float TdotV=clampedDot(t,v);float BdotV=clampedDot(b,v);MaterialInfo materialInfo;materialInfo.baseColor=baseColor.rgb;materialInfo.ior=1.5;materialInfo.f0_dielectric=vec3(0.04);materialInfo.specularWeight=1.0;materialInfo.f90=vec3(1.0);materialInfo.f90_dielectric=materialInfo.f90;\n#ifdef MATERIAL_IOR\nmaterialInfo=getIorInfo(materialInfo);\n#endif\n#ifdef MATERIAL_METALLICROUGHNESS\nmaterialInfo=getMetallicRoughnessInfo(materialInfo);\n#endif\n#ifdef MATERIAL_SHEEN\nmaterialInfo=getSheenInfo(materialInfo);\n#endif\n#ifdef MATERIAL_CLEARCOAT\nmaterialInfo=getClearCoatInfo(materialInfo,normalInfo);\n#endif\n#ifdef MATERIAL_SPECULAR\nmaterialInfo=getSpecularInfo(materialInfo);\n#endif\n#ifdef MATERIAL_TRANSMISSION\nmaterialInfo=getTransmissionInfo(materialInfo);\n#endif\n#ifdef MATERIAL_VOLUME\nmaterialInfo=getVolumeInfo(materialInfo);\n#endif\n#ifdef MATERIAL_IRIDESCENCE\nmaterialInfo=getIridescenceInfo(materialInfo);\n#endif\n#ifdef MATERIAL_DIFFUSE_TRANSMISSION\nmaterialInfo=getDiffuseTransmissionInfo(materialInfo);\n#endif\n#ifdef MATERIAL_ANISOTROPY\nmaterialInfo=getAnisotropyInfo(materialInfo,normalInfo);\n#endif\nmaterialInfo.perceptualRoughness=clamp(materialInfo.perceptualRoughness,0.0,1.0);materialInfo.metallic=clamp(materialInfo.metallic,0.0,1.0);materialInfo.alphaRoughness=materialInfo.perceptualRoughness*materialInfo.perceptualRoughness;vec3 f_specular_dielectric=vec3(0.0);vec3 f_specular_metal=vec3(0.0);vec3 f_diffuse=vec3(0.0);vec3 f_dielectric_brdf_ibl=vec3(0.0);vec3 f_metal_brdf_ibl=vec3(0.0);vec3 f_emissive=vec3(0.0);vec3 clearcoat_brdf=vec3(0.0);vec3 f_sheen=vec3(0.0);vec3 f_specular_transmission=vec3(0.0);vec3 f_diffuse_transmission=vec3(0.0);float clearcoatFactor=0.0;vec3 clearcoatFresnel=vec3(0);float albedoSheenScaling=1.0;float diffuseTransmissionThickness=1.0;vec3 diffuseTransmissionIBL=vec3(0.0);\n#ifdef MATERIAL_IRIDESCENCE\nvec3 iridescenceFresnel_dielectric=evalIridescence(1.0,materialInfo.iridescenceIor,NdotV,materialInfo.iridescenceThickness,materialInfo.f0_dielectric);vec3 iridescenceFresnel_metallic=evalIridescence(1.0,materialInfo.iridescenceIor,NdotV,materialInfo.iridescenceThickness,baseColor.rgb);if(materialInfo.iridescenceThickness==0.0){materialInfo.iridescenceFactor=0.0;}\n#endif\n#ifdef MATERIAL_DIFFUSE_TRANSMISSION\n#ifdef MATERIAL_VOLUME\ndiffuseTransmissionThickness=materialInfo.thickness*(length(vec3(u_ModelMatrix[0].xyz))+length(vec3(u_ModelMatrix[1].xyz))+length(vec3(u_ModelMatrix[2].xyz)))/3.0;\n#endif\n#endif\n#ifdef MATERIAL_VOLUME_SCATTER\nvec3 singleScatter=multiToSingleScatter();\n#endif\n#ifdef MATERIAL_CLEARCOAT\nclearcoatFactor=materialInfo.clearcoatFactor;clearcoatFresnel=F_Schlick(materialInfo.clearcoatF0,materialInfo.clearcoatF90,clampedDot(materialInfo.clearcoatNormal,v));\n#endif\n#if defined(USE_IBL) || defined(MATERIAL_TRANSMISSION)\nf_diffuse=getDiffuseLight(n)*baseColor.rgb;\n#ifdef MATERIAL_DIFFUSE_TRANSMISSION\ndiffuseTransmissionIBL=getDiffuseLight(-n)*materialInfo.diffuseTransmissionColorFactor;\n#ifdef MATERIAL_VOLUME\ndiffuseTransmissionIBL=applyVolumeAttenuation(diffuseTransmissionIBL,diffuseTransmissionThickness,materialInfo.attenuationColor,materialInfo.attenuationDistance);\n#endif\n#ifdef MATERIAL_VOLUME_SCATTER\ndiffuseTransmissionIBL*=(1.0-singleScatter);\n#endif\nf_diffuse=mix(f_diffuse,diffuseTransmissionIBL,materialInfo.diffuseTransmissionFactor);\n#endif\n#if defined(MATERIAL_TRANSMISSION)\nf_specular_transmission=getIBLVolumeRefraction(n,v,materialInfo.perceptualRoughness,baseColor.rgb,v_Position,u_ModelMatrix,u_ViewMatrix,u_ProjectionMatrix,materialInfo.ior,materialInfo.thickness,materialInfo.attenuationColor,materialInfo.attenuationDistance,materialInfo.dispersion);f_diffuse=mix(f_diffuse,f_specular_transmission,materialInfo.transmissionFactor);\n#endif\n#ifdef MATERIAL_ANISOTROPY\nf_specular_metal=getIBLRadianceAnisotropy(n,v,materialInfo.perceptualRoughness,materialInfo.anisotropyStrength,materialInfo.anisotropicB);f_specular_dielectric=f_specular_metal;\n#else\nf_specular_metal=getIBLRadianceGGX(n,v,materialInfo.perceptualRoughness);f_specular_dielectric=f_specular_metal;\n#endif\nvec3 f_metal_fresnel_ibl=getIBLGGXFresnel(n,v,materialInfo.perceptualRoughness,baseColor.rgb,1.0);f_metal_brdf_ibl=f_metal_fresnel_ibl*f_specular_metal;vec3 f_dielectric_fresnel_ibl=getIBLGGXFresnel(n,v,materialInfo.perceptualRoughness,materialInfo.f0_dielectric,materialInfo.specularWeight);f_dielectric_brdf_ibl=mix(f_diffuse,f_specular_dielectric,f_dielectric_fresnel_ibl);\n#ifdef MATERIAL_IRIDESCENCE\nf_metal_brdf_ibl=mix(f_metal_brdf_ibl,f_specular_metal*iridescenceFresnel_metallic,materialInfo.iridescenceFactor);f_dielectric_brdf_ibl=mix(f_dielectric_brdf_ibl,rgb_mix(f_diffuse,f_specular_dielectric,iridescenceFresnel_dielectric),materialInfo.iridescenceFactor);\n#endif\n#ifdef MATERIAL_CLEARCOAT\nclearcoat_brdf=getIBLRadianceGGX(materialInfo.clearcoatNormal,v,materialInfo.clearcoatRoughness);\n#endif\n#ifdef MATERIAL_SHEEN\nf_sheen=getIBLRadianceCharlie(n,v,materialInfo.sheenRoughnessFactor,materialInfo.sheenColorFactor);albedoSheenScaling=1.0-max3(materialInfo.sheenColorFactor)*albedoSheenScalingLUT(NdotV,materialInfo.sheenRoughnessFactor);\n#endif\ncolor=mix(f_dielectric_brdf_ibl,f_metal_brdf_ibl,materialInfo.metallic);color=f_sheen+color*albedoSheenScaling;color=mix(color,clearcoat_brdf,clearcoatFactor*clearcoatFresnel);\n#ifdef HAS_OCCLUSION_MAP\nfloat ao=1.0;ao=texture(u_OcclusionSampler,getOcclusionUV()).r;color=color*(1.0+u_OcclusionStrength*(ao-1.0));\n#endif\n#endif\nf_diffuse=vec3(0.0);f_specular_dielectric=vec3(0.0);f_specular_metal=vec3(0.0);vec3 f_dielectric_brdf=vec3(0.0);vec3 f_metal_brdf=vec3(0.0);\n#ifdef USE_PUNCTUAL\nfor(int i=0;i<LIGHT_COUNT;++i){Light light=u_Lights[i];vec3 pointToLight;if(light.type!=LightType_Directional){pointToLight=light.position-v_Position;}else{pointToLight=-light.direction;}vec3 l=normalize(pointToLight);vec3 h=normalize(l+v);float NdotL=clampedDot(n,l);float NdotV=clampedDot(n,v);float NdotH=clampedDot(n,h);float LdotH=clampedDot(l,h);float VdotH=clampedDot(v,h);vec3 dielectric_fresnel=F_Schlick(materialInfo.f0_dielectric*materialInfo.specularWeight,materialInfo.f90_dielectric,abs(VdotH));vec3 metal_fresnel=F_Schlick(baseColor.rgb,vec3(1.0),abs(VdotH));vec3 lightIntensity=getLighIntensity(light,pointToLight);vec3 l_diffuse=lightIntensity*NdotL*BRDF_lambertian(baseColor.rgb);vec3 l_specular_dielectric=vec3(0.0);vec3 l_specular_metal=vec3(0.0);vec3 l_dielectric_brdf=vec3(0.0);vec3 l_metal_brdf=vec3(0.0);vec3 l_clearcoat_brdf=vec3(0.0);vec3 l_sheen=vec3(0.0);float l_albedoSheenScaling=1.0;vec3 l_diffuse_btdf=vec3(0.0);\n#ifdef MATERIAL_DIFFUSE_TRANSMISSION\nl_diffuse=l_diffuse*(1.0-materialInfo.diffuseTransmissionFactor);if(dot(n,l)<0.0){float diffuseNdotL=clampedDot(-n,l);l_diffuse_btdf=lightIntensity*diffuseNdotL*BRDF_lambertian(materialInfo.diffuseTransmissionColorFactor);vec3 l_mirror=normalize(l+2.0*n*dot(-l,n));float diffuseVdotH=clampedDot(v,normalize(l_mirror+v));dielectric_fresnel=F_Schlick(materialInfo.f0_dielectric*materialInfo.specularWeight,materialInfo.f90_dielectric,abs(diffuseVdotH));\n#ifdef MATERIAL_VOLUME\nl_diffuse_btdf=applyVolumeAttenuation(l_diffuse_btdf,diffuseTransmissionThickness,materialInfo.attenuationColor,materialInfo.attenuationDistance);\n#endif\n#ifdef MATERIAL_VOLUME_SCATTER\nl_diffuse_btdf*=(1.0-singleScatter);\n#endif\nl_diffuse+=l_diffuse_btdf*materialInfo.diffuseTransmissionFactor;}\n#endif\n#ifdef MATERIAL_TRANSMISSION\nvec3 transmissionRay=getVolumeTransmissionRay(n,v,materialInfo.thickness,materialInfo.ior,u_ModelMatrix);pointToLight-=transmissionRay;l=normalize(pointToLight);vec3 transmittedLight=lightIntensity*getPunctualRadianceTransmission(n,v,l,materialInfo.alphaRoughness,baseColor.rgb,materialInfo.ior);\n#ifdef MATERIAL_VOLUME\ntransmittedLight=applyVolumeAttenuation(transmittedLight,length(transmissionRay),materialInfo.attenuationColor,materialInfo.attenuationDistance);\n#endif\nl_diffuse=mix(l_diffuse,transmittedLight,materialInfo.transmissionFactor);\n#endif\nvec3 intensity=getLighIntensity(light,pointToLight);\n#ifdef MATERIAL_ANISOTROPY\nl_specular_metal=intensity*NdotL*BRDF_specularGGXAnisotropy(materialInfo.alphaRoughness,materialInfo.anisotropyStrength,n,v,l,h,materialInfo.anisotropicT,materialInfo.anisotropicB);l_specular_dielectric=l_specular_metal;\n#else\nl_specular_metal=intensity*NdotL*BRDF_specularGGX(materialInfo.alphaRoughness,NdotL,NdotV,NdotH);l_specular_dielectric=l_specular_metal;\n#endif\nl_metal_brdf=metal_fresnel*l_specular_metal;l_dielectric_brdf=mix(l_diffuse,l_specular_dielectric,dielectric_fresnel);\n#ifdef MATERIAL_IRIDESCENCE\nl_metal_brdf=mix(l_metal_brdf,l_specular_metal*iridescenceFresnel_metallic,materialInfo.iridescenceFactor);l_dielectric_brdf=mix(l_dielectric_brdf,rgb_mix(l_diffuse,l_specular_dielectric,iridescenceFresnel_dielectric),materialInfo.iridescenceFactor);\n#endif\n#ifdef MATERIAL_CLEARCOAT\nl_clearcoat_brdf=intensity*getPunctualRadianceClearCoat(materialInfo.clearcoatNormal,v,l,h,VdotH,materialInfo.clearcoatF0,materialInfo.clearcoatF90,materialInfo.clearcoatRoughness);\n#endif\n#ifdef MATERIAL_SHEEN\nl_sheen=intensity*getPunctualRadianceSheen(materialInfo.sheenColorFactor,materialInfo.sheenRoughnessFactor,NdotL,NdotV,NdotH);l_albedoSheenScaling=min(1.0-max3(materialInfo.sheenColorFactor)*albedoSheenScalingLUT(NdotV,materialInfo.sheenRoughnessFactor),1.0-max3(materialInfo.sheenColorFactor)*albedoSheenScalingLUT(NdotL,materialInfo.sheenRoughnessFactor));\n#endif\nvec3 l_color=mix(l_dielectric_brdf,l_metal_brdf,materialInfo.metallic);l_color=l_sheen+l_color*l_albedoSheenScaling;l_color=mix(l_color,l_clearcoat_brdf,clearcoatFactor*clearcoatFresnel);color+=l_color;}\n#endif\n#ifdef MATERIAL_VOLUME_SCATTER\nvec3 l_color=getSubsurfaceScattering(v_Position,u_ProjectionMatrix,materialInfo.attenuationDistance,u_ScatterFramebufferSampler,materialInfo.diffuseTransmissionColorFactor);color+=l_color*(1.0-materialInfo.metallic)*(1.0-clearcoatFactor*clearcoatFresnel)*(1.0-materialInfo.iridescenceFactor)*(1.0-materialInfo.transmissionFactor);\n#endif\nf_emissive=u_EmissiveFactor;\n#ifdef MATERIAL_EMISSIVE_STRENGTH\nf_emissive*=u_EmissiveStrength;\n#endif\n#ifdef HAS_EMISSIVE_MAP\nf_emissive*=texture(u_EmissiveSampler,getEmissiveUV()).rgb;\n#endif\n#if defined(NOT_TRIANGLE) && !defined(HAS_NORMAL_VEC3)\ncolor=f_emissive+baseColor.rgb;\n#else\ncolor=f_emissive*(1.0-clearcoatFactor*clearcoatFresnel)+color;\n#endif\n#if DEBUG == DEBUG_NONE\n#if ALPHAMODE == ALPHAMODE_MASK\nif(baseColor.a<u_AlphaCutoff){discard;}baseColor.a=1.0;\n#endif\n#ifdef LINEAR_OUTPUT\ng_finalColor=vec4(color.rgb,baseColor.a);\n#else\ng_finalColor=vec4(toneMap(color),baseColor.a);\n#endif\n#else\ng_finalColor=vec4(1.0);{float frequency=0.02;float gray=0.9;vec2 v1=step(0.5,fract(frequency*gl_FragCoord.xy));vec2 v2=step(0.5,vec2(1.0)-fract(frequency*gl_FragCoord.xy));g_finalColor.rgb*=gray+v1.x*v1.y+v2.x*v2.y;}\n#endif\n#if DEBUG == DEBUG_UV_0 && defined(HAS_TEXCOORD_0_VEC2)\ng_finalColor.rgb=vec3(v_texcoord_0,0);\n#endif\n#if DEBUG == DEBUG_UV_1 && defined(HAS_TEXCOORD_1_VEC2)\ng_finalColor.rgb=vec3(v_texcoord_1,0);\n#endif\n#if DEBUG == DEBUG_NORMAL_TEXTURE && defined(HAS_NORMAL_MAP)\ng_finalColor.rgb=(normalInfo.ntex+1.0)/2.0;\n#endif\n#if DEBUG == DEBUG_NORMAL_SHADING\ng_finalColor.rgb=(n+1.0)/2.0;\n#endif\n#if DEBUG == DEBUG_NORMAL_GEOMETRY\ng_finalColor.rgb=(normalInfo.ng+1.0)/2.0;\n#endif\n#if DEBUG == DEBUG_TANGENT\ng_finalColor.rgb=(normalInfo.t+1.0)/2.0;\n#endif\n#if DEBUG == DEBUG_TANGENT_W\ng_finalColor.rgb=vec3((normalInfo.tangentWSign+1.0)/2.0);\n#endif\n#if DEBUG == DEBUG_BITANGENT\ng_finalColor.rgb=(normalInfo.b+1.0)/2.0;\n#endif\n#if DEBUG == DEBUG_ALPHA\ng_finalColor.rgb=vec3(baseColor.a);\n#endif\n#if DEBUG == DEBUG_OCCLUSION && defined(HAS_OCCLUSION_MAP)\ng_finalColor.rgb=vec3(ao);\n#endif\n#if DEBUG == DEBUG_EMISSIVE\ng_finalColor.rgb=linearTosRGB(f_emissive);\n#endif\n#if DEBUG == DEBUG_METALLIC\ng_finalColor.rgb=vec3(materialInfo.metallic);\n#endif\n#if DEBUG == DEBUG_ROUGHNESS\ng_finalColor.rgb=vec3(materialInfo.perceptualRoughness);\n#endif\n#if DEBUG == DEBUG_BASE_COLOR\ng_finalColor.rgb=linearTosRGB(materialInfo.baseColor);\n#endif\n#ifdef MATERIAL_CLEARCOAT\n#if DEBUG == DEBUG_CLEARCOAT_FACTOR\ng_finalColor.rgb=vec3(materialInfo.clearcoatFactor);\n#endif\n#if DEBUG == DEBUG_CLEARCOAT_ROUGHNESS\ng_finalColor.rgb=vec3(materialInfo.clearcoatRoughness);\n#endif\n#if DEBUG == DEBUG_CLEARCOAT_NORMAL\ng_finalColor.rgb=(materialInfo.clearcoatNormal+vec3(1))/2.0;\n#endif\n#endif\n#ifdef MATERIAL_SHEEN\n#if DEBUG == DEBUG_SHEEN_COLOR\ng_finalColor.rgb=materialInfo.sheenColorFactor;\n#endif\n#if DEBUG == DEBUG_SHEEN_ROUGHNESS\ng_finalColor.rgb=vec3(materialInfo.sheenRoughnessFactor);\n#endif\n#endif\n#ifdef MATERIAL_SPECULAR\n#if DEBUG == DEBUG_SPECULAR_FACTOR\ng_finalColor.rgb=vec3(materialInfo.specularWeight);\n#endif\n#if DEBUG == DEBUG_SPECULAR_COLOR\nvec3 specularTexture=vec3(1.0);\n#ifdef HAS_SPECULAR_COLOR_MAP\nspecularTexture.rgb=texture(u_SpecularColorSampler,getSpecularColorUV()).rgb;\n#endif\ng_finalColor.rgb=u_KHR_materials_specular_specularColorFactor*specularTexture.rgb;\n#endif\n#endif\n#ifdef MATERIAL_TRANSMISSION\n#if DEBUG == DEBUG_TRANSMISSION_FACTOR\ng_finalColor.rgb=vec3(materialInfo.transmissionFactor);\n#endif\n#endif\n#ifdef MATERIAL_VOLUME\n#if DEBUG == DEBUG_VOLUME_THICKNESS\ng_finalColor.rgb=vec3(materialInfo.thickness/u_ThicknessFactor);\n#endif\n#endif\n#ifdef MATERIAL_IRIDESCENCE\n#if DEBUG == DEBUG_IRIDESCENCE_FACTOR\ng_finalColor.rgb=vec3(materialInfo.iridescenceFactor);\n#endif\n#if DEBUG == DEBUG_IRIDESCENCE_THICKNESS\ng_finalColor.rgb=vec3(materialInfo.iridescenceThickness/1200.0);\n#endif\n#endif\n#ifdef MATERIAL_ANISOTROPY\n#if DEBUG == DEBUG_ANISOTROPIC_STRENGTH\ng_finalColor.rgb=vec3(materialInfo.anisotropyStrength);\n#endif\n#if DEBUG == DEBUG_ANISOTROPIC_DIRECTION\nvec2 direction=vec2(1.0,0.0);\n#ifdef HAS_ANISOTROPY_MAP\ndirection=texture(u_AnisotropySampler,getAnisotropyUV()).xy;direction=direction*2.0-vec2(1.0);\n#endif\nvec2 directionRotation=u_Anisotropy.xy;mat2 rotationMatrix=mat2(directionRotation.x,directionRotation.y,-directionRotation.y,directionRotation.x);direction=(direction+vec2(1.0))*0.5;g_finalColor.rgb=vec3(direction,0.0);\n#endif\n#endif\n#ifdef MATERIAL_DIFFUSE_TRANSMISSION\n#if DEBUG == DEBUG_DIFFUSE_TRANSMISSION_FACTOR\ng_finalColor.rgb=linearTosRGB(vec3(materialInfo.diffuseTransmissionFactor));\n#endif\n#if DEBUG == DEBUG_DIFFUSE_TRANSMISSION_COLOR_FACTOR\ng_finalColor.rgb=linearTosRGB(materialInfo.diffuseTransmissionColorFactor);\n#endif\n#ifdef MATERIAL_VOLUME_SCATTER\n#if DEBUG == DEBUG_VOLUME_SCATTER_MULTI_SCATTER_COLOR\ng_finalColor.rgb=u_MultiScatterColor;\n#endif\n#if DEBUG == DEBUG_VOLUME_SCATTER_SINGLE_SCATTER_COLOR\ng_finalColor.rgb=singleScatter;\n#endif\n#endif\n#endif\n#endif\n}"; // eslint-disable-line
+var pbrShader = "precision highp float;\n#define GLSLIFY 1\n#include <tonemapping.glsl>\n#include <textures.glsl>\n#include <functions.glsl>\n#include <brdf.glsl>\n#include <punctual.glsl>\n#include <ibl.glsl>\n#include <material_info.glsl>\n#ifdef MATERIAL_IRIDESCENCE\n#include <iridescence.glsl>\n#endif\nlayout(location=0)out vec4 g_finalColor;layout(location=1)out uint toneMapFlag;void main(){vec4 baseColor=getBaseColor();\n#if ALPHAMODE == ALPHAMODE_OPAQUE\nbaseColor.a=1.0;\n#endif\n#ifdef MATERIAL_UNLIT\n#if ALPHAMODE == ALPHAMODE_MASK\nif(baseColor.a<u_AlphaCutoff){discard;}baseColor.a=1.0;\n#endif\n#ifdef TRANSMISSION_PASS\ng_finalColor=vec4(toneMapInverse(baseColor.rgb),baseColor.a);toneMapFlag=2u;\n#else\ng_finalColor=baseColor;toneMapFlag=1u;\n#endif\n#else\nvec3 color=vec3(0);vec3 v=normalize(u_Camera-v_Position);NormalInfo normalInfo=getNormalInfo(v);vec3 n=normalInfo.n;vec3 t=normalInfo.t;vec3 b=normalInfo.b;float NdotV=clampedDot(n,v);float TdotV=clampedDot(t,v);float BdotV=clampedDot(b,v);MaterialInfo materialInfo;materialInfo.baseColor=baseColor.rgb;materialInfo.ior=1.5;materialInfo.f0_dielectric=vec3(0.04);materialInfo.specularWeight=1.0;materialInfo.f90=vec3(1.0);materialInfo.f90_dielectric=materialInfo.f90;\n#ifdef MATERIAL_IOR\nmaterialInfo=getIorInfo(materialInfo);\n#endif\n#ifdef MATERIAL_METALLICROUGHNESS\nmaterialInfo=getMetallicRoughnessInfo(materialInfo);\n#endif\n#ifdef MATERIAL_SHEEN\nmaterialInfo=getSheenInfo(materialInfo);\n#endif\n#ifdef MATERIAL_CLEARCOAT\nmaterialInfo=getClearCoatInfo(materialInfo,normalInfo);\n#endif\n#ifdef MATERIAL_SPECULAR\nmaterialInfo=getSpecularInfo(materialInfo);\n#endif\n#ifdef MATERIAL_TRANSMISSION\nmaterialInfo=getTransmissionInfo(materialInfo);\n#endif\n#ifdef MATERIAL_VOLUME\nmaterialInfo=getVolumeInfo(materialInfo);\n#endif\n#ifdef MATERIAL_IRIDESCENCE\nmaterialInfo=getIridescenceInfo(materialInfo);\n#endif\n#ifdef MATERIAL_DIFFUSE_TRANSMISSION\nmaterialInfo=getDiffuseTransmissionInfo(materialInfo);\n#endif\n#ifdef MATERIAL_ANISOTROPY\nmaterialInfo=getAnisotropyInfo(materialInfo,normalInfo);\n#endif\nmaterialInfo.perceptualRoughness=clamp(materialInfo.perceptualRoughness,0.0,1.0);materialInfo.metallic=clamp(materialInfo.metallic,0.0,1.0);materialInfo.alphaRoughness=materialInfo.perceptualRoughness*materialInfo.perceptualRoughness;vec3 f_specular_dielectric=vec3(0.0);vec3 f_specular_metal=vec3(0.0);vec3 f_diffuse=vec3(0.0);vec3 f_dielectric_brdf_ibl=vec3(0.0);vec3 f_metal_brdf_ibl=vec3(0.0);vec3 f_emissive=vec3(0.0);vec3 clearcoat_brdf=vec3(0.0);vec3 f_sheen=vec3(0.0);vec3 f_specular_transmission=vec3(0.0);vec3 f_diffuse_transmission=vec3(0.0);float clearcoatFactor=0.0;vec3 clearcoatFresnel=vec3(0);float albedoSheenScaling=1.0;float diffuseTransmissionThickness=1.0;vec3 diffuseTransmissionIBL=vec3(0.0);\n#ifdef MATERIAL_IRIDESCENCE\nvec3 iridescenceFresnel_dielectric=evalIridescence(1.0,materialInfo.iridescenceIor,NdotV,materialInfo.iridescenceThickness,materialInfo.f0_dielectric);vec3 iridescenceFresnel_metallic=evalIridescence(1.0,materialInfo.iridescenceIor,NdotV,materialInfo.iridescenceThickness,baseColor.rgb);if(materialInfo.iridescenceThickness==0.0){materialInfo.iridescenceFactor=0.0;}\n#endif\n#ifdef MATERIAL_DIFFUSE_TRANSMISSION\n#ifdef MATERIAL_VOLUME\ndiffuseTransmissionThickness=materialInfo.thickness*(length(vec3(u_ModelMatrix[0].xyz))+length(vec3(u_ModelMatrix[1].xyz))+length(vec3(u_ModelMatrix[2].xyz)))/3.0;\n#endif\n#endif\n#ifdef MATERIAL_VOLUME_SCATTER\nvec3 singleScatter=multiToSingleScatter();\n#endif\n#ifdef MATERIAL_CLEARCOAT\nclearcoatFactor=materialInfo.clearcoatFactor;clearcoatFresnel=F_Schlick(materialInfo.clearcoatF0,materialInfo.clearcoatF90,clampedDot(materialInfo.clearcoatNormal,v));\n#endif\n#if defined(USE_IBL) || defined(MATERIAL_TRANSMISSION)\nf_diffuse=getDiffuseLight(n)*baseColor.rgb;\n#ifdef MATERIAL_DIFFUSE_TRANSMISSION\ndiffuseTransmissionIBL=getDiffuseLight(-n)*materialInfo.diffuseTransmissionColorFactor;\n#ifdef MATERIAL_VOLUME\ndiffuseTransmissionIBL=applyVolumeAttenuation(diffuseTransmissionIBL,diffuseTransmissionThickness,materialInfo.attenuationColor,materialInfo.attenuationDistance);\n#endif\n#ifdef MATERIAL_VOLUME_SCATTER\ndiffuseTransmissionIBL*=(1.0-singleScatter);\n#endif\nf_diffuse=mix(f_diffuse,diffuseTransmissionIBL,materialInfo.diffuseTransmissionFactor);\n#endif\n#if defined(MATERIAL_TRANSMISSION)\nf_specular_transmission=getIBLVolumeRefraction(n,v,materialInfo.perceptualRoughness,baseColor.rgb,v_Position,u_ModelMatrix,u_ViewMatrix,u_ProjectionMatrix,materialInfo.ior,materialInfo.thickness,materialInfo.attenuationColor,materialInfo.attenuationDistance,materialInfo.dispersion);f_diffuse=mix(f_diffuse,f_specular_transmission,materialInfo.transmissionFactor);\n#endif\n#ifdef MATERIAL_ANISOTROPY\nf_specular_metal=getIBLRadianceAnisotropy(n,v,materialInfo.perceptualRoughness,materialInfo.anisotropyStrength,materialInfo.anisotropicB);f_specular_dielectric=f_specular_metal;\n#else\nf_specular_metal=getIBLRadianceGGX(n,v,materialInfo.perceptualRoughness);f_specular_dielectric=f_specular_metal;\n#endif\nvec3 f_metal_fresnel_ibl=getIBLGGXFresnel(n,v,materialInfo.perceptualRoughness,baseColor.rgb,1.0);f_metal_brdf_ibl=f_metal_fresnel_ibl*f_specular_metal;vec3 f_dielectric_fresnel_ibl=getIBLGGXFresnel(n,v,materialInfo.perceptualRoughness,materialInfo.f0_dielectric,materialInfo.specularWeight);f_dielectric_brdf_ibl=mix(f_diffuse,f_specular_dielectric,f_dielectric_fresnel_ibl);\n#ifdef MATERIAL_IRIDESCENCE\nf_metal_brdf_ibl=mix(f_metal_brdf_ibl,f_specular_metal*iridescenceFresnel_metallic,materialInfo.iridescenceFactor);f_dielectric_brdf_ibl=mix(f_dielectric_brdf_ibl,rgb_mix(f_diffuse,f_specular_dielectric,iridescenceFresnel_dielectric),materialInfo.iridescenceFactor);\n#endif\n#ifdef MATERIAL_CLEARCOAT\nclearcoat_brdf=getIBLRadianceGGX(materialInfo.clearcoatNormal,v,materialInfo.clearcoatRoughness);\n#endif\n#ifdef MATERIAL_SHEEN\nf_sheen=getIBLRadianceCharlie(n,v,materialInfo.sheenRoughnessFactor,materialInfo.sheenColorFactor);albedoSheenScaling=1.0-max3(materialInfo.sheenColorFactor)*albedoSheenScalingLUT(NdotV,materialInfo.sheenRoughnessFactor);\n#endif\ncolor=mix(f_dielectric_brdf_ibl,f_metal_brdf_ibl,materialInfo.metallic);color=f_sheen+color*albedoSheenScaling;color=mix(color,clearcoat_brdf,clearcoatFactor*clearcoatFresnel);\n#ifdef HAS_OCCLUSION_MAP\nfloat ao=1.0;ao=texture(u_OcclusionSampler,getOcclusionUV()).r;color=color*(1.0+u_OcclusionStrength*(ao-1.0));\n#endif\n#endif\nf_diffuse=vec3(0.0);f_specular_dielectric=vec3(0.0);f_specular_metal=vec3(0.0);vec3 f_dielectric_brdf=vec3(0.0);vec3 f_metal_brdf=vec3(0.0);\n#ifdef USE_PUNCTUAL\nfor(int i=0;i<LIGHT_COUNT;++i){Light light=u_Lights[i];vec3 pointToLight;if(light.type!=LightType_Directional){pointToLight=light.position-v_Position;}else{pointToLight=-light.direction;}vec3 l=normalize(pointToLight);vec3 h=normalize(l+v);float NdotL=clampedDot(n,l);float NdotV=clampedDot(n,v);float NdotH=clampedDot(n,h);float LdotH=clampedDot(l,h);float VdotH=clampedDot(v,h);vec3 dielectric_fresnel=F_Schlick(materialInfo.f0_dielectric*materialInfo.specularWeight,materialInfo.f90_dielectric,abs(VdotH));vec3 metal_fresnel=F_Schlick(baseColor.rgb,vec3(1.0),abs(VdotH));vec3 lightIntensity=getLighIntensity(light,pointToLight);vec3 l_diffuse=lightIntensity*NdotL*BRDF_lambertian(baseColor.rgb);vec3 l_specular_dielectric=vec3(0.0);vec3 l_specular_metal=vec3(0.0);vec3 l_dielectric_brdf=vec3(0.0);vec3 l_metal_brdf=vec3(0.0);vec3 l_clearcoat_brdf=vec3(0.0);vec3 l_sheen=vec3(0.0);float l_albedoSheenScaling=1.0;vec3 l_diffuse_btdf=vec3(0.0);\n#ifdef MATERIAL_DIFFUSE_TRANSMISSION\nl_diffuse=l_diffuse*(1.0-materialInfo.diffuseTransmissionFactor);if(dot(n,l)<0.0){float diffuseNdotL=clampedDot(-n,l);l_diffuse_btdf=lightIntensity*diffuseNdotL*BRDF_lambertian(materialInfo.diffuseTransmissionColorFactor);vec3 l_mirror=normalize(l+2.0*n*dot(-l,n));float diffuseVdotH=clampedDot(v,normalize(l_mirror+v));dielectric_fresnel=F_Schlick(materialInfo.f0_dielectric*materialInfo.specularWeight,materialInfo.f90_dielectric,abs(diffuseVdotH));\n#ifdef MATERIAL_VOLUME\nl_diffuse_btdf=applyVolumeAttenuation(l_diffuse_btdf,diffuseTransmissionThickness,materialInfo.attenuationColor,materialInfo.attenuationDistance);\n#endif\n#ifdef MATERIAL_VOLUME_SCATTER\nl_diffuse_btdf*=(1.0-singleScatter);\n#endif\nl_diffuse+=l_diffuse_btdf*materialInfo.diffuseTransmissionFactor;}\n#endif\n#ifdef MATERIAL_TRANSMISSION\nvec3 transmissionRay=getVolumeTransmissionRay(n,v,materialInfo.thickness,materialInfo.ior,u_ModelMatrix);pointToLight-=transmissionRay;l=normalize(pointToLight);vec3 transmittedLight=lightIntensity*getPunctualRadianceTransmission(n,v,l,materialInfo.alphaRoughness,baseColor.rgb,materialInfo.ior);\n#ifdef MATERIAL_VOLUME\ntransmittedLight=applyVolumeAttenuation(transmittedLight,length(transmissionRay),materialInfo.attenuationColor,materialInfo.attenuationDistance);\n#endif\nl_diffuse=mix(l_diffuse,transmittedLight,materialInfo.transmissionFactor);\n#endif\nvec3 intensity=getLighIntensity(light,pointToLight);\n#ifdef MATERIAL_ANISOTROPY\nl_specular_metal=intensity*NdotL*BRDF_specularGGXAnisotropy(materialInfo.alphaRoughness,materialInfo.anisotropyStrength,n,v,l,h,materialInfo.anisotropicT,materialInfo.anisotropicB);l_specular_dielectric=l_specular_metal;\n#else\nl_specular_metal=intensity*NdotL*BRDF_specularGGX(materialInfo.alphaRoughness,NdotL,NdotV,NdotH);l_specular_dielectric=l_specular_metal;\n#endif\nl_metal_brdf=metal_fresnel*l_specular_metal;l_dielectric_brdf=mix(l_diffuse,l_specular_dielectric,dielectric_fresnel);\n#ifdef MATERIAL_IRIDESCENCE\nl_metal_brdf=mix(l_metal_brdf,l_specular_metal*iridescenceFresnel_metallic,materialInfo.iridescenceFactor);l_dielectric_brdf=mix(l_dielectric_brdf,rgb_mix(l_diffuse,l_specular_dielectric,iridescenceFresnel_dielectric),materialInfo.iridescenceFactor);\n#endif\n#ifdef MATERIAL_CLEARCOAT\nl_clearcoat_brdf=intensity*getPunctualRadianceClearCoat(materialInfo.clearcoatNormal,v,l,h,VdotH,materialInfo.clearcoatF0,materialInfo.clearcoatF90,materialInfo.clearcoatRoughness);\n#endif\n#ifdef MATERIAL_SHEEN\nl_sheen=intensity*getPunctualRadianceSheen(materialInfo.sheenColorFactor,materialInfo.sheenRoughnessFactor,NdotL,NdotV,NdotH);l_albedoSheenScaling=min(1.0-max3(materialInfo.sheenColorFactor)*albedoSheenScalingLUT(NdotV,materialInfo.sheenRoughnessFactor),1.0-max3(materialInfo.sheenColorFactor)*albedoSheenScalingLUT(NdotL,materialInfo.sheenRoughnessFactor));\n#endif\nvec3 l_color=mix(l_dielectric_brdf,l_metal_brdf,materialInfo.metallic);l_color=l_sheen+l_color*l_albedoSheenScaling;l_color=mix(l_color,l_clearcoat_brdf,clearcoatFactor*clearcoatFresnel);color+=l_color;}\n#endif\n#ifdef MATERIAL_VOLUME_SCATTER\nvec3 l_color=getSubsurfaceScattering(v_Position,u_ProjectionMatrix,materialInfo.attenuationDistance,u_ScatterFramebufferSampler,materialInfo.diffuseTransmissionColorFactor);color+=l_color*(1.0-materialInfo.metallic)*(1.0-clearcoatFactor*clearcoatFresnel)*(1.0-materialInfo.iridescenceFactor)*(1.0-materialInfo.transmissionFactor);\n#endif\nf_emissive=u_EmissiveFactor;\n#ifdef MATERIAL_EMISSIVE_STRENGTH\nf_emissive*=u_EmissiveStrength;\n#endif\n#ifdef HAS_EMISSIVE_MAP\nf_emissive*=texture(u_EmissiveSampler,getEmissiveUV()).rgb;\n#endif\n#if defined(NOT_TRIANGLE) && !defined(HAS_NORMAL_VEC3)\ncolor=f_emissive+baseColor.rgb;\n#else\ncolor=f_emissive*(1.0-clearcoatFactor*clearcoatFresnel)+color;\n#endif\n#if DEBUG == DEBUG_NONE\n#if ALPHAMODE == ALPHAMODE_MASK\nif(baseColor.a<u_AlphaCutoff){discard;}baseColor.a=1.0;\n#endif\ng_finalColor=vec4(color.rgb,baseColor.a);toneMapFlag=2u;\n#else\ntoneMapFlag=0u;g_finalColor=vec4(1.0);{float frequency=0.02;float gray=0.9;vec2 v1=step(0.5,fract(frequency*gl_FragCoord.xy));vec2 v2=step(0.5,vec2(1.0)-fract(frequency*gl_FragCoord.xy));g_finalColor.rgb*=gray+v1.x*v1.y+v2.x*v2.y;}\n#endif\n#if DEBUG == DEBUG_UV_0 && defined(HAS_TEXCOORD_0_VEC2)\ng_finalColor.rgb=vec3(v_texcoord_0,0);\n#endif\n#if DEBUG == DEBUG_UV_1 && defined(HAS_TEXCOORD_1_VEC2)\ng_finalColor.rgb=vec3(v_texcoord_1,0);\n#endif\n#if DEBUG == DEBUG_NORMAL_TEXTURE && defined(HAS_NORMAL_MAP)\ng_finalColor.rgb=(normalInfo.ntex+1.0)/2.0;\n#endif\n#if DEBUG == DEBUG_NORMAL_SHADING\ng_finalColor.rgb=(n+1.0)/2.0;\n#endif\n#if DEBUG == DEBUG_NORMAL_GEOMETRY\ng_finalColor.rgb=(normalInfo.ng+1.0)/2.0;\n#endif\n#if DEBUG == DEBUG_TANGENT\ng_finalColor.rgb=(normalInfo.t+1.0)/2.0;\n#endif\n#if DEBUG == DEBUG_TANGENT_W\ng_finalColor.rgb=vec3((normalInfo.tangentWSign+1.0)/2.0);\n#endif\n#if DEBUG == DEBUG_BITANGENT\ng_finalColor.rgb=(normalInfo.b+1.0)/2.0;\n#endif\n#if DEBUG == DEBUG_ALPHA\ng_finalColor.rgb=vec3(baseColor.a);\n#endif\n#if DEBUG == DEBUG_OCCLUSION && defined(HAS_OCCLUSION_MAP)\ng_finalColor.rgb=vec3(ao);\n#endif\n#if DEBUG == DEBUG_EMISSIVE\ng_finalColor.rgb=linearTosRGB(f_emissive);\n#endif\n#if DEBUG == DEBUG_METALLIC\ng_finalColor.rgb=vec3(materialInfo.metallic);\n#endif\n#if DEBUG == DEBUG_ROUGHNESS\ng_finalColor.rgb=vec3(materialInfo.perceptualRoughness);\n#endif\n#if DEBUG == DEBUG_BASE_COLOR\ng_finalColor.rgb=linearTosRGB(materialInfo.baseColor);\n#endif\n#ifdef MATERIAL_CLEARCOAT\n#if DEBUG == DEBUG_CLEARCOAT_FACTOR\ng_finalColor.rgb=vec3(materialInfo.clearcoatFactor);\n#endif\n#if DEBUG == DEBUG_CLEARCOAT_ROUGHNESS\ng_finalColor.rgb=vec3(materialInfo.clearcoatRoughness);\n#endif\n#if DEBUG == DEBUG_CLEARCOAT_NORMAL\ng_finalColor.rgb=(materialInfo.clearcoatNormal+vec3(1))/2.0;\n#endif\n#endif\n#ifdef MATERIAL_SHEEN\n#if DEBUG == DEBUG_SHEEN_COLOR\ng_finalColor.rgb=materialInfo.sheenColorFactor;\n#endif\n#if DEBUG == DEBUG_SHEEN_ROUGHNESS\ng_finalColor.rgb=vec3(materialInfo.sheenRoughnessFactor);\n#endif\n#endif\n#ifdef MATERIAL_SPECULAR\n#if DEBUG == DEBUG_SPECULAR_FACTOR\ng_finalColor.rgb=vec3(materialInfo.specularWeight);\n#endif\n#if DEBUG == DEBUG_SPECULAR_COLOR\nvec3 specularTexture=vec3(1.0);\n#ifdef HAS_SPECULAR_COLOR_MAP\nspecularTexture.rgb=texture(u_SpecularColorSampler,getSpecularColorUV()).rgb;\n#endif\ng_finalColor.rgb=u_KHR_materials_specular_specularColorFactor*specularTexture.rgb;\n#endif\n#endif\n#ifdef MATERIAL_TRANSMISSION\n#if DEBUG == DEBUG_TRANSMISSION_FACTOR\ng_finalColor.rgb=vec3(materialInfo.transmissionFactor);\n#endif\n#endif\n#ifdef MATERIAL_VOLUME\n#if DEBUG == DEBUG_VOLUME_THICKNESS\ng_finalColor.rgb=vec3(materialInfo.thickness/u_ThicknessFactor);\n#endif\n#endif\n#ifdef MATERIAL_IRIDESCENCE\n#if DEBUG == DEBUG_IRIDESCENCE_FACTOR\ng_finalColor.rgb=vec3(materialInfo.iridescenceFactor);\n#endif\n#if DEBUG == DEBUG_IRIDESCENCE_THICKNESS\ng_finalColor.rgb=vec3(materialInfo.iridescenceThickness/1200.0);\n#endif\n#endif\n#ifdef MATERIAL_ANISOTROPY\n#if DEBUG == DEBUG_ANISOTROPIC_STRENGTH\ng_finalColor.rgb=vec3(materialInfo.anisotropyStrength);\n#endif\n#if DEBUG == DEBUG_ANISOTROPIC_DIRECTION\nvec2 direction=vec2(1.0,0.0);\n#ifdef HAS_ANISOTROPY_MAP\ndirection=texture(u_AnisotropySampler,getAnisotropyUV()).xy;direction=direction*2.0-vec2(1.0);\n#endif\nvec2 directionRotation=u_Anisotropy.xy;mat2 rotationMatrix=mat2(directionRotation.x,directionRotation.y,-directionRotation.y,directionRotation.x);direction=(direction+vec2(1.0))*0.5;g_finalColor.rgb=vec3(direction,0.0);\n#endif\n#endif\n#ifdef MATERIAL_DIFFUSE_TRANSMISSION\n#if DEBUG == DEBUG_DIFFUSE_TRANSMISSION_FACTOR\ng_finalColor.rgb=linearTosRGB(vec3(materialInfo.diffuseTransmissionFactor));\n#endif\n#if DEBUG == DEBUG_DIFFUSE_TRANSMISSION_COLOR_FACTOR\ng_finalColor.rgb=linearTosRGB(materialInfo.diffuseTransmissionColorFactor);\n#endif\n#ifdef MATERIAL_VOLUME_SCATTER\n#if DEBUG == DEBUG_VOLUME_SCATTER_MULTI_SCATTER_COLOR\ng_finalColor.rgb=u_MultiScatterColor;\n#endif\n#if DEBUG == DEBUG_VOLUME_SCATTER_SINGLE_SCATTER_COLOR\ng_finalColor.rgb=singleScatter;\n#endif\n#endif\n#endif\n#endif\n}"; // eslint-disable-line
 
 var brdfShader = "#define GLSLIFY 1\nvec3 F_Schlick(vec3 f0,vec3 f90,float VdotH){return f0+(f90-f0)*pow(clamp(1.0-VdotH,0.0,1.0),5.0);}float F_Schlick(float f0,float f90,float VdotH){float x=clamp(1.0-VdotH,0.0,1.0);float x2=x*x;float x5=x*x2*x2;return f0+(f90-f0)*x5;}float F_Schlick(float f0,float VdotH){float f90=1.0;return F_Schlick(f0,f90,VdotH);}vec3 F_Schlick(vec3 f0,float f90,float VdotH){float x=clamp(1.0-VdotH,0.0,1.0);float x2=x*x;float x5=x*x2*x2;return f0+(f90-f0)*x5;}vec3 F_Schlick(vec3 f0,float VdotH){float f90=1.0;return F_Schlick(f0,f90,VdotH);}vec3 Schlick_to_F0(vec3 f,vec3 f90,float VdotH){float x=clamp(1.0-VdotH,0.0,1.0);float x2=x*x;float x5=clamp(x*x2*x2,0.0,0.9999);return(f-f90*x5)/(1.0-x5);}float Schlick_to_F0(float f,float f90,float VdotH){float x=clamp(1.0-VdotH,0.0,1.0);float x2=x*x;float x5=clamp(x*x2*x2,0.0,0.9999);return(f-f90*x5)/(1.0-x5);}vec3 Schlick_to_F0(vec3 f,float VdotH){return Schlick_to_F0(f,vec3(1.0),VdotH);}float Schlick_to_F0(float f,float VdotH){return Schlick_to_F0(f,1.0,VdotH);}float V_GGX(float NdotL,float NdotV,float alphaRoughness){float alphaRoughnessSq=alphaRoughness*alphaRoughness;float GGXV=NdotL*sqrt(NdotV*NdotV*(1.0-alphaRoughnessSq)+alphaRoughnessSq);float GGXL=NdotV*sqrt(NdotL*NdotL*(1.0-alphaRoughnessSq)+alphaRoughnessSq);float GGX=GGXV+GGXL;if(GGX>0.0){return 0.5/GGX;}return 0.0;}float D_GGX(float NdotH,float alphaRoughness){float alphaRoughnessSq=alphaRoughness*alphaRoughness;float f=(NdotH*NdotH)*(alphaRoughnessSq-1.0)+1.0;return alphaRoughnessSq/(M_PI*f*f);}float lambdaSheenNumericHelper(float x,float alphaG){float oneMinusAlphaSq=(1.0-alphaG)*(1.0-alphaG);float a=mix(21.5473,25.3245,oneMinusAlphaSq);float b=mix(3.82987,3.32435,oneMinusAlphaSq);float c=mix(0.19823,0.16801,oneMinusAlphaSq);float d=mix(-1.97760,-1.27393,oneMinusAlphaSq);float e=mix(-4.32054,-4.85967,oneMinusAlphaSq);return a/(1.0+b*pow(x,c))+d*x+e;}float lambdaSheen(float cosTheta,float alphaG){if(abs(cosTheta)<0.5){return exp(lambdaSheenNumericHelper(cosTheta,alphaG));}else{return exp(2.0*lambdaSheenNumericHelper(0.5,alphaG)-lambdaSheenNumericHelper(1.0-cosTheta,alphaG));}}float V_Sheen(float NdotL,float NdotV,float sheenRoughness){sheenRoughness=max(sheenRoughness,0.000001);float alphaG=sheenRoughness*sheenRoughness;return clamp(1.0/((1.0+lambdaSheen(NdotV,alphaG)+lambdaSheen(NdotL,alphaG))*(4.0*NdotV*NdotL)),0.0,1.0);}float D_Charlie(float sheenRoughness,float NdotH){sheenRoughness=max(sheenRoughness,0.000001);float alphaG=sheenRoughness*sheenRoughness;float invR=1.0/alphaG;float cos2h=NdotH*NdotH;float sin2h=1.0-cos2h;return(2.0+invR)*pow(sin2h,invR*0.5)/(2.0*M_PI);}vec3 BRDF_lambertian(vec3 diffuseColor){return(diffuseColor/M_PI);}vec3 BRDF_specularGGX(float alphaRoughness,float NdotL,float NdotV,float NdotH){float Vis=V_GGX(NdotL,NdotV,alphaRoughness);float D=D_GGX(NdotH,alphaRoughness);return vec3(Vis*D);}\n#ifdef MATERIAL_ANISOTROPY\nfloat D_GGX_anisotropic(float NdotH,float TdotH,float BdotH,float anisotropy,float at,float ab){float a2=at*ab;vec3 f=vec3(ab*TdotH,at*BdotH,a2*NdotH);float w2=a2/dot(f,f);return a2*w2*w2/M_PI;}float V_GGX_anisotropic(float NdotL,float NdotV,float BdotV,float TdotV,float TdotL,float BdotL,float at,float ab){float GGXV=NdotL*length(vec3(at*TdotV,ab*BdotV,NdotV));float GGXL=NdotV*length(vec3(at*TdotL,ab*BdotL,NdotL));float v=0.5/(GGXV+GGXL);return clamp(v,0.0,1.0);}vec3 BRDF_specularGGXAnisotropy(float alphaRoughness,float anisotropy,vec3 n,vec3 v,vec3 l,vec3 h,vec3 t,vec3 b){float at=mix(alphaRoughness,1.0,anisotropy*anisotropy);float ab=clamp(alphaRoughness,0.001,1.0);float NdotL=clamp(dot(n,l),0.0,1.0);float NdotH=clamp(dot(n,h),0.001,1.0);float NdotV=dot(n,v);float V=V_GGX_anisotropic(NdotL,NdotV,dot(b,v),dot(t,v),dot(t,l),dot(b,l),at,ab);float D=D_GGX_anisotropic(NdotH,dot(t,h),dot(b,h),anisotropy,at,ab);return vec3(V*D);}\n#endif\nvec3 BRDF_specularSheen(vec3 sheenColor,float sheenRoughness,float NdotL,float NdotV,float NdotH){float sheenDistribution=D_Charlie(sheenRoughness,NdotH);float sheenVisibility=V_Sheen(NdotL,NdotV,sheenRoughness);return sheenColor*sheenDistribution*sheenVisibility;}"; // eslint-disable-line
 
@@ -5011,11 +5114,21 @@ var animationShader = "#define GLSLIFY 1\n#ifdef HAS_MORPH_TARGETS\nuniform high
 
 var cubemapVertShader = "#define GLSLIFY 1\nuniform mat4 u_ViewProjectionMatrix;uniform mat3 u_EnvRotation;in vec3 a_position;out vec3 v_TexCoords;void main(){v_TexCoords=u_EnvRotation*a_position;mat4 mat=u_ViewProjectionMatrix;mat[3]=vec4(0.0,0.0,0.0,0.1);vec4 pos=mat*vec4(a_position,1.0);gl_Position=pos.xyww;}"; // eslint-disable-line
 
-var cubemapFragShader = "precision highp float;\n#define GLSLIFY 1\n#include <tonemapping.glsl>\nuniform float u_EnvIntensity;uniform float u_EnvBlurNormalized;uniform int u_MipCount;uniform samplerCube u_GGXEnvSampler;out vec4 FragColor;in vec3 v_TexCoords;void main(){vec4 color=textureLod(u_GGXEnvSampler,v_TexCoords,u_EnvBlurNormalized*float(u_MipCount-1));color.rgb*=u_EnvIntensity;color.a=1.0;\n#ifdef LINEAR_OUTPUT\nFragColor=color.rgba;\n#else\nFragColor=vec4(toneMap(color.rgb),color.a);\n#endif\n}"; // eslint-disable-line
+var cubemapFragShader = "precision highp float;\n#define GLSLIFY 1\n#include <tonemapping.glsl>\nuniform float u_EnvIntensity;uniform float u_EnvBlurNormalized;uniform int u_MipCount;uniform samplerCube u_GGXEnvSampler;layout(location=0)out vec4 FragColor;layout(location=1)out uint toneMapFlag;in vec3 v_TexCoords;void main(){vec4 color=textureLod(u_GGXEnvSampler,v_TexCoords,u_EnvBlurNormalized*float(u_MipCount-1));color.rgb*=u_EnvIntensity;color.a=1.0;FragColor=color.rgba;toneMapFlag=2u;}"; // eslint-disable-line
 
 var scatterShader = "precision highp float;\n#define GLSLIFY 1\n#include <textures.glsl>\n#include <functions.glsl>\n#include <brdf.glsl>\n#include <punctual.glsl>\n#include <ibl.glsl>\n#include <material_info.glsl>\nlayout(location=0)out vec4 frontColor;uniform int u_MaterialID;void main(){frontColor=vec4(0.0,0.0,0.0,float(u_MaterialID)/255.0);\n#ifdef MATERIAL_VOLUME_SCATTER\nvec3 singleScatter=multiToSingleScatter();\n#endif\nvec4 baseColor=getBaseColor();baseColor.a=1.0;vec3 color=vec3(0);vec3 v=normalize(u_Camera-v_Position);NormalInfo normalInfo=getNormalInfo(v);vec3 n=normalInfo.n;vec3 t=normalInfo.t;vec3 b=normalInfo.b;float NdotV=clampedDot(n,v);float TdotV=clampedDot(t,v);float BdotV=clampedDot(b,v);MaterialInfo materialInfo;materialInfo.baseColor=baseColor.rgb;materialInfo.ior=1.5;materialInfo.f0_dielectric=vec3(0.04);materialInfo.specularWeight=1.0;materialInfo.f90=vec3(1.0);materialInfo.f90_dielectric=materialInfo.f90;\n#ifdef MATERIAL_IOR\nmaterialInfo=getIorInfo(materialInfo);\n#endif\n#ifdef MATERIAL_METALLICROUGHNESS\nmaterialInfo=getMetallicRoughnessInfo(materialInfo);\n#endif\n#ifdef MATERIAL_SHEEN\nmaterialInfo=getSheenInfo(materialInfo);\n#endif\n#ifdef MATERIAL_SPECULAR\nmaterialInfo=getSpecularInfo(materialInfo);\n#endif\n#ifdef MATERIAL_TRANSMISSION\nmaterialInfo=getTransmissionInfo(materialInfo);\n#endif\n#ifdef MATERIAL_VOLUME\nmaterialInfo=getVolumeInfo(materialInfo);\n#endif\n#ifdef MATERIAL_DIFFUSE_TRANSMISSION\nmaterialInfo=getDiffuseTransmissionInfo(materialInfo);\n#endif\nmaterialInfo.perceptualRoughness=clamp(materialInfo.perceptualRoughness,0.0,1.0);materialInfo.alphaRoughness=materialInfo.perceptualRoughness*materialInfo.perceptualRoughness;vec3 f_specular_dielectric=vec3(0.0);vec3 f_diffuse=vec3(0.0);vec3 f_dielectric_brdf_ibl=vec3(0.0);float albedoSheenScaling=1.0;float diffuseTransmissionThickness=1.0;\n#ifdef MATERIAL_DIFFUSE_TRANSMISSION\n#ifdef MATERIAL_VOLUME\ndiffuseTransmissionThickness=materialInfo.thickness*(length(vec3(u_ModelMatrix[0].xyz))+length(vec3(u_ModelMatrix[1].xyz))+length(vec3(u_ModelMatrix[2].xyz)))/3.0;\n#endif\n#endif\n#if defined(USE_IBL) || defined(MATERIAL_TRANSMISSION)\n#ifdef MATERIAL_DIFFUSE_TRANSMISSION\nf_diffuse=getDiffuseLight(n)*materialInfo.diffuseTransmissionColorFactor*singleScatter;vec3 diffuseTransmissionIBL=getDiffuseLight(-n)*materialInfo.diffuseTransmissionColorFactor;\n#ifdef MATERIAL_VOLUME\ndiffuseTransmissionIBL=applyVolumeAttenuation(diffuseTransmissionIBL,diffuseTransmissionThickness,materialInfo.attenuationColor,materialInfo.attenuationDistance);\n#endif\nf_diffuse+=diffuseTransmissionIBL*(1.0-singleScatter)*singleScatter;f_diffuse*=materialInfo.diffuseTransmissionFactor;\n#endif\n#ifdef MATERIAL_SHEEN\nalbedoSheenScaling=1.0-max3(materialInfo.sheenColorFactor)*albedoSheenScalingLUT(NdotV,materialInfo.sheenRoughnessFactor);\n#endif\nvec3 f_dielectric_fresnel_ibl=getIBLGGXFresnel(n,v,materialInfo.perceptualRoughness,materialInfo.f0_dielectric,materialInfo.specularWeight);frontColor+=vec4(mix(f_diffuse,f_specular_dielectric,f_dielectric_fresnel_ibl),0.0)*albedoSheenScaling;\n#endif\n#ifdef USE_PUNCTUAL\nfor(int i=0;i<LIGHT_COUNT;++i){Light light=u_Lights[i];vec3 pointToLight;if(light.type!=LightType_Directional){pointToLight=light.position-v_Position;}else{pointToLight=-light.direction;}vec3 l=normalize(pointToLight);vec3 h=normalize(l+v);float NdotL=clampedDot(n,l);float NdotV=clampedDot(n,v);float NdotH=clampedDot(n,h);float LdotH=clampedDot(l,h);float VdotH=clampedDot(v,h);vec3 dielectric_fresnel=F_Schlick(materialInfo.f0_dielectric*materialInfo.specularWeight,materialInfo.f90_dielectric,abs(VdotH));vec3 lightIntensity=getLighIntensity(light,pointToLight);vec3 l_diffuse=vec3(0.0);vec3 l_specular_dielectric=vec3(0.0);vec3 l_dielectric_brdf=vec3(0.0);\n#ifdef MATERIAL_DIFFUSE_TRANSMISSION\nl_diffuse=lightIntensity*NdotL*BRDF_lambertian(materialInfo.diffuseTransmissionColorFactor)*singleScatter;if(dot(n,l)<0.0){float diffuseNdotL=clampedDot(-n,l);vec3 diffuse_btdf=lightIntensity*diffuseNdotL*BRDF_lambertian(materialInfo.diffuseTransmissionColorFactor);vec3 l_mirror=normalize(l+2.0*n*dot(-l,n));float diffuseVdotH=clampedDot(v,normalize(l_mirror+v));dielectric_fresnel=F_Schlick(materialInfo.f0_dielectric*materialInfo.specularWeight,materialInfo.f90_dielectric,abs(diffuseVdotH));\n#ifdef MATERIAL_VOLUME\ndiffuse_btdf=applyVolumeAttenuation(diffuse_btdf,diffuseTransmissionThickness,materialInfo.attenuationColor,materialInfo.attenuationDistance);\n#endif\nl_diffuse+=diffuse_btdf*(1.0-singleScatter)*singleScatter;}l_diffuse*=materialInfo.diffuseTransmissionFactor;\n#endif\n#ifdef MATERIAL_SHEEN\nalbedoSheenScaling=min(1.0-max3(materialInfo.sheenColorFactor)*albedoSheenScalingLUT(NdotV,materialInfo.sheenRoughnessFactor),1.0-max3(materialInfo.sheenColorFactor)*albedoSheenScalingLUT(NdotL,materialInfo.sheenRoughnessFactor));\n#endif\nl_dielectric_brdf=mix(l_diffuse,l_specular_dielectric,dielectric_fresnel);color+=l_dielectric_brdf*albedoSheenScaling;}frontColor+=vec4(color.rgb,0.0);\n#endif\n}"; // eslint-disable-line
 
-var specularGlossinesShader = "precision highp float;\n#define GLSLIFY 1\n#include <tonemapping.glsl>\n#include <textures.glsl>\n#include <functions.glsl>\n#include <brdf.glsl>\n#include <punctual.glsl>\n#include <ibl.glsl>\n#include <material_info.glsl>\nout vec4 g_finalColor;uniform vec3 u_SpecularFactor;uniform vec4 u_DiffuseFactor;uniform float u_GlossinessFactor;void main(){vec4 baseColor=u_DiffuseFactor;\n#if defined(HAS_DIFFUSE_MAP)\nbaseColor*=texture(u_DiffuseSampler,getDiffuseUV());\n#endif\nbaseColor*=getVertexColor();\n#if ALPHAMODE == ALPHAMODE_OPAQUE\nbaseColor.a=1.0;\n#endif\nvec3 color=vec3(0);vec3 v=normalize(u_Camera-v_Position);NormalInfo normalInfo=getNormalInfo(v);vec3 n=normalInfo.n;float NdotV=clampedDot(n,v);MaterialInfo materialInfo;materialInfo.baseColor=baseColor.rgb;materialInfo.f90_dielectric=vec3(1.0);materialInfo.metallic=0.0;vec3 specular=u_SpecularFactor;float glossiness=u_GlossinessFactor;\n#ifdef HAS_SPECULAR_GLOSSINESS_MAP\nvec4 sgSample=texture(u_SpecularGlossinessSampler,getSpecularGlossinessUV());glossiness*=sgSample.a;specular*=sgSample.rgb;\n#endif\nmaterialInfo.perceptualRoughness=1.0-glossiness;materialInfo.f0_dielectric=min(specular,vec3(1.0));materialInfo.perceptualRoughness=clamp(materialInfo.perceptualRoughness,0.0,1.0);materialInfo.alphaRoughness=materialInfo.perceptualRoughness*materialInfo.perceptualRoughness;vec3 f_emissive=vec3(0.0);\n#ifdef USE_IBL\nvec3 f_diffuse=getDiffuseLight(n)*baseColor.rgb;vec3 f_specular_dielectric=getIBLRadianceGGX(n,v,materialInfo.perceptualRoughness);vec3 f_dielectric_fresnel_ibl=getIBLGGXFresnel(n,v,materialInfo.perceptualRoughness,materialInfo.f0_dielectric,1.0);vec3 f_dielectric_brdf_ibl=mix(f_diffuse,f_specular_dielectric,f_dielectric_fresnel_ibl);color=f_dielectric_brdf_ibl;\n#ifdef HAS_OCCLUSION_MAP\nfloat ao=1.0;ao=texture(u_OcclusionSampler,getOcclusionUV()).r;color=color*(1.0+u_OcclusionStrength*(ao-1.0));\n#endif\n#endif\n#ifdef USE_PUNCTUAL\nfor(int i=0;i<LIGHT_COUNT;++i){Light light=u_Lights[i];vec3 pointToLight;if(light.type!=LightType_Directional){pointToLight=light.position-v_Position;}else{pointToLight=-light.direction;}vec3 l=normalize(pointToLight);vec3 h=normalize(l+v);float NdotL=clampedDot(n,l);float NdotV=clampedDot(n,v);float NdotH=clampedDot(n,h);float VdotH=clampedDot(v,h);vec3 dielectric_fresnel=F_Schlick(materialInfo.f0_dielectric,materialInfo.f90_dielectric,abs(VdotH));vec3 lightIntensity=getLighIntensity(light,pointToLight);vec3 l_diffuse=lightIntensity*NdotL*BRDF_lambertian(baseColor.rgb);vec3 intensity=getLighIntensity(light,pointToLight);vec3 l_specular_dielectric=intensity*NdotL*BRDF_specularGGX(materialInfo.alphaRoughness,NdotL,NdotV,NdotH);vec3 l_dielectric_brdf=mix(l_diffuse,l_specular_dielectric,dielectric_fresnel);color+=l_dielectric_brdf;}\n#endif\nf_emissive=u_EmissiveFactor;\n#ifdef MATERIAL_EMISSIVE_STRENGTH\nf_emissive*=u_EmissiveStrength;\n#endif\n#ifdef HAS_EMISSIVE_MAP\nf_emissive*=texture(u_EmissiveSampler,getEmissiveUV()).rgb;\n#endif\n#ifdef MATERIAL_UNLIT\ncolor=baseColor.rgb;\n#elif defined(NOT_TRIANGLE) && !defined(HAS_NORMAL_VEC3)\ncolor=f_emissive+baseColor.rgb;\n#else\ncolor=f_emissive+color;\n#endif\n#if DEBUG == DEBUG_NONE\n#if ALPHAMODE == ALPHAMODE_MASK\nif(baseColor.a<u_AlphaCutoff){discard;}baseColor.a=1.0;\n#endif\n#ifdef LINEAR_OUTPUT\ng_finalColor=vec4(color.rgb,baseColor.a);\n#else\ng_finalColor=vec4(toneMap(color),baseColor.a);\n#endif\n#else\ng_finalColor=vec4(1.0);{float frequency=0.02;float gray=0.9;vec2 v1=step(0.5,fract(frequency*gl_FragCoord.xy));vec2 v2=step(0.5,vec2(1.0)-fract(frequency*gl_FragCoord.xy));g_finalColor.rgb*=gray+v1.x*v1.y+v2.x*v2.y;}\n#endif\n#if DEBUG == DEBUG_UV_0 && defined(HAS_TEXCOORD_0_VEC2)\ng_finalColor.rgb=vec3(v_texcoord_0,0);\n#endif\n#if DEBUG == DEBUG_UV_1 && defined(HAS_TEXCOORD_1_VEC2)\ng_finalColor.rgb=vec3(v_texcoord_1,0);\n#endif\n#if DEBUG == DEBUG_NORMAL_TEXTURE && defined(HAS_NORMAL_MAP)\ng_finalColor.rgb=(normalInfo.ntex+1.0)/2.0;\n#endif\n#if DEBUG == DEBUG_NORMAL_SHADING\ng_finalColor.rgb=(n+1.0)/2.0;\n#endif\n#if DEBUG == DEBUG_NORMAL_GEOMETRY\ng_finalColor.rgb=(normalInfo.ng+1.0)/2.0;\n#endif\n#if DEBUG == DEBUG_TANGENT\ng_finalColor.rgb=(normalInfo.t+1.0)/2.0;\n#endif\n#if DEBUG == DEBUG_BITANGENT\ng_finalColor.rgb=(normalInfo.b+1.0)/2.0;\n#endif\n#if DEBUG == DEBUG_ALPHA\ng_finalColor.rgb=vec3(baseColor.a);\n#endif\n#if DEBUG == DEBUG_OCCLUSION && defined(HAS_OCCLUSION_MAP)\ng_finalColor.rgb=vec3(ao);\n#endif\n#if DEBUG == DEBUG_EMISSIVE\ng_finalColor.rgb=linearTosRGB(f_emissive);\n#endif\n#if DEBUG == DEBUG_METALLIC\ng_finalColor.rgb=vec3(materialInfo.metallic);\n#endif\n#if DEBUG == DEBUG_ROUGHNESS\ng_finalColor.rgb=vec3(materialInfo.perceptualRoughness);\n#endif\n#if DEBUG == DEBUG_BASE_COLOR\ng_finalColor.rgb=linearTosRGB(materialInfo.baseColor);\n#endif\n}"; // eslint-disable-line
+var specularGlossinesShader = "precision highp float;\n#define GLSLIFY 1\n#include <tonemapping.glsl>\n#include <textures.glsl>\n#include <functions.glsl>\n#include <brdf.glsl>\n#include <punctual.glsl>\n#include <ibl.glsl>\n#include <material_info.glsl>\nlayout(location=0)out vec4 g_finalColor;layout(location=1)out uint toneMapFlag;uniform vec3 u_SpecularFactor;uniform vec4 u_DiffuseFactor;uniform float u_GlossinessFactor;void main(){vec4 baseColor=u_DiffuseFactor;\n#if defined(HAS_DIFFUSE_MAP)\nbaseColor*=texture(u_DiffuseSampler,getDiffuseUV());\n#endif\nbaseColor*=getVertexColor();\n#if ALPHAMODE == ALPHAMODE_OPAQUE\nbaseColor.a=1.0;\n#endif\nvec3 color=vec3(0);vec3 v=normalize(u_Camera-v_Position);NormalInfo normalInfo=getNormalInfo(v);vec3 n=normalInfo.n;float NdotV=clampedDot(n,v);MaterialInfo materialInfo;materialInfo.baseColor=baseColor.rgb;materialInfo.f90_dielectric=vec3(1.0);materialInfo.metallic=0.0;vec3 specular=u_SpecularFactor;float glossiness=u_GlossinessFactor;\n#ifdef HAS_SPECULAR_GLOSSINESS_MAP\nvec4 sgSample=texture(u_SpecularGlossinessSampler,getSpecularGlossinessUV());glossiness*=sgSample.a;specular*=sgSample.rgb;\n#endif\nmaterialInfo.perceptualRoughness=1.0-glossiness;materialInfo.f0_dielectric=min(specular,vec3(1.0));materialInfo.perceptualRoughness=clamp(materialInfo.perceptualRoughness,0.0,1.0);materialInfo.alphaRoughness=materialInfo.perceptualRoughness*materialInfo.perceptualRoughness;vec3 f_emissive=vec3(0.0);\n#ifdef USE_IBL\nvec3 f_diffuse=getDiffuseLight(n)*baseColor.rgb;vec3 f_specular_dielectric=getIBLRadianceGGX(n,v,materialInfo.perceptualRoughness);vec3 f_dielectric_fresnel_ibl=getIBLGGXFresnel(n,v,materialInfo.perceptualRoughness,materialInfo.f0_dielectric,1.0);vec3 f_dielectric_brdf_ibl=mix(f_diffuse,f_specular_dielectric,f_dielectric_fresnel_ibl);color=f_dielectric_brdf_ibl;\n#ifdef HAS_OCCLUSION_MAP\nfloat ao=1.0;ao=texture(u_OcclusionSampler,getOcclusionUV()).r;color=color*(1.0+u_OcclusionStrength*(ao-1.0));\n#endif\n#endif\n#ifdef USE_PUNCTUAL\nfor(int i=0;i<LIGHT_COUNT;++i){Light light=u_Lights[i];vec3 pointToLight;if(light.type!=LightType_Directional){pointToLight=light.position-v_Position;}else{pointToLight=-light.direction;}vec3 l=normalize(pointToLight);vec3 h=normalize(l+v);float NdotL=clampedDot(n,l);float NdotV=clampedDot(n,v);float NdotH=clampedDot(n,h);float VdotH=clampedDot(v,h);vec3 dielectric_fresnel=F_Schlick(materialInfo.f0_dielectric,materialInfo.f90_dielectric,abs(VdotH));vec3 lightIntensity=getLighIntensity(light,pointToLight);vec3 l_diffuse=lightIntensity*NdotL*BRDF_lambertian(baseColor.rgb);vec3 intensity=getLighIntensity(light,pointToLight);vec3 l_specular_dielectric=intensity*NdotL*BRDF_specularGGX(materialInfo.alphaRoughness,NdotL,NdotV,NdotH);vec3 l_dielectric_brdf=mix(l_diffuse,l_specular_dielectric,dielectric_fresnel);color+=l_dielectric_brdf;}\n#endif\nf_emissive=u_EmissiveFactor;\n#ifdef MATERIAL_EMISSIVE_STRENGTH\nf_emissive*=u_EmissiveStrength;\n#endif\n#ifdef HAS_EMISSIVE_MAP\nf_emissive*=texture(u_EmissiveSampler,getEmissiveUV()).rgb;\n#endif\n#if defined(NOT_TRIANGLE) && !defined(HAS_NORMAL_VEC3)\ncolor=f_emissive+baseColor.rgb;\n#else\ncolor=f_emissive+color;\n#endif\n#if DEBUG == DEBUG_NONE\n#if ALPHAMODE == ALPHAMODE_MASK\nif(baseColor.a<u_AlphaCutoff){discard;}baseColor.a=1.0;\n#endif\ng_finalColor=vec4(color.rgb,baseColor.a);toneMapFlag=2u;\n#else\ntoneMapFlag=0u;g_finalColor=vec4(1.0);{float frequency=0.02;float gray=0.9;vec2 v1=step(0.5,fract(frequency*gl_FragCoord.xy));vec2 v2=step(0.5,vec2(1.0)-fract(frequency*gl_FragCoord.xy));g_finalColor.rgb*=gray+v1.x*v1.y+v2.x*v2.y;}\n#endif\n#if DEBUG == DEBUG_UV_0 && defined(HAS_TEXCOORD_0_VEC2)\ng_finalColor.rgb=vec3(v_texcoord_0,0);\n#endif\n#if DEBUG == DEBUG_UV_1 && defined(HAS_TEXCOORD_1_VEC2)\ng_finalColor.rgb=vec3(v_texcoord_1,0);\n#endif\n#if DEBUG == DEBUG_NORMAL_TEXTURE && defined(HAS_NORMAL_MAP)\ng_finalColor.rgb=(normalInfo.ntex+1.0)/2.0;\n#endif\n#if DEBUG == DEBUG_NORMAL_SHADING\ng_finalColor.rgb=(n+1.0)/2.0;\n#endif\n#if DEBUG == DEBUG_NORMAL_GEOMETRY\ng_finalColor.rgb=(normalInfo.ng+1.0)/2.0;\n#endif\n#if DEBUG == DEBUG_TANGENT\ng_finalColor.rgb=(normalInfo.t+1.0)/2.0;\n#endif\n#if DEBUG == DEBUG_BITANGENT\ng_finalColor.rgb=(normalInfo.b+1.0)/2.0;\n#endif\n#if DEBUG == DEBUG_ALPHA\ng_finalColor.rgb=vec3(baseColor.a);\n#endif\n#if DEBUG == DEBUG_OCCLUSION && defined(HAS_OCCLUSION_MAP)\ng_finalColor.rgb=vec3(ao);\n#endif\n#if DEBUG == DEBUG_EMISSIVE\ng_finalColor.rgb=linearTosRGB(f_emissive);\n#endif\n#if DEBUG == DEBUG_METALLIC\ng_finalColor.rgb=vec3(materialInfo.metallic);\n#endif\n#if DEBUG == DEBUG_ROUGHNESS\ng_finalColor.rgb=vec3(materialInfo.perceptualRoughness);\n#endif\n#if DEBUG == DEBUG_BASE_COLOR\ng_finalColor.rgb=linearTosRGB(materialInfo.baseColor);\n#endif\n}"; // eslint-disable-line
+
+var splatVertexShader = "precision highp float;precision highp int;\n#define GLSLIFY 1\nin vec2 a_position;in uint a_instance_sort_index;out vec4 v_color;out vec2 v_uv;out vec3 v_conic;uniform mat4 u_ProjectionMatrix;uniform mat4 u_ViewMatrix;uniform mat4 u_ModelMatrix;uniform mat3 u_ModelRotationInv;uniform uint u_TextureWidth;uniform ivec2 u_FramebufferSize;uniform vec2 u_FocalLength;uniform vec3 u_Camera;\n#ifdef POSITION_IS_INTEGER\nuniform mediump isampler2D u_POSITIONSampler;\n#elif defined(POSITION_IS_UINTEGER)\nuniform mediump usampler2D u_POSITIONSampler;\n#else\nuniform sampler2D u_POSITIONSampler;\n#endif\n#ifdef ROTATION_IS_INTEGER\nuniform mediump isampler2D u_ROTATIONSampler;\n#else\nuniform sampler2D u_ROTATIONSampler;\n#endif\n#ifdef SCALE_IS_UINTEGER\nuniform mediump usampler2D u_SCALESampler;\n#else\nuniform sampler2D u_SCALESampler;\n#endif\n#ifdef OPACITY_IS_UINTEGER\nuniform mediump usampler2D u_OPACITYSampler;\n#else\nuniform sampler2D u_OPACITYSampler;\n#endif\nuniform mediump sampler2DArray u_SHCoefficientsSampler;\n#define SH_C0 0.28209479177387814\n#define SPLAT_SIGMA 3.0\n#ifdef HAS_GAUSSIAN_SPLATTING_DEGREE_1\n#define SH_C1_0 -0.4886025119029199\n#define SH_C1_1 0.4886025119029199\n#define SH_C1_2 -0.4886025119029199\n#ifdef HAS_GAUSSIAN_SPLATTING_DEGREE_2\n#define SH_C2_0 1.0925484305920792\n#define SH_C2_1 -1.0925484305920792\n#define SH_C2_2 0.31539156525252005\n#define SH_C2_3 -1.0925484305920792\n#define SH_C2_4 0.5462742152960396\n#ifdef HAS_GAUSSIAN_SPLATTING_DEGREE_3\n#define SH_C3_0 -0.5900435899266435\n#define SH_C3_1 2.890611442640554\n#define SH_C3_2 -0.4570457994644658\n#define SH_C3_3 0.3731763325901154\n#define SH_C3_4 -0.4570457994644658\n#define SH_C3_5 1.445305721320277\n#define SH_C3_6 -0.5900435899266435\n#endif\n#endif\n#endif\nmat3 computeC(vec3 scale,vec4 rotation){float qx=rotation.x;float qy=rotation.y;float qz=rotation.z;float qw=rotation.w;float sx=scale.x;float sy=scale.y;float sz=scale.z;mat3 C=mat3(sx*(1.0-2.0*(qy*qy+qz*qz)),sx*(2.0*(qx*qy+qw*qz)),sx*(2.0*(qx*qz-qw*qy)),sy*(2.0*(qx*qy-qw*qz)),sy*(1.0-2.0*(qx*qx+qz*qz)),sy*(2.0*(qy*qz+qw*qx)),sz*(2.0*(qx*qz+qw*qy)),sz*(2.0*(qy*qz-qw*qx)),sz*(1.0-2.0*(qx*qx+qy*qy)));return C;}vec3 computeCameraCovariance(mat3 world_covariance,vec3 view_splat_center){float x=view_splat_center.x;float y=view_splat_center.y;float z=view_splat_center.z;mat3 J=mat3(u_FocalLength.x/z,0.0,-(u_FocalLength.x*x)/(z*z),0.0,u_FocalLength.y/z,-(u_FocalLength.y*y)/(z*z),0,0,0);mat3 W=transpose(mat3(u_ViewMatrix));mat3 T=W*J;mat3 cov=transpose(T)*transpose(world_covariance)*T;cov[0][0]+=0.3;cov[1][1]+=0.3;return vec3(cov[0][0],cov[0][1],cov[1][1]);}void main(){vec3 splat_center;ivec2 texelCoord=ivec2(a_instance_sort_index % u_TextureWidth,a_instance_sort_index/u_TextureWidth);\n#if defined(POSITION_IS_INTEGER) || defined(POSITION_IS_UINTEGER)\nsplat_center=vec3(texelFetch(u_POSITIONSampler,texelCoord,0).xyz);\n#ifdef POSITION_NEEDS_NORMALIZATION\n#ifdef POSITION_IS_UINTEGER\nsplat_center=splat_center/65535.0;\n#else\nsplat_center=max(splat_center/32767.0,-1.0);\n#endif\n#endif\n#else\nsplat_center=texelFetch(u_POSITIONSampler,texelCoord,0).xyz;\n#endif\nvec4 rotation;\n#if defined(ROTATION_IS_INTEGER)\nrotation=vec4(texelFetch(u_ROTATIONSampler,texelCoord,0).xyzw);\n#ifdef ROTATION_NEEDS_NORMALIZATION\nrotation=max(rotation/32767.0,-1.0);\n#endif\n#else\nrotation=texelFetch(u_ROTATIONSampler,texelCoord,0);\n#endif\nvec3 scale;\n#if defined(SCALE_IS_UINTEGER)\nscale=vec3(texelFetch(u_SCALESampler,texelCoord,0).xyz);\n#ifdef SCALE_NEEDS_NORMALIZATION\nscale=scale/65535.0;\n#endif\n#else\nscale=texelFetch(u_SCALESampler,texelCoord,0).xyz;\n#endif\nfloat opacity;\n#if defined(OPACITY_IS_UINTEGER)\nopacity=float(texelFetch(u_OPACITYSampler,texelCoord,0).x);\n#ifdef OPACITY_NEEDS_NORMALIZATION\nopacity=opacity/65535.0;\n#endif\n#else\nopacity=texelFetch(u_OPACITYSampler,texelCoord,0).x;\n#endif\nsplat_center=(u_ModelMatrix*vec4(splat_center,1.0)).xyz;vec4 view_splat_center=u_ViewMatrix*vec4(splat_center,1.0);vec4 clip_splat_center=u_ProjectionMatrix*view_splat_center;clip_splat_center/=clip_splat_center.w;mat3 C=computeC(scale,rotation);mat3 M=mat3(u_ModelMatrix);mat3 world_covariance=M*C*transpose(C)*transpose(M);vec3 camera_covariance=computeCameraCovariance(world_covariance,view_splat_center.xyz);float a=camera_covariance.x;float b=camera_covariance.y;float c=camera_covariance.z;float det=(a*c-b*b);if(det==0.0){gl_Position=vec4(0.0);return;}float det_inv=1.0/det;v_conic=vec3(c*det_inv,-b*det_inv,a*det_inv);vec2 quad_pixel_size=vec2(SPLAT_SIGMA*sqrt(a),SPLAT_SIGMA*sqrt(c));vec2 quad_ndc_size=quad_pixel_size/vec2(u_FramebufferSize)*2.0;clip_splat_center.xy=clip_splat_center.xy+a_position*quad_ndc_size;float min_screen=float(min(u_FramebufferSize.x,u_FramebufferSize.y));float max_quad_size=max(quad_pixel_size.x,quad_pixel_size.y);if(max_quad_size>min_screen*0.5){gl_Position=vec4(0.0,0.0,2.0,1.0);return;}v_uv=a_position*quad_pixel_size;gl_Position=clip_splat_center;vec3 sh0=texelFetch(u_SHCoefficientsSampler,ivec3(texelCoord,0),0).rgb;\n#ifdef HAS_GAUSSIAN_SPLATTING_DEGREE_1\nvec3 sh1_0=texelFetch(u_SHCoefficientsSampler,ivec3(texelCoord,1),0).rgb;vec3 sh1_1=texelFetch(u_SHCoefficientsSampler,ivec3(texelCoord,2),0).rgb;vec3 sh1_2=texelFetch(u_SHCoefficientsSampler,ivec3(texelCoord,3),0).rgb;\n#ifdef HAS_GAUSSIAN_SPLATTING_DEGREE_2\nvec3 sh2_0=texelFetch(u_SHCoefficientsSampler,ivec3(texelCoord,4),0).rgb;vec3 sh2_1=texelFetch(u_SHCoefficientsSampler,ivec3(texelCoord,5),0).rgb;vec3 sh2_2=texelFetch(u_SHCoefficientsSampler,ivec3(texelCoord,6),0).rgb;vec3 sh2_3=texelFetch(u_SHCoefficientsSampler,ivec3(texelCoord,7),0).rgb;vec3 sh2_4=texelFetch(u_SHCoefficientsSampler,ivec3(texelCoord,8),0).rgb;\n#ifdef HAS_GAUSSIAN_SPLATTING_DEGREE_3\nvec3 sh3_0=texelFetch(u_SHCoefficientsSampler,ivec3(texelCoord,9),0).rgb;vec3 sh3_1=texelFetch(u_SHCoefficientsSampler,ivec3(texelCoord,10),0).rgb;vec3 sh3_2=texelFetch(u_SHCoefficientsSampler,ivec3(texelCoord,11),0).rgb;vec3 sh3_3=texelFetch(u_SHCoefficientsSampler,ivec3(texelCoord,12),0).rgb;vec3 sh3_4=texelFetch(u_SHCoefficientsSampler,ivec3(texelCoord,13),0).rgb;vec3 sh3_5=texelFetch(u_SHCoefficientsSampler,ivec3(texelCoord,14),0).rgb;vec3 sh3_6=texelFetch(u_SHCoefficientsSampler,ivec3(texelCoord,15),0).rgb;\n#endif\n#endif\n#endif\nvec3 color=sh0*SH_C0;\n#ifdef HAS_GAUSSIAN_SPLATTING_DEGREE_1\nvec3 view_dir_world=normalize(splat_center-u_Camera);vec3 view_dir=u_ModelRotationInv*view_dir_world;float x=view_dir.x;float y=view_dir.y;float z=view_dir.z;color+=SH_C1_0*y*sh1_0+SH_C1_1*z*sh1_1+SH_C1_2*x*sh1_2;\n#ifdef HAS_GAUSSIAN_SPLATTING_DEGREE_2\nfloat xx=x*x;float yy=y*y;float zz=z*z;float xy=x*y;float yz=y*z;float xz=x*z;color+=SH_C2_0*xy*sh2_0+SH_C2_1*yz*sh2_1+SH_C2_2*(2.0*zz-xx-yy)*sh2_2+SH_C2_3*xz*sh2_3+SH_C2_4*(xx-yy)*sh2_4;\n#ifdef HAS_GAUSSIAN_SPLATTING_DEGREE_3\ncolor+=SH_C3_0*y*(3.0*xx-yy)*sh3_0+SH_C3_1*xy*z*sh3_1+SH_C3_2*y*(4.0*zz-xx-yy)*sh3_2+SH_C3_3*z*(2.0*zz-3.0*xx-3.0*yy)*sh3_3+SH_C3_4*x*(4.0*zz-xx-yy)*sh3_4+SH_C3_5*z*(xx-yy)*sh3_5+SH_C3_6*x*(xx-3.0*yy)*sh3_6;\n#endif\n#endif\n#endif\ncolor+=0.5;v_color=vec4(color,opacity);}"; // eslint-disable-line
+
+var splatFragmentShader = "precision highp float;\n#define GLSLIFY 1\nin vec4 v_color;in vec2 v_uv;in vec3 v_conic;layout(location=0)out vec4 g_finalColor;void main(){float exponent=-0.5*(v_conic.x*v_uv.x*v_uv.x+v_conic.z*v_uv.y*v_uv.y)-v_conic.y*v_uv.x*v_uv.y;if(exponent>0.0){discard;}float alpha=min(0.99,exp(exponent)*v_color.a);if(alpha<1.0/255.0){discard;}g_finalColor=max(vec4(v_color.rgb*alpha,alpha),vec4(0.0));}"; // eslint-disable-line
+
+var fullscreenVertShader = "precision highp float;\n#define GLSLIFY 1\nin vec2 a_position;out vec2 v_uv;void main(){v_uv=a_position*0.5+0.5;gl_Position=vec4(a_position,0.0,1.0);}"; // eslint-disable-line
+
+var tonemapMainFragShader = "precision highp float;\n#define GLSLIFY 1\n#include <tonemapping.glsl>\nuniform sampler2D u_MainSampler;uniform lowp usampler2D u_TonemapSampler;in vec2 v_uv;out vec4 g_finalColor;void main(){uint splatCoverage=texture(u_TonemapSampler,v_uv).r;vec4 color=texture(u_MainSampler,v_uv);if(splatCoverage==2u){color.rgb=toneMap(color.rgb);}else if(splatCoverage==1u){color.rgb=linearTosRGB(color.rgb);}g_finalColor=vec4(color.rgb,color.a);}"; // eslint-disable-line
+
+var splatCompositeFragShader = "precision highp float;\n#define GLSLIFY 1\n#include <tonemapping.glsl>\nuniform sampler2D u_SplatSampler;in vec2 v_uv;layout(location=0)out vec4 g_finalColor;layout(location=1)out uint g_toneMapFlag;void main(){vec4 splat=texture(u_SplatSampler,v_uv);\n#ifndef TONEMAP_NONE\nvec3 multiplied=splat.rgb*splat.a;float maxComponent=max(max(multiplied.r,multiplied.g),multiplied.b);if(maxComponent<1.0/255.0){discard;}\n#endif\nsplat.rgb=clamp(splat.rgb,vec3(0.0),vec3(1.0));\n#ifndef LINEAR_OUTPUT\nsplat.rgb=sRGBToLinear(splat.rgb);\n#endif\ng_finalColor=splat;g_toneMapFlag=1u;}"; // eslint-disable-line
 
 class gltfLight extends GltfObject {
     static animatedProperties = ["color", "intensity", "range"];
@@ -6244,6 +6357,11 @@ class gltfRenderer {
         shaderSources.set("cubemap.vert", cubemapVertShader);
         shaderSources.set("cubemap.frag", cubemapFragShader);
         shaderSources.set("specular_glossiness.frag", specularGlossinesShader);
+        shaderSources.set("splat.vert", splatVertexShader);
+        shaderSources.set("splat.frag", splatFragmentShader);
+        shaderSources.set("fullscreen.vert", fullscreenVertShader);
+        shaderSources.set("tonemap_main.frag", tonemapMainFragShader);
+        shaderSources.set("splat_composite.frag", splatCompositeFragShader);
 
         this.shaderCache = new ShaderCache(shaderSources, this.webGl);
 
@@ -6269,6 +6387,28 @@ class gltfRenderer {
 
         this.maxVertAttributes = undefined;
         this.instanceBuffer = undefined;
+
+        this.splatVBO = undefined;
+        this.currentSortBuffer = undefined;
+
+        this.mainTexture = undefined;
+        this.mainTextureHDR = undefined;
+        this.mainDepthTexture = undefined;
+        this.mainTonemapTexture = undefined;
+        this.mainFramebuffer = undefined;
+
+        this.framebufferFormat = undefined;
+        this.framebufferType = undefined;
+
+        // Tracks last value of state.renderingParameters.floatingPointFramebuffer so we
+        // only re-attach when the setting actually changes.
+        this._floatingPointFramebuffer = undefined;
+
+        // Splat isolation framebuffer: same colour format as mainFramebuffer,
+        // shares mainDepthTexture for depth-test (no depth writes).
+        this.splatColorTexture = undefined;
+        this.splatColorTextureHDR = undefined;
+        this.splatFramebuffer = undefined;
     }
 
     /////////////////////////////////////////////////////////////////////
@@ -6364,6 +6504,113 @@ class gltfRenderer {
             context.viewport(0, 0, this.opaqueFramebufferWidth, this.opaqueFramebufferHeight);
             context.bindFramebuffer(context.FRAMEBUFFER, null);
 
+            const quatVertices = new Float32Array([-1, -1, 1, -1, -1, 1, 1, 1]);
+            this.splatVBO = context.createBuffer();
+            context.bindBuffer(context.ARRAY_BUFFER, this.splatVBO);
+            context.bufferData(context.ARRAY_BUFFER, quatVertices, context.STATIC_DRAW);
+            context.bindBuffer(context.ARRAY_BUFFER, null);
+
+            this.currentSortBuffer = context.createBuffer();
+
+            this.framebufferFormat = context.supports_EXT_color_buffer_half_float
+                ? context.RGBA16F : context.RGBA;
+            this.framebufferType = context.supports_EXT_color_buffer_half_float
+                ? context.HALF_FLOAT : context.UNSIGNED_BYTE;
+
+            const hdrW = Math.max(this.currentWidth,  1);
+            const hdrH = Math.max(this.currentHeight, 1);
+
+            // Main color texture
+            this.mainTexture = context.createTexture();
+            context.bindTexture(context.TEXTURE_2D, this.mainTexture);
+            context.texParameteri(context.TEXTURE_2D, context.TEXTURE_MIN_FILTER, context.NEAREST);
+            context.texParameteri(context.TEXTURE_2D, context.TEXTURE_MAG_FILTER, context.NEAREST);
+            context.texParameteri(context.TEXTURE_2D, context.TEXTURE_WRAP_S, context.CLAMP_TO_EDGE);
+            context.texParameteri(context.TEXTURE_2D, context.TEXTURE_WRAP_T, context.CLAMP_TO_EDGE);
+            context.texImage2D(context.TEXTURE_2D, 0, context.RGBA,
+                hdrW, hdrH, 0, context.RGBA, context.UNSIGNED_BYTE, null);
+            context.bindTexture(context.TEXTURE_2D, null);
+
+            if (context.supports_EXT_color_buffer_half_float) {
+                this.mainTextureHDR = context.createTexture();
+                context.bindTexture(context.TEXTURE_2D, this.mainTextureHDR);
+                context.texParameteri(context.TEXTURE_2D, context.TEXTURE_MIN_FILTER, context.NEAREST);
+                context.texParameteri(context.TEXTURE_2D, context.TEXTURE_MAG_FILTER, context.NEAREST);
+                context.texParameteri(context.TEXTURE_2D, context.TEXTURE_WRAP_S, context.CLAMP_TO_EDGE);
+                context.texParameteri(context.TEXTURE_2D, context.TEXTURE_WRAP_T, context.CLAMP_TO_EDGE);
+                context.texImage2D(context.TEXTURE_2D, 0, context.RGBA16F,
+                    hdrW, hdrH, 0, context.RGBA, context.HALF_FLOAT, null);
+                context.bindTexture(context.TEXTURE_2D, null);
+            }
+
+            // Main depth texture
+            this.mainDepthTexture = context.createTexture();
+            context.bindTexture(context.TEXTURE_2D, this.mainDepthTexture);
+            context.texParameteri(context.TEXTURE_2D, context.TEXTURE_MIN_FILTER, context.NEAREST);
+            context.texParameteri(context.TEXTURE_2D, context.TEXTURE_MAG_FILTER, context.NEAREST);
+            context.texParameteri(context.TEXTURE_2D, context.TEXTURE_WRAP_S, context.CLAMP_TO_EDGE);
+            context.texParameteri(context.TEXTURE_2D, context.TEXTURE_WRAP_T, context.CLAMP_TO_EDGE);
+            context.texImage2D(context.TEXTURE_2D, 0, context.DEPTH_COMPONENT24,
+                hdrW, hdrH, 0, context.DEPTH_COMPONENT, context.UNSIGNED_INT, null);
+            context.bindTexture(context.TEXTURE_2D, null);
+
+            this.mainFramebuffer = context.createFramebuffer();
+            context.bindFramebuffer(context.FRAMEBUFFER, this.mainFramebuffer);
+            context.framebufferTexture2D(context.FRAMEBUFFER, context.COLOR_ATTACHMENT0,
+                context.TEXTURE_2D, this.mainTexture, 0);
+            context.framebufferTexture2D(context.FRAMEBUFFER, context.DEPTH_ATTACHMENT,
+                context.TEXTURE_2D, this.mainDepthTexture, 0);
+
+            // Tonemap flag texture: R8UI, one flag per pixel.
+            // 0 = linear only, 1 = sRGB gamma only, 2 = tonemap + sRGB.
+            this.mainTonemapTexture = context.createTexture();
+            context.bindTexture(context.TEXTURE_2D, this.mainTonemapTexture);
+            context.texParameteri(context.TEXTURE_2D, context.TEXTURE_MIN_FILTER, context.NEAREST);
+            context.texParameteri(context.TEXTURE_2D, context.TEXTURE_MAG_FILTER, context.NEAREST);
+            context.texParameteri(context.TEXTURE_2D, context.TEXTURE_WRAP_S, context.CLAMP_TO_EDGE);
+            context.texParameteri(context.TEXTURE_2D, context.TEXTURE_WRAP_T, context.CLAMP_TO_EDGE);
+            context.texImage2D(context.TEXTURE_2D, 0, context.R8UI,
+                hdrW, hdrH, 0, context.RED_INTEGER, context.UNSIGNED_BYTE, null);
+            context.bindTexture(context.TEXTURE_2D, null);
+
+            context.framebufferTexture2D(context.FRAMEBUFFER, context.COLOR_ATTACHMENT1,
+                context.TEXTURE_2D, this.mainTonemapTexture, 0);
+            context.drawBuffers([context.COLOR_ATTACHMENT0, context.COLOR_ATTACHMENT1]);
+            context.bindFramebuffer(context.FRAMEBUFFER, null);
+
+            this.splatColorTexture = context.createTexture();
+            context.bindTexture(context.TEXTURE_2D, this.splatColorTexture);
+            context.texParameteri(context.TEXTURE_2D, context.TEXTURE_MIN_FILTER, context.NEAREST);
+            context.texParameteri(context.TEXTURE_2D, context.TEXTURE_MAG_FILTER, context.NEAREST);
+            context.texParameteri(context.TEXTURE_2D, context.TEXTURE_WRAP_S, context.CLAMP_TO_EDGE);
+            context.texParameteri(context.TEXTURE_2D, context.TEXTURE_WRAP_T, context.CLAMP_TO_EDGE);
+            context.texImage2D(context.TEXTURE_2D, 0, context.RGBA,
+                hdrW, hdrH, 0, context.RGBA, context.UNSIGNED_BYTE, null);
+            context.bindTexture(context.TEXTURE_2D, null);
+
+            if (context.supports_EXT_color_buffer_half_float) {
+                this.splatColorTextureHDR = context.createTexture();
+                context.bindTexture(context.TEXTURE_2D, this.splatColorTextureHDR);
+                context.texParameteri(context.TEXTURE_2D, context.TEXTURE_MIN_FILTER, context.NEAREST);
+                context.texParameteri(context.TEXTURE_2D, context.TEXTURE_MAG_FILTER, context.NEAREST);
+                context.texParameteri(context.TEXTURE_2D, context.TEXTURE_WRAP_S, context.CLAMP_TO_EDGE);
+                context.texParameteri(context.TEXTURE_2D, context.TEXTURE_WRAP_T, context.CLAMP_TO_EDGE);
+                context.texImage2D(context.TEXTURE_2D, 0, context.RGBA16F,
+                    hdrW, hdrH, 0, context.RGBA, context.HALF_FLOAT, null);
+                context.bindTexture(context.TEXTURE_2D, null);
+            }
+
+            // Initially attach the LDR colour texture; re-attached together with
+            // mainFramebuffer when _floatingPointFramebuffer is resolved.
+            this.splatFramebuffer = context.createFramebuffer();
+            context.bindFramebuffer(context.FRAMEBUFFER, this.splatFramebuffer);
+            context.framebufferTexture2D(context.FRAMEBUFFER, context.COLOR_ATTACHMENT0,
+                context.TEXTURE_2D, this.splatColorTexture, 0);
+            context.framebufferTexture2D(context.FRAMEBUFFER, context.DEPTH_ATTACHMENT,
+                context.TEXTURE_2D, this.mainDepthTexture, 0);
+            context.drawBuffers([context.COLOR_ATTACHMENT0]);
+            context.bindFramebuffer(context.FRAMEBUFFER, null);
+
             this.maxVertAttributes = context.getParameter(context.MAX_VERTEX_ATTRIBS);
 
             this.initialized = true;
@@ -6433,26 +6680,143 @@ class gltfRenderer {
                 );
                 this.webGl.context.bindTexture(this.webGl.context.TEXTURE_2D, null);
                 this.webGl.context.bindFramebuffer(this.webGl.context.FRAMEBUFFER, null);
+
+                // Resize main color texture (always RGBA/UNSIGNED_BYTE).
+                this.webGl.context.bindTexture(this.webGl.context.TEXTURE_2D, this.mainTexture);
+                this.webGl.context.texImage2D(
+                    this.webGl.context.TEXTURE_2D,
+                    0,
+                    this.webGl.context.RGBA,
+                    this.currentWidth,
+                    this.currentHeight,
+                    0,
+                    this.webGl.context.RGBA,
+                    this.webGl.context.UNSIGNED_BYTE,
+                    null
+                );
+
+                // Resize HDR color texture (RGBA16F/HALF_FLOAT, only when available).
+                if (this.mainTextureHDR) {
+                    this.webGl.context.bindTexture(
+                        this.webGl.context.TEXTURE_2D,
+                        this.mainTextureHDR
+                    );
+                    this.webGl.context.texImage2D(
+                        this.webGl.context.TEXTURE_2D,
+                        0,
+                        this.webGl.context.RGBA16F,
+                        this.currentWidth,
+                        this.currentHeight,
+                        0,
+                        this.webGl.context.RGBA,
+                        this.webGl.context.HALF_FLOAT,
+                        null
+                    );
+                }
+
+                this.webGl.context.bindTexture(
+                    this.webGl.context.TEXTURE_2D,
+                    this.mainDepthTexture
+                );
+                this.webGl.context.texImage2D(
+                    this.webGl.context.TEXTURE_2D,
+                    0,
+                    this.webGl.context.DEPTH_COMPONENT24,
+                    this.currentWidth,
+                    this.currentHeight,
+                    0,
+                    this.webGl.context.DEPTH_COMPONENT,
+                    this.webGl.context.UNSIGNED_INT,
+                    null
+                );
+                this.webGl.context.bindTexture(this.webGl.context.TEXTURE_2D, null);
+
+                // Resize tonemap flag texture (R8UI).
+                this.webGl.context.bindTexture(
+                    this.webGl.context.TEXTURE_2D,
+                    this.mainTonemapTexture
+                );
+                this.webGl.context.texImage2D(
+                    this.webGl.context.TEXTURE_2D,
+                    0,
+                    this.webGl.context.R8UI,
+                    this.currentWidth,
+                    this.currentHeight,
+                    0,
+                    this.webGl.context.RED_INTEGER,
+                    this.webGl.context.UNSIGNED_BYTE,
+                    null
+                );
+                this.webGl.context.bindTexture(this.webGl.context.TEXTURE_2D, null);
+
+                // Resize splat isolation colour textures.
+                this.webGl.context.bindTexture(
+                    this.webGl.context.TEXTURE_2D,
+                    this.splatColorTexture
+                );
+                this.webGl.context.texImage2D(
+                    this.webGl.context.TEXTURE_2D,
+                    0,
+                    this.webGl.context.RGBA,
+                    this.currentWidth,
+                    this.currentHeight,
+                    0,
+                    this.webGl.context.RGBA,
+                    this.webGl.context.UNSIGNED_BYTE,
+                    null
+                );
+                if (this.splatColorTextureHDR) {
+                    this.webGl.context.bindTexture(
+                        this.webGl.context.TEXTURE_2D,
+                        this.splatColorTextureHDR
+                    );
+                    this.webGl.context.texImage2D(
+                        this.webGl.context.TEXTURE_2D,
+                        0,
+                        this.webGl.context.RGBA16F,
+                        this.currentWidth,
+                        this.currentHeight,
+                        0,
+                        this.webGl.context.RGBA,
+                        this.webGl.context.HALF_FLOAT,
+                        null
+                    );
+                }
+                this.webGl.context.bindTexture(this.webGl.context.TEXTURE_2D, null);
             }
         }
     }
 
     // frame state
     clearFrame(clearColor) {
+        // Convert clear color from sRGB to linear since we will always transfer to sRGB by default
+        const linearClearColor = clearColor.map((c) => Math.pow(c, 2.2));
         this.webGl.context.bindFramebuffer(this.webGl.context.FRAMEBUFFER, this.opaqueFramebuffer);
-        this.webGl.context.clearColor(...clearColor);
+        this.webGl.context.clearColor(...linearClearColor);
         this.webGl.context.clear(GL.COLOR_BUFFER_BIT | GL.DEPTH_BUFFER_BIT);
         this.webGl.context.bindFramebuffer(
             this.webGl.context.FRAMEBUFFER,
             this.opaqueFramebufferMSAA
         );
-        this.webGl.context.clearColor(...clearColor);
+        this.webGl.context.clearColor(...linearClearColor);
         this.webGl.context.clear(GL.COLOR_BUFFER_BIT | GL.DEPTH_BUFFER_BIT);
         this.webGl.context.bindFramebuffer(this.webGl.context.FRAMEBUFFER, this.scatterFramebuffer);
         this.webGl.context.clearColor(0, 0, 0, 0);
         this.webGl.context.clear(GL.COLOR_BUFFER_BIT | GL.DEPTH_BUFFER_BIT);
+        // Main framebuffer: clear color (attachment 0) and depth separately,
+        // then zero the tonemap flag attachment (attachment 1) via clearBufferuiv.
+        if (this.mainFramebuffer) {
+            const gl = this.webGl.context;
+            gl.bindFramebuffer(gl.FRAMEBUFFER, this.mainFramebuffer);
+            // Clear color attachment 0 to the scene background colour.
+            gl.clearBufferfv(gl.COLOR, 0, linearClearColor);
+            // Clear tonemap flag attachment to 1 (linear to sRGB by default).
+            gl.clearBufferuiv(gl.COLOR, 1, new Uint32Array([1, 1, 1, 1]));
+            // Clear depth.
+            gl.clearBufferfv(gl.DEPTH, 0, new Float32Array([1.0]));
+        }
         this.webGl.context.bindFramebuffer(this.webGl.context.FRAMEBUFFER, null);
-        this.webGl.context.clearColor(...clearColor);
+        this.webGl.context.clearColor(...linearClearColor);
         this.webGl.context.clear(GL.COLOR_BUFFER_BIT | GL.DEPTH_BUFFER_BIT);
         this.webGl.context.bindFramebuffer(this.webGl.context.FRAMEBUFFER, null);
     }
@@ -6481,7 +6845,8 @@ class gltfRenderer {
                 state.gltf.materials[primitive.material].alphaMode !== "BLEND" &&
                 (state.gltf.materials[primitive.material].extensions === undefined ||
                     state.gltf.materials[primitive.material].extensions
-                        .KHR_materials_transmission === undefined)
+                        .KHR_materials_transmission === undefined) &&
+                primitive.extensions?.KHR_gaussian_splatting === undefined
         );
 
         let counter = 0;
@@ -6513,17 +6878,19 @@ class gltfRenderer {
         // transparent drawables need sorting before they can be drawn
         this.transparentDrawables = drawables.filter(
             ({ primitive }) =>
-                state.gltf.materials[primitive.material].alphaMode === "BLEND" &&
-                (state.gltf.materials[primitive.material].extensions === undefined ||
-                    state.gltf.materials[primitive.material].extensions
-                        .KHR_materials_transmission === undefined)
+                (state.gltf.materials[primitive.material].alphaMode === "BLEND" &&
+                    (state.gltf.materials[primitive.material].extensions === undefined ||
+                        state.gltf.materials[primitive.material].extensions
+                            .KHR_materials_transmission === undefined)) ||
+                primitive.extensions?.KHR_gaussian_splatting !== undefined
         );
 
         this.transmissionDrawables = drawables.filter(
             ({ primitive }) =>
                 state.gltf.materials[primitive.material].extensions !== undefined &&
                 state.gltf.materials[primitive.material].extensions.KHR_materials_transmission !==
-                    undefined
+                    undefined &&
+                primitive.extensions?.KHR_gaussian_splatting === undefined
         );
 
         this.scatterDrawables = drawables.filter(
@@ -6532,7 +6899,8 @@ class gltfRenderer {
                 state.gltf.materials[primitive.material].extensions.KHR_materials_volume_scatter !==
                     undefined &&
                 state.gltf.materials[primitive.material].extensions.KHR_materials_volume !==
-                    undefined
+                    undefined &&
+                primitive.extensions?.KHR_gaussian_splatting === undefined
         );
     }
 
@@ -6686,7 +7054,7 @@ class gltfRenderer {
                 this.viewProjectionMatrix,
                 state,
                 this.shaderCache,
-                ["LINEAR_OUTPUT 1"]
+                ["TRANSMISSION_PASS 1"]
             );
 
             let drawableCounter = 0;
@@ -6694,6 +7062,7 @@ class gltfRenderer {
                 const drawable = instance[0];
                 let renderpassConfiguration = {};
                 renderpassConfiguration.linearOutput = true;
+                renderpassConfiguration.transmission = true;
                 renderpassConfiguration.frameBufferSize = [
                     this.opaqueFramebufferWidth,
                     this.opaqueFramebufferHeight
@@ -6724,6 +7093,7 @@ class gltfRenderer {
             for (const drawable of this.transparentDrawables) {
                 let renderpassConfiguration = {};
                 renderpassConfiguration.linearOutput = true;
+                renderpassConfiguration.transmission = true;
                 renderpassConfiguration.frameBufferSize = [
                     this.opaqueFramebufferWidth,
                     this.opaqueFramebufferHeight
@@ -6765,26 +7135,54 @@ class gltfRenderer {
             this.webGl.context.generateMipmap(this.webGl.context.TEXTURE_2D);
         }
 
-        // Render to canvas
-        this.webGl.context.bindFramebuffer(this.webGl.context.FRAMEBUFFER, null);
+        // Re-attach mainFramebuffer and splatFramebuffer COLOR_ATTACHMENT0 if
+        // the floating-point toggle changed.
+        const wantFP =
+            state.renderingParameters.floatingPointFramebuffer !== false &&
+            this.mainTextureHDR !== undefined;
+        if (wantFP !== this._floatingPointFramebuffer) {
+            this._floatingPointFramebuffer = wantFP;
+            const gl = this.webGl.context;
+            const colorTex = wantFP ? this.mainTextureHDR : this.mainTexture;
+            const splatColorTex = wantFP ? this.splatColorTextureHDR : this.splatColorTexture;
+            gl.bindFramebuffer(gl.FRAMEBUFFER, this.mainFramebuffer);
+            gl.framebufferTexture2D(
+                gl.FRAMEBUFFER,
+                gl.COLOR_ATTACHMENT0,
+                gl.TEXTURE_2D,
+                colorTex,
+                0
+            );
+            if (this.splatFramebuffer) {
+                gl.bindFramebuffer(gl.FRAMEBUFFER, this.splatFramebuffer);
+                gl.framebufferTexture2D(
+                    gl.FRAMEBUFFER,
+                    gl.COLOR_ATTACHMENT0,
+                    gl.TEXTURE_2D,
+                    splatColorTex ?? this.splatColorTexture,
+                    0
+                );
+            }
+            gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+        }
+
+        this.webGl.context.bindFramebuffer(this.webGl.context.FRAMEBUFFER, this.mainFramebuffer);
         this.webGl.context.viewport(aspectOffsetX, aspectOffsetY, aspectWidth, aspectHeight);
 
-        // Render environment
-        const fragDefines = [];
-        this.pushFragParameterDefines(fragDefines, state);
+        // Environment (always linear in this pass)
         this.environmentRenderer.drawEnvironmentMap(
             this.webGl,
             this.viewProjectionMatrix,
             state,
             this.shaderCache,
-            fragDefines
+            ["LINEAR_OUTPUT 1"]
         );
 
         let drawableCounter = 0;
         for (const instance of Object.values(this.opaqueDrawables)) {
             const drawable = instance[0];
             let renderpassConfiguration = {};
-            renderpassConfiguration.linearOutput = false;
+            renderpassConfiguration.linearOutput = true;
             renderpassConfiguration.frameBufferSize = [this.currentWidth, this.currentHeight];
             const instanceOffset = instanceWorldTransforms[drawableCounter];
             drawableCounter++;
@@ -6811,7 +7209,7 @@ class gltfRenderer {
         );
         for (const drawable of this.transmissionDrawables.filter((a) => a.depth <= 0)) {
             let renderpassConfiguration = {};
-            renderpassConfiguration.linearOutput = false;
+            renderpassConfiguration.linearOutput = true;
             renderpassConfiguration.frameBufferSize = [this.currentWidth, this.currentHeight];
             let sampledTextures = {};
             sampledTextures.transmissionSampleTexture = this.opaqueRenderTexture;
@@ -6833,18 +7231,305 @@ class gltfRenderer {
             state.gltf,
             this.transparentDrawables
         );
+        this.needsRedraw = false;
+
+        // ── Transparent drawables (non-splat and splat) in depth-sorted order ───
+        // Splats are rendered one at a time into the dedicated splatFramebuffer
+        // (which shares mainDepthTexture for depth-testing) and
+        // immediately composited back into mainFramebuffer before the next
+        // drawable is processed.  This preserves correct depth-sorted blending
+        // order between splats and regular transparent geometry.
         for (const drawable of this.transparentDrawables.filter((a) => a.depth <= 0)) {
-            let renderpassConfiguration = {};
-            renderpassConfiguration.linearOutput = false;
-            renderpassConfiguration.frameBufferSize = [this.currentWidth, this.currentHeight];
-            this.drawPrimitive(
-                state,
-                renderpassConfiguration,
-                drawable.primitive,
-                drawable.node,
-                this.viewProjectionMatrix
-            );
+            if (
+                drawable.primitive.extensions?.KHR_gaussian_splatting !== undefined &&
+                state.renderingParameters.enabledExtensions.KHR_gaussian_splatting
+            ) {
+                if (currentCamera.type !== "perspective") {
+                    console.warn("Splat rendering with non-perspective projection is undefined");
+                }
+                // Isolate this splat in its own framebuffer pass.
+                if (this.splatFramebuffer) {
+                    const gl = this.webGl.context;
+
+                    // Clear only the colour attachment – depth is shared with
+                    // mainFramebuffer and must not be touched here.
+                    gl.bindFramebuffer(gl.FRAMEBUFFER, this.splatFramebuffer);
+                    gl.clearBufferfv(gl.COLOR, 0, [0, 0, 0, 0]);
+                    gl.viewport(aspectOffsetX, aspectOffsetY, aspectWidth, aspectHeight);
+
+                    this.drawSplat(
+                        state,
+                        drawable.primitive,
+                        drawable.node,
+                        this.projMatrix,
+                        this.viewMatrix
+                    );
+
+                    // Composite into mainFramebuffer.
+                    gl.bindFramebuffer(gl.FRAMEBUFFER, this.mainFramebuffer);
+                    gl.viewport(aspectOffsetX, aspectOffsetY, aspectWidth, aspectHeight);
+                    this.splatCompositePass(state, drawable.primitive.linear);
+                }
+            } else {
+                let renderpassConfiguration = {};
+                renderpassConfiguration.linearOutput = true;
+                renderpassConfiguration.frameBufferSize = [this.currentWidth, this.currentHeight];
+                this.drawPrimitive(
+                    state,
+                    renderpassConfiguration,
+                    drawable.primitive,
+                    drawable.node,
+                    this.viewProjectionMatrix
+                );
+            }
         }
+
+        // ── Final tonemapping pass → canvas ───────────────────────────────────
+        this.tonemapPass(state, aspectOffsetX, aspectOffsetY, aspectWidth, aspectHeight);
+
+        state.needsRedraw = this.needsRedraw;
+    }
+
+    drawSplat(state, primitive, node, projectionMatrix, viewMatrix) {
+        if (primitive.skip) return;
+        // Request an async worker sort each frame (no-op if the previous sort
+        // has not yet finished or no worker is available).
+        primitive.requestSort(viewMatrix);
+        if (primitive.sortPending) {
+            this.needsRedraw = true;
+        }
+        let defines = primitive.defines.slice();
+        if (primitive.linear === true) {
+            defines.push("LINEAR_OUTPUT 1");
+        }
+
+        // Debug views
+        if (state.renderingParameters.debugOutput !== GltfState.DebugOutput.NONE) {
+            if (
+                state.renderingParameters.debugOutput ===
+                GltfState.DebugOutput.gaussianSplatting.SH_DEGREE_0
+            ) {
+                defines = defines.filter(
+                    (define) => !define.startsWith("HAS_GAUSSIAN_SPLATTING_DEGREE")
+                );
+            } else if (
+                state.renderingParameters.debugOutput ===
+                GltfState.DebugOutput.gaussianSplatting.SH_DEGREE_1
+            ) {
+                defines = defines.filter(
+                    (define) =>
+                        define !== "HAS_GAUSSIAN_SPLATTING_DEGREE_2 1" &&
+                        define !== "HAS_GAUSSIAN_SPLATTING_DEGREE_3 1"
+                );
+            } else if (
+                state.renderingParameters.debugOutput ===
+                GltfState.DebugOutput.gaussianSplatting.SH_DEGREE_2
+            ) {
+                defines = defines.filter(
+                    (define) => define !== "HAS_GAUSSIAN_SPLATTING_DEGREE_3 1"
+                );
+            }
+        }
+
+        const fragmentHash = this.shaderCache.selectShader("splat.frag", defines);
+        const vertexHash = this.shaderCache.selectShader("splat.vert", defines);
+        if (fragmentHash && vertexHash) {
+            this.shader = this.shaderCache.getShaderProgram(fragmentHash, vertexHash);
+        }
+
+        if (this.shader === undefined) {
+            return;
+        }
+
+        this.webGl.context.useProgram(this.shader.program);
+
+        this.webGl.context.uniformMatrix4fv(
+            this.shader.getUniformLocation("u_ModelMatrix"),
+            false,
+            node.worldTransform
+        );
+
+        const rotationMatrixInv = create$4();
+        fromQuat(rotationMatrixInv, node.worldQuaternion);
+        transpose$1(rotationMatrixInv, rotationMatrixInv);
+        this.shader.updateUniform("u_ModelRotationInv", rotationMatrixInv);
+
+        this.webGl.context.uniformMatrix4fv(
+            this.shader.getUniformLocation("u_ViewMatrix"),
+            false,
+            viewMatrix
+        );
+        this.webGl.context.uniformMatrix4fv(
+            this.shader.getUniformLocation("u_ProjectionMatrix"),
+            false,
+            projectionMatrix
+        );
+        this.webGl.context.uniform2i(
+            this.shader.getUniformLocation("u_FramebufferSize"),
+            this.currentWidth,
+            this.currentHeight
+        );
+        // The projection matrix stores the focal length in the first and second element of the diagonal.
+        // We need to convert from NDC space to screen space, which is done by multiplying with the framebuffer dimensions and dividing by 2, since NDC goes from -1 to 1.
+        this.webGl.context.uniform2f(
+            this.shader.getUniformLocation("u_FocalLength"),
+            this.projMatrix[0] * this.currentWidth * 0.5,
+            this.projMatrix[5] * this.currentHeight * 0.5
+        );
+        this.shader.updateUniform("u_TextureWidth", primitive.splatTextureWidth);
+        this.shader.updateUniform("u_Camera", this.currentCameraPosition);
+
+        this.webGl.context.enable(GL.BLEND);
+        this.webGl.context.blendFuncSeparate(
+            GL.ONE,
+            GL.ONE_MINUS_SRC_ALPHA,
+            GL.ONE,
+            GL.ONE_MINUS_SRC_ALPHA
+        );
+        this.webGl.context.blendEquation(GL.FUNC_ADD);
+        this.webGl.context.depthMask(false);
+
+        let textureIndex = 0;
+
+        let location = this.shader.getUniformLocation(primitive.positionTextureInfo.samplerName);
+        this.webGl.setTexture(location, state.gltf, primitive.positionTextureInfo, textureIndex++);
+
+        location = this.shader.getUniformLocation(primitive.rotationTextureInfo.samplerName);
+        this.webGl.setTexture(location, state.gltf, primitive.rotationTextureInfo, textureIndex++);
+
+        location = this.shader.getUniformLocation(primitive.scaleTextureInfo.samplerName);
+        this.webGl.setTexture(location, state.gltf, primitive.scaleTextureInfo, textureIndex++);
+
+        location = this.shader.getUniformLocation(primitive.opacityTextureInfo.samplerName);
+        this.webGl.setTexture(location, state.gltf, primitive.opacityTextureInfo, textureIndex++);
+
+        location = this.shader.getUniformLocation(primitive.shArray.samplerName);
+        this.webGl.setTexture(location, state.gltf, primitive.shArray, textureIndex++);
+
+        this.webGl.context.bindBuffer(this.webGl.context.ARRAY_BUFFER, this.splatVBO);
+        location = this.shader.getAttributeLocation("a_position");
+        this.webGl.context.enableVertexAttribArray(location);
+        this.webGl.context.vertexAttribPointer(location, 2, GL.FLOAT, false, 0, 0);
+        this.webGl.context.bindBuffer(this.webGl.context.ARRAY_BUFFER, null);
+
+        this.webGl.context.bindBuffer(this.webGl.context.ARRAY_BUFFER, this.currentSortBuffer);
+        this.webGl.context.bufferData(
+            this.webGl.context.ARRAY_BUFFER,
+            primitive.sortOrder,
+            this.webGl.context.DYNAMIC_DRAW
+        );
+        location = this.shader.getAttributeLocation("a_instance_sort_index");
+        this.webGl.context.enableVertexAttribArray(location);
+        this.webGl.context.vertexAttribIPointer(location, 1, GL.UNSIGNED_INT, 0, 0);
+        this.webGl.context.vertexAttribDivisor(location, 1);
+        this.webGl.context.bindBuffer(this.webGl.context.ARRAY_BUFFER, null);
+
+        this.webGl.context.drawArraysInstanced(GL.TRIANGLE_STRIP, 0, 4, primitive.sortOrder.length);
+
+        this.webGl.context.vertexAttribDivisor(location, 0);
+        this.webGl.context.disableVertexAttribArray(location);
+        this.webGl.context.depthMask(true);
+    }
+
+    tonemapPass(state, aspectOffsetX, aspectOffsetY, aspectWidth, aspectHeight) {
+        const gl = this.webGl.context;
+
+        const fragDefines = [];
+        this.pushFragParameterDefines(fragDefines, state);
+
+        const fragHash = this.shaderCache.selectShader("tonemap_main.frag", fragDefines);
+        const vertHash = this.shaderCache.selectShader("fullscreen.vert", []);
+        if (!fragHash || !vertHash) return;
+        const shader = this.shaderCache.getShaderProgram(fragHash, vertHash);
+        if (!shader) return;
+
+        gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+        gl.viewport(aspectOffsetX, aspectOffsetY, aspectWidth, aspectHeight);
+
+        gl.useProgram(shader.program);
+        shader.updateUniform("u_Exposure", state.renderingParameters.exposure, false);
+
+        const hdrLoc = shader.getUniformLocation("u_MainSampler");
+        gl.activeTexture(GL.TEXTURE0);
+        gl.bindTexture(
+            gl.TEXTURE_2D,
+            this._floatingPointFramebuffer ? this.mainTextureHDR : this.mainTexture
+        );
+        gl.uniform1i(hdrLoc, 0);
+
+        const tonemapLoc = shader.getUniformLocation("u_TonemapSampler");
+        gl.activeTexture(GL.TEXTURE1);
+        gl.bindTexture(GL.TEXTURE_2D, this.mainTonemapTexture);
+        gl.uniform1i(tonemapLoc, 1);
+
+        gl.bindBuffer(gl.ARRAY_BUFFER, this.splatVBO);
+        const posLoc = shader.getAttributeLocation("a_position");
+        gl.enableVertexAttribArray(posLoc);
+        gl.vertexAttribPointer(posLoc, 2, GL.FLOAT, false, 0, 0);
+        gl.bindBuffer(gl.ARRAY_BUFFER, null);
+
+        gl.disable(gl.DEPTH_TEST);
+        gl.disable(gl.BLEND);
+        gl.drawArrays(GL.TRIANGLE_STRIP, 0, 4);
+
+        gl.enable(gl.DEPTH_TEST);
+        gl.disableVertexAttribArray(posLoc);
+    }
+
+    // Composites the splat isolation framebuffer onto the currently-bound mainFramebuffer.
+    splatCompositePass(state, isLinear) {
+        const gl = this.webGl.context;
+
+        const fragDefines = [];
+        this.pushFragParameterDefines(fragDefines, state);
+        if (isLinear) {
+            fragDefines.push("LINEAR_OUTPUT 1");
+        }
+        const fragHash = this.shaderCache.selectShader("splat_composite.frag", fragDefines);
+        const vertHash = this.shaderCache.selectShader("fullscreen.vert", []);
+        if (!fragHash || !vertHash) return;
+        const shader = this.shaderCache.getShaderProgram(fragHash, vertHash);
+        if (!shader) return;
+
+        gl.useProgram(shader.program);
+
+        const splatTex = this._floatingPointFramebuffer
+            ? this.splatColorTextureHDR
+            : this.splatColorTexture;
+        const samplerLoc = shader.getUniformLocation("u_SplatSampler");
+        gl.activeTexture(GL.TEXTURE0);
+        gl.bindTexture(gl.TEXTURE_2D, splatTex ?? this.splatColorTexture);
+        gl.uniform1i(samplerLoc, 0);
+
+        shader.updateUniform("u_Exposure", state.renderingParameters.exposure, false);
+
+        // Bind the fullscreen quad VBO (a_position attribute expected by fullscreen.vert).
+        gl.bindBuffer(gl.ARRAY_BUFFER, this.splatVBO);
+        const posLoc = shader.getAttributeLocation("a_position");
+        gl.enableVertexAttribArray(posLoc);
+        gl.vertexAttribPointer(posLoc, 2, GL.FLOAT, false, 0, 0);
+        gl.bindBuffer(gl.ARRAY_BUFFER, null);
+
+        gl.enable(gl.BLEND);
+        this.webGl.context.blendFuncSeparate(
+            GL.SRC_ALPHA,
+            GL.ONE_MINUS_SRC_ALPHA,
+            GL.ONE,
+            GL.ONE_MINUS_SRC_ALPHA
+        );
+        this.webGl.context.blendEquation(GL.FUNC_ADD);
+
+        // No depth test or depth write – this is a pure compositing pass.
+        gl.disable(gl.DEPTH_TEST);
+        gl.depthMask(false);
+
+        gl.drawArrays(GL.TRIANGLE_STRIP, 0, 4);
+
+        // Restore state.
+        gl.disable(gl.BLEND);
+        gl.enable(gl.DEPTH_TEST);
+        gl.depthMask(true);
+        gl.disableVertexAttribArray(posLoc);
     }
 
     // vertices with given material
@@ -6900,6 +7585,10 @@ class gltfRenderer {
         if (renderpassConfiguration.linearOutput)
         {
             fragDefines.push("LINEAR_OUTPUT 1");
+        }
+        if (renderpassConfiguration.transmission)
+        {
+            fragDefines.push("TRANSMISSION_PASS 1");
         }
 
         // POINTS, LINES, LINE_LOOP, LINE_STRIP
@@ -6977,10 +7666,12 @@ class gltfRenderer {
             this.webGl.context.enable(GL.BLEND);
             this.webGl.context.blendFuncSeparate(GL.SRC_ALPHA, GL.ONE_MINUS_SRC_ALPHA, GL.ONE, GL.ONE_MINUS_SRC_ALPHA);
             this.webGl.context.blendEquation(GL.FUNC_ADD);
+            this.webGl.context.depthMask(false);
         }
         else
         {
             this.webGl.context.disable(GL.BLEND);
+            this.webGl.context.depthMask(true);
         }
         
 
@@ -7328,6 +8019,9 @@ class gltfRenderer {
                 fragDefines.push("TONEMAP_ACES_HILL_EXPOSURE_BOOST 1");
                 break;
             case GltfState.ToneMaps.NONE:
+            default:
+                fragDefines.push("TONEMAP_NONE 1");
+                break;
         }
 
         let debugOutputMapping = [
@@ -14643,8 +15337,254 @@ class gltfPrimitive extends GltfObject {
         this.hasTexcoord = false;
         this.hasColor = false;
 
+        // Gaussian Splatting
+        this.hasDegree1 = false;
+        this.hasDegree2 = false;
+        this.hasDegree3 = false;
+        this.linear = true;
+        this.positionTextureInfo = undefined;
+        this.rotationTextureInfo = undefined;
+        this.scaleTextureInfo = undefined;
+        this.opacityTextureInfo = undefined;
+        this.sphericalHarmonicsTextureInfo = undefined;
+        this.sortOrder = undefined;
+        this.splatTextureWidth = undefined;
+
+        // Worker-based sort state
+        this.sortWorker = undefined;
+        this.sortWorkerReady = false;
+        this.sortPending = false;
+
+        // Store the view matrix if sort is currently running
+        this.queuedViewMatrix = undefined;
+        // Compare against a stored value to detect whether a redraw is needed.
+        this.lastSortViewMatrix = undefined;
+
         // The primitive centroid is used for depth sorting.
         this.centroid = undefined;
+    }
+
+    //Currently only support types relevant for gaussian splatting
+    // If an alignment of 4 bytes is not possible for a given format, the correct alignment is returned.
+    _getInternalTextureFormat(componentType, componentCount, normalized = false) {
+        if (componentType === GL.FLOAT) {
+            switch (componentCount) {
+                case 1: // OPACITIY
+                    return { internalFormat: GL.R32F, format: GL.RED };
+                case 3: // POSITION, SCALE, Spherical Harmonics
+                    return { internalFormat: GL.RGB32F, format: GL.RGB };
+                case 4: // ROTATION
+                    return { internalFormat: GL.RGBA32F, format: GL.RGBA };
+            }
+        }
+        if (componentType === GL.UNSIGNED_BYTE) {
+            switch (componentCount) {
+                case 1: // OPACITY
+                    return { internalFormat: GL.R8, format: GL.RED, alignment: 1 }; // Opacity is always normalized
+                case 3: // POSITION, SCALE
+                    return {
+                        internalFormat: normalized ? GL.RGB8 : GL.RGB8UI,
+                        format: normalized ? GL.RGB : GL.RGB_INTEGER,
+                        alignment: 1
+                    };
+            }
+        }
+        if (componentType === GL.BYTE) {
+            switch (componentCount) {
+                case 3: // POSITION
+                    return {
+                        internalFormat: normalized ? GL.RGB8_SNORM : GL.RGB8I,
+                        format: normalized ? GL.RGB : GL.RGB_INTEGER,
+                        alignment: 1
+                    };
+                case 4: // ROTATION
+                    return { internalFormat: GL.RGBA8_SNORM, format: GL.RGBA }; // Rotation is always normalized
+            }
+        }
+
+        // There is no normalized format for unsigned short and short. Needs to be resolved in the shader
+        if (componentType === GL.UNSIGNED_SHORT) {
+            switch (componentCount) {
+                case 1: // OPACITY
+                    return { internalFormat: GL.R16UI, format: GL.RED_INTEGER, alignment: 2 }; // Opacity is always normalized
+                case 3: // POSITION, SCALE
+                    return { internalFormat: GL.RGB16UI, format: GL.RGB_INTEGER, alignment: 2 };
+            }
+        }
+        if (componentType === GL.SHORT) {
+            switch (componentCount) {
+                case 3: // POSITION
+                    return { internalFormat: GL.RGB16I, format: GL.RGB_INTEGER, alignment: 2 };
+                case 4: // ROTATION
+                    return { internalFormat: GL.RGBA16I, format: GL.RGBA_INTEGER };
+            }
+        }
+        console.error(
+            "Unsupported texture format for componentType:",
+            componentType,
+            "and componentCount:",
+            componentCount
+        );
+        return undefined;
+    }
+
+    _createDataTexture(gltf, webGlContext, attributeName, accessor) {
+        if (accessor === undefined) {
+            return undefined;
+        }
+        let texture = webGlContext.createTexture();
+        webGlContext.bindTexture(webGlContext.TEXTURE_2D, texture);
+        // Set texture format and upload data.
+        const componentType = accessor.componentType;
+        const componentCount = accessor.getComponentCount(accessor.type);
+        const formats = this._getInternalTextureFormat(
+            componentType,
+            componentCount,
+            accessor.normalized
+        );
+        if (
+            formats.format === GL.RED_INTEGER ||
+            formats.format === GL.RGB_INTEGER ||
+            formats.format === GL.RGBA_INTEGER
+        ) {
+            if (componentType === GL.UNSIGNED_BYTE || componentType === GL.UNSIGNED_SHORT) {
+                this.defines.push(`${attributeName}_IS_UINTEGER 1`);
+            } else {
+                this.defines.push(`${attributeName}_IS_INTEGER 1`);
+            }
+            if (accessor.normalized) {
+                // Only shorts do not support normalized integer formats, so we need to normalize them manually in the shader.
+                this.defines.push(`${attributeName}_NEEDS_NORMALIZATION 1`);
+            }
+        } else {
+            this.defines.push(`${attributeName}_IS_FLOAT 1`);
+        }
+        const size = Math.ceil(Math.sqrt(accessor.count));
+        const data = accessor.getDeinterlacedView(gltf);
+        const paddedData = new data.constructor(size * size * componentCount);
+        paddedData.set(data);
+
+        webGlContext.pixelStorei(webGlContext.UNPACK_ALIGNMENT, formats.alignment ?? 4);
+        webGlContext.texImage2D(
+            webGlContext.TEXTURE_2D,
+            0, //level
+            formats.internalFormat,
+            size,
+            size,
+            0, //border
+            formats.format,
+            accessor.componentType,
+            paddedData
+        );
+        webGlContext.pixelStorei(webGlContext.UNPACK_ALIGNMENT, 4); // restore default
+        // Ensure mipmapping is disabled and the sampler is configured correctly.
+        webGlContext.texParameteri(GL.TEXTURE_2D, GL.TEXTURE_WRAP_S, GL.CLAMP_TO_EDGE);
+        webGlContext.texParameteri(GL.TEXTURE_2D, GL.TEXTURE_WRAP_T, GL.CLAMP_TO_EDGE);
+        webGlContext.texParameteri(GL.TEXTURE_2D, GL.TEXTURE_MIN_FILTER, GL.NEAREST);
+        webGlContext.texParameteri(GL.TEXTURE_2D, GL.TEXTURE_MAG_FILTER, GL.NEAREST);
+
+        // Now we add the morph target texture as a gltf texture info resource, so that
+        // we can just call webGl.setTexture(..., gltfTextureInfo, ...) in the renderer.
+        const image = new gltfImage(
+            undefined, // uri
+            GL.TEXTURE_2D, // type
+            0, // mip level
+            undefined, // buffer view
+            undefined, // name
+            ImageMimeType.GLTEXTURE, // mimeType
+            texture // image
+        );
+        gltf.images.push(image);
+
+        gltf.samplers.push(
+            new gltfSampler(GL.NEAREST, GL.NEAREST, GL.CLAMP_TO_EDGE, GL.CLAMP_TO_EDGE, undefined)
+        );
+
+        const tex = new gltfTexture(
+            gltf.samplers.length - 1,
+            gltf.images.length - 1,
+            GL.TEXTURE_2D
+        );
+        // The webgl texture is already initialized -> this flag informs
+        // webgl.setTexture about this.
+        tex.initialized = true;
+
+        gltf.textures.push(tex);
+
+        const textureInfo = new gltfTextureInfo(gltf.textures.length - 1, 0, true);
+        textureInfo.samplerName = `u_${attributeName}Sampler`; //TODO Check if this works
+        textureInfo.generateMips = false;
+        return textureInfo;
+    }
+
+    _createDataTextureArray(
+        gltf,
+        webGlContext,
+        data,
+        width,
+        textureCount,
+        componentCount,
+        samplerName
+    ) {
+        let texture = webGlContext.createTexture();
+        webGlContext.bindTexture(webGlContext.TEXTURE_2D_ARRAY, texture);
+        // Set texture format and upload data.
+        // Use 16-bit half-precision floats: half the bandwidth of RGB32F with negligible
+        // quality loss for SH coefficients. WebGL2 accepts Float32Array with FLOAT type
+        // when the internal format is a 16F format — the driver converts on upload.
+        let internalFormat = componentCount === 4 ? webGlContext.RGBA16F : webGlContext.RGB16F;
+        let format = componentCount === 4 ? webGlContext.RGBA : webGlContext.RGB;
+        let type = webGlContext.FLOAT;
+        webGlContext.texImage3D(
+            webGlContext.TEXTURE_2D_ARRAY,
+            0, //level
+            internalFormat,
+            width,
+            width,
+            textureCount, //Layer count
+            0, //border
+            format,
+            type,
+            data
+        );
+        // Ensure mipmapping is disabled and the sampler is configured correctly.
+        webGlContext.texParameteri(GL.TEXTURE_2D_ARRAY, GL.TEXTURE_WRAP_S, GL.CLAMP_TO_EDGE);
+        webGlContext.texParameteri(GL.TEXTURE_2D_ARRAY, GL.TEXTURE_WRAP_T, GL.CLAMP_TO_EDGE);
+        webGlContext.texParameteri(GL.TEXTURE_2D_ARRAY, GL.TEXTURE_MIN_FILTER, GL.NEAREST);
+        webGlContext.texParameteri(GL.TEXTURE_2D_ARRAY, GL.TEXTURE_MAG_FILTER, GL.NEAREST);
+
+        // Now we add the morph target texture as a gltf texture info resource, so that
+        // we can just call webGl.setTexture(..., gltfTextureInfo, ...) in the renderer.
+        const image = new gltfImage(
+            undefined, // uri
+            GL.TEXTURE_2D_ARRAY, // type
+            0, // mip level
+            undefined, // buffer view
+            undefined, // name
+            ImageMimeType.GLTEXTURE, // mimeType
+            texture // image
+        );
+        gltf.images.push(image);
+
+        gltf.samplers.push(
+            new gltfSampler(GL.NEAREST, GL.NEAREST, GL.CLAMP_TO_EDGE, GL.CLAMP_TO_EDGE, undefined)
+        );
+
+        const tex = new gltfTexture(
+            gltf.samplers.length - 1,
+            gltf.images.length - 1,
+            GL.TEXTURE_2D_ARRAY
+        );
+        // The webgl texture is already initialized -> this flag informs
+        // webgl.setTexture about this.
+        tex.initialized = true;
+
+        gltf.textures.push(tex);
+
+        const textureInfo = new gltfTextureInfo(gltf.textures.length - 1, 0, true);
+        textureInfo.generateMips = false;
+        textureInfo.samplerName = samplerName;
+        return textureInfo;
     }
 
     initGl(gltf, webGlContext) {
@@ -14701,6 +15641,7 @@ class gltfPrimitive extends GltfObject {
                 break;
             }
             let knownAttribute = true;
+            let isTexture = false;
             switch (attribute) {
                 case "POSITION":
                     this.skip = false;
@@ -14732,11 +15673,43 @@ class gltfPrimitive extends GltfObject {
                 case "WEIGHTS_1":
                     this.hasWeights = true;
                     break;
+                case "KHR_gaussian_splatting:ROTATION":
+                case "KHR_gaussian_splatting:SCALE":
+                case "KHR_gaussian_splatting:OPACITY":
+                    isTexture = true;
+                    break;
+                case "KHR_gaussian_splatting:SH_DEGREE_0_COEF_0":
+                    isTexture = true;
+                    break;
+                case "KHR_gaussian_splatting:SH_DEGREE_1_COEF_0":
+                case "KHR_gaussian_splatting:SH_DEGREE_1_COEF_1":
+                case "KHR_gaussian_splatting:SH_DEGREE_1_COEF_2":
+                    isTexture = true;
+                    this.hasDegree1 = true;
+                    break;
+                case "KHR_gaussian_splatting:SH_DEGREE_2_COEF_0":
+                case "KHR_gaussian_splatting:SH_DEGREE_2_COEF_1":
+                case "KHR_gaussian_splatting:SH_DEGREE_2_COEF_2":
+                case "KHR_gaussian_splatting:SH_DEGREE_2_COEF_3":
+                case "KHR_gaussian_splatting:SH_DEGREE_2_COEF_4":
+                    isTexture = true;
+                    this.hasDegree2 = true;
+                    break;
+                case "KHR_gaussian_splatting:SH_DEGREE_3_COEF_0":
+                case "KHR_gaussian_splatting:SH_DEGREE_3_COEF_1":
+                case "KHR_gaussian_splatting:SH_DEGREE_3_COEF_2":
+                case "KHR_gaussian_splatting:SH_DEGREE_3_COEF_3":
+                case "KHR_gaussian_splatting:SH_DEGREE_3_COEF_4":
+                case "KHR_gaussian_splatting:SH_DEGREE_3_COEF_5":
+                case "KHR_gaussian_splatting:SH_DEGREE_3_COEF_6":
+                    isTexture = true;
+                    this.hasDegree3 = true;
+                    break;
                 default:
                     knownAttribute = false;
                     console.log("Unknown attribute: " + attribute);
             }
-            if (knownAttribute) {
+            if (knownAttribute && !isTexture) {
                 const idx = this.attributes[attribute];
                 this.glAttributes.push({
                     attribute: attribute,
@@ -14745,6 +15718,157 @@ class gltfPrimitive extends GltfObject {
                 });
                 this.defines.push(`HAS_${attribute}_${gltf.accessors[idx].type} 1`);
             }
+        }
+
+        // Gaussian Splatting
+        if (this.extensions?.KHR_gaussian_splatting !== undefined) {
+            const extension = this.extensions.KHR_gaussian_splatting;
+            if (extension.kernel !== "ellipse") {
+                console.warn(
+                    `Unsupported kernel type for Gaussian Splatting: ${extension.kernel}. Using ellipse kernel.`
+                );
+            }
+            if (extension.colorSpace === "srgb_rec709_display") {
+                this.linear = false;
+            } else if (extension.colorSpace !== "lin_rec709_display") {
+                console.warn(
+                    `Unsupported color space for Gaussian Splatting: ${extension.colorSpace}. Using linear Rec. 709 display.`
+                );
+            }
+            if (extension.projection !== undefined && extension.projection !== "perspective") {
+                console.warn(
+                    `Unsupported projection type for Gaussian Splatting: ${extension.projection}. Using perspective projection.`
+                );
+            }
+            if (
+                extension.sortingMethod !== undefined &&
+                extension.sortingMethod !== "cameraDistance"
+            ) {
+                console.warn(
+                    `Unsupported sorting method for Gaussian Splatting: ${extension.sortingMethod}. Using camera distance.`
+                );
+            }
+            if (this.hasDegree2 && !this.hasDegree1) {
+                console.warn(
+                    "Degree 2 SH Coefficients provided without Degree 1. This is not supported and Degree 2 coefficients will be ignored."
+                );
+                this.hasDegree2 = false;
+            }
+            if (this.hasDegree3 && (!this.hasDegree1 || !this.hasDegree2)) {
+                console.warn(
+                    "Degree 3 SH Coefficients provided without Degree 1 or Degree 2. This is not supported and Degree 3 coefficients will be ignored."
+                );
+                this.hasDegree3 = false;
+            }
+
+            const max2DTextureSize = Math.pow(webGlContext.getParameter(GL.MAX_TEXTURE_SIZE), 2);
+            const vertexCount =
+                gltf.accessors[this.attributes["KHR_gaussian_splatting:SH_DEGREE_0_COEF_0"]].count;
+            this.initSortWorker(gltf, vertexCount);
+            this.splatTextureWidth = Math.ceil(Math.sqrt(vertexCount));
+            const singleTextureSize = Math.pow(this.splatTextureWidth, 2);
+
+            if (vertexCount > max2DTextureSize) {
+                console.error("Vertex count exceeds maximum 2D texture size.");
+                this.skip = true;
+                return;
+            }
+
+            this.positionTextureInfo = this._createDataTexture(
+                gltf,
+                webGlContext,
+                "POSITION",
+                gltf.accessors[this.attributes.POSITION]
+            );
+
+            this.rotationTextureInfo = this._createDataTexture(
+                gltf,
+                webGlContext,
+                "ROTATION",
+                gltf.accessors[this.attributes["KHR_gaussian_splatting:ROTATION"]]
+            );
+
+            if (this.rotationTextureInfo === undefined) {
+                console.error(
+                    "Rotation attribute is required for Gaussian Splatting but not found. Skipping primitive."
+                );
+                this.skip = true;
+                return;
+            }
+
+            this.scaleTextureInfo = this._createDataTexture(
+                gltf,
+                webGlContext,
+                "SCALE",
+                gltf.accessors[this.attributes["KHR_gaussian_splatting:SCALE"]]
+            );
+
+            if (this.scaleTextureInfo === undefined) {
+                console.error(
+                    "Scale attribute is required for Gaussian Splatting but not found. Skipping primitive."
+                );
+                this.skip = true;
+                return;
+            }
+
+            this.opacityTextureInfo = this._createDataTexture(
+                gltf,
+                webGlContext,
+                "OPACITY",
+                gltf.accessors[this.attributes["KHR_gaussian_splatting:OPACITY"]]
+            );
+
+            if (this.opacityTextureInfo === undefined) {
+                console.error(
+                    "Opacity attribute is required for Gaussian Splatting but not found. Skipping primitive."
+                );
+                this.skip = true;
+                return;
+            }
+
+            if (this.attributes["KHR_gaussian_splatting:SH_DEGREE_0_COEF_0"] === undefined) {
+                console.error(
+                    "SH Degree 0 Coefficient 0 attribute is required for Gaussian Splatting but not found. Skipping primitive."
+                );
+                this.skip = true;
+                return;
+            }
+
+            let textureAtlasSize = 1;
+            if (this.hasDegree1) {
+                this.defines.push("HAS_GAUSSIAN_SPLATTING_DEGREE_1 1");
+                textureAtlasSize += 3;
+                if (this.hasDegree2) {
+                    this.defines.push("HAS_GAUSSIAN_SPLATTING_DEGREE_2 1");
+                    textureAtlasSize += 5;
+                    if (this.hasDegree3) {
+                        this.defines.push("HAS_GAUSSIAN_SPLATTING_DEGREE_3 1");
+                        textureAtlasSize += 7;
+                    }
+                }
+            }
+            const shData = new Float32Array(singleTextureSize * textureAtlasSize * 3);
+            const shAttributes = Object.keys(this.attributes)
+                .filter((attr) => attr.startsWith("KHR_gaussian_splatting:SH_DEGREE_"))
+                .sort();
+            for (let i = 0; i < shAttributes.length; i++) {
+                const accessor = gltf.accessors[this.attributes[shAttributes[i]]];
+                const data = accessor.getDeinterlacedView(gltf);
+                shData.set(data, i * singleTextureSize * 3);
+            }
+
+            this.shArray = this._createDataTextureArray(
+                gltf,
+                webGlContext,
+                shData,
+                this.splatTextureWidth,
+                textureAtlasSize,
+                3,
+                "u_SHCoefficientsSampler"
+            );
+
+            this.sortOrder = new Uint32Array(vertexCount);
+            for (let i = 0; i < vertexCount; i++) this.sortOrder[i] = i;
         }
 
         // MORPH TARGETS
@@ -14846,89 +15970,134 @@ class gltfPrimitive extends GltfObject {
                 }
 
                 // Add the morph target texture.
-                // We have to create a WebGL2 texture as the format of the
-                // morph target texture has to be explicitly specified
-                // (gltf image would assume uint8).
-                let texture = webGlContext.createTexture();
-                webGlContext.bindTexture(webGlContext.TEXTURE_2D_ARRAY, texture);
-                // Set texture format and upload data.
-                let internalFormat = webGlContext.RGBA32F;
-                let format = webGlContext.RGBA;
-                let type = webGlContext.FLOAT;
-                let data = morphTargetTextureArray;
-                webGlContext.texImage3D(
-                    webGlContext.TEXTURE_2D_ARRAY,
-                    0, //level
-                    internalFormat,
+                this.morphTargetTextureInfo = this._createDataTextureArray(
+                    gltf,
+                    webGlContext,
+                    morphTargetTextureArray,
                     width,
-                    width,
-                    targetCount * attributes.length, //Layer count
-                    0, //border
-                    format,
-                    type,
-                    data
+                    targetCount * attributes.length,
+                    4,
+                    "u_MorphTargetsSampler"
                 );
-                // Ensure mipmapping is disabled and the sampler is configured correctly.
-                webGlContext.texParameteri(
-                    GL.TEXTURE_2D_ARRAY,
-                    GL.TEXTURE_WRAP_S,
-                    GL.CLAMP_TO_EDGE
-                );
-                webGlContext.texParameteri(
-                    GL.TEXTURE_2D_ARRAY,
-                    GL.TEXTURE_WRAP_T,
-                    GL.CLAMP_TO_EDGE
-                );
-                webGlContext.texParameteri(GL.TEXTURE_2D_ARRAY, GL.TEXTURE_MIN_FILTER, GL.NEAREST);
-                webGlContext.texParameteri(GL.TEXTURE_2D_ARRAY, GL.TEXTURE_MAG_FILTER, GL.NEAREST);
-
-                // Now we add the morph target texture as a gltf texture info resource, so that
-                // we can just call webGl.setTexture(..., gltfTextureInfo, ...) in the renderer.
-                const morphTargetImage = new gltfImage(
-                    undefined, // uri
-                    GL.TEXTURE_2D_ARRAY, // type
-                    0, // mip level
-                    undefined, // buffer view
-                    undefined, // name
-                    ImageMimeType.GLTEXTURE, // mimeType
-                    texture // image
-                );
-                gltf.images.push(morphTargetImage);
-
-                gltf.samplers.push(
-                    new gltfSampler(
-                        GL.NEAREST,
-                        GL.NEAREST,
-                        GL.CLAMP_TO_EDGE,
-                        GL.CLAMP_TO_EDGE,
-                        undefined
-                    )
-                );
-
-                const morphTargetTexture = new gltfTexture(
-                    gltf.samplers.length - 1,
-                    gltf.images.length - 1,
-                    GL.TEXTURE_2D_ARRAY
-                );
-                // The webgl texture is already initialized -> this flag informs
-                // webgl.setTexture about this.
-                morphTargetTexture.initialized = true;
-
-                gltf.textures.push(morphTargetTexture);
-
-                this.morphTargetTextureInfo = new gltfTextureInfo(
-                    gltf.textures.length - 1,
-                    0,
-                    true
-                );
-                this.morphTargetTextureInfo.samplerName = "u_MorphTargetsSampler";
-                this.morphTargetTextureInfo.generateMips = false;
             } else {
                 console.warn("Mesh of Morph targets too big. Cannot apply morphing.");
             }
         }
 
         this.computeCentroid(gltf);
+    }
+
+    /**
+     * Spawn a mkkellogg WASM sort worker and hand it the splat centre positions.
+     * Called once during initGl for Gaussian Splatting primitives.
+     * @param {object} gltf
+     * @param {number} vertexCount
+     */
+    initSortWorker(gltf, vertexCount) {
+        try {
+            this.sortWorker = new Worker(
+                new URL("./libs/mkkellogg-sort.worker.js", import.meta.url), //URL needs to be relative to rollup build
+                { type: "module" }
+            );
+        } catch (err) {
+            console.warn("Failed to spawn sort worker:", err);
+            return;
+        }
+
+        // Build stride-4 Float32Array (x, y, z, 1) from the POSITION accessor.
+        const posAccessor = gltf.accessors[this.attributes.POSITION];
+        const rawPositions = posAccessor.getDeinterlacedView(gltf);
+        const posOp = new Float32Array(vertexCount * 4);
+        for (let i = 0; i < vertexCount; i++) {
+            posOp[i * 4 + 0] = rawPositions[i * 3 + 0];
+            posOp[i * 4 + 1] = rawPositions[i * 3 + 1];
+            posOp[i * 4 + 2] = rawPositions[i * 3 + 2];
+            posOp[i * 4 + 3] = 1.0;
+        }
+
+        this.sortWorker.onmessage = (e) => {
+            const { type } = e.data;
+            if (type === "ready") {
+                this.sortWorkerReady = true;
+                this.sortPending = false;
+                // Fire any sort that was queued while the worker was initialising.
+                if (this.queuedViewMatrix !== undefined) {
+                    // Skip if the view matrix hasn't changed since the last dispatched sort.
+                    if (this.lastSortViewMatrix !== undefined) {
+                        let same = true;
+                        for (let i = 0; i < 16; i++) {
+                            if (this.lastSortViewMatrix[i] !== this.queuedViewMatrix[i]) {
+                                same = false;
+                                break;
+                            }
+                        }
+                        if (same) return;
+                    }
+                    this.sortPending = true;
+                    this.sortWorker.postMessage({
+                        type: "sort",
+                        viewMatrix: this.queuedViewMatrix
+                    });
+                    this.queuedViewMatrix = undefined;
+                }
+            } else if (type === "sorted") {
+                this.sortOrder = e.data.indices;
+                this.sortPending = false;
+            } else if (type === "error") {
+                console.error("Sort worker error:", e.data.message);
+                this.sortPending = false;
+            }
+        };
+
+        this.sortWorker.onerror = (err) => {
+            console.error(
+                "Sort worker uncaught error:",
+                err.message,
+                err.filename,
+                "line",
+                err.lineno,
+                err
+            );
+            this.sortPending = false;
+        };
+
+        // Transfer positions buffer to the worker (zero-copy).
+        this.sortWorker.postMessage({ type: "init", posOp: posOp, splatCount: vertexCount }, [
+            posOp.buffer
+        ]);
+        this.sortPending = true;
+    }
+
+    /**
+     * Request an asynchronous back-to-front sort of the splat indices.
+     * Safe to call every frame — the request is dropped while a previous sort
+     * is still in flight.
+     * @param {Float32Array} viewMatrix  Column-major 4×4 view matrix.
+     */
+    requestSort(viewMatrix) {
+        if (this.sortWorker === undefined) {
+            return;
+        }
+        if (!this.sortWorkerReady || this.sortPending) {
+            // Worker is busy — keep the latest matrix so it sorts immediately once ready
+            this.queuedViewMatrix = new Float32Array(viewMatrix);
+            return;
+        }
+        // Skip if the view matrix hasn't changed since the last dispatched sort.
+        if (this.lastSortViewMatrix !== undefined) {
+            let same = true;
+            for (let i = 0; i < 16; i++) {
+                if (this.lastSortViewMatrix[i] !== viewMatrix[i]) {
+                    same = false;
+                    break;
+                }
+            }
+            if (same) return;
+        }
+        const vm = new Float32Array(viewMatrix);
+        this.lastSortViewMatrix = vm;
+        this.sortPending = true;
+        this.sortWorker.postMessage({ type: "sort", viewMatrix: vm });
     }
 
     computeCentroid(gltf) {
@@ -17219,6 +18388,7 @@ class gltfVariant extends GltfObject {
 const allowedExtensions = [
     "KHR_animation_pointer",
     "KHR_draco_mesh_compression",
+    "KHR_gaussian_splatting",
     "KHR_lights_image_based",
     "KHR_lights_punctual",
     "KHR_materials_anisotropy",
@@ -22856,6 +24026,8 @@ class UIModel {
         this.specularEnabled = app.specularChanged.pipe();
         this.emissiveStrengthEnabled = app.emissiveStrengthChanged.pipe();
         this.volumeScatteringEnabled = app.volumeScatteringChanged.pipe();
+        this.gaussianSplattingEnabled = app.gaussianSplattingChanged.pipe();
+        this.floatingPointFramebufferEnabled = app.floatingPointFramebufferChanged.pipe();
         this.iblEnabled = app.iblChanged.pipe();
         this.iblIntensity = app.iblIntensityChanged.pipe();
         this.punctualLightsEnabled = app.punctualLightsChanged.pipe();
@@ -62594,6 +63766,8 @@ const appCreated = vue_cjsExports.createApp({
             specularChanged: new Subject(),
             emissiveStrengthChanged: new Subject(),
             volumeScatteringChanged: new Subject(),
+            gaussianSplattingChanged: new Subject(),
+            floatingPointFramebufferChanged: new Subject(),
             renderEnvChanged: new Subject(),
             addEnvironmentChanged: new Subject(),
             selectedAnimationsChanged: new Subject(),
@@ -62655,6 +63829,8 @@ const appCreated = vue_cjsExports.createApp({
             toneMap: "Khronos PBR Neutral",
             skinning: true,
             inputSmoothing: true,
+            floatingPointFramebuffer: true,
+            supportsFloatingPointFramebuffer: true,
             morphing: true,
             clearcoatEnabled: true,
             sheenEnabled: true,
@@ -62668,6 +63844,7 @@ const appCreated = vue_cjsExports.createApp({
             specularEnabled: true,
             emissiveStrengthEnabled: true,
             volumeScatteringEnabled: true,
+            gaussianSplattingEnabled: true,
 
             activeTab: 0,
             tabContentHidden: true,
@@ -74162,6 +75339,10 @@ var main = async () => {
         alpha: false,
         antialias: true
     });
+    app.supportsFloatingPointFramebuffer =
+        !!context.getExtension("EXT_color_buffer_half_float") ||
+        !!context.getExtension("EXT_color_buffer_float");
+
     const view = new GltfView(context);
     const resourceLoader = view.createResourceLoader();
     const state = view.createState();
@@ -74197,6 +75378,10 @@ var main = async () => {
             const func = async (model) => {
                 try {
                     const fileType = typeof model.mainFile;
+                    // TODO: Remove ignoredIssues once validator is updated to support KHR_gaussian_splatting extension
+                    const validateOptions = {
+                        ignoredIssues: ["MESH_PRIMITIVE_INVALID_ATTRIBUTE"]
+                    };
                     if (fileType == "string") {
                         const externalRefFunction = (uri) => {
                             const parent = model.mainFile.substring(
@@ -74222,10 +75407,9 @@ var main = async () => {
                         };
                         const response = await fetch(model.mainFile);
                         const buffer = await response.arrayBuffer();
-                        return await validateBytes(new Uint8Array(buffer), {
-                            externalResourceFunction: externalRefFunction,
-                            uri: model.mainFile
-                        });
+                        validateOptions.uri = model.mainFile;
+                        validateOptions.externalResourceFunction = externalRefFunction;
+                        return await validateBytes(new Uint8Array(buffer), validateOptions);
                     } else if (Array.isArray(model.mainFile)) {
                         const externalRefFunction = (uri) => {
                             return new Promise((resolve, reject) => {
@@ -74262,10 +75446,9 @@ var main = async () => {
                         };
 
                         const buffer = await model.mainFile[1].arrayBuffer();
-                        return await validateBytes(new Uint8Array(buffer), {
-                            externalResourceFunction: externalRefFunction,
-                            uri: model.mainFile[0]
-                        });
+                        validateOptions.uri = model.mainFile[0];
+                        validateOptions.externalResourceFunction = externalRefFunction;
+                        return await validateBytes(new Uint8Array(buffer), validateOptions);
                     }
                 } catch (error) {
                     console.error(error);
@@ -74522,6 +75705,16 @@ var main = async () => {
     );
     listenForRedraw(uiModel.volumeScatteringEnabled);
 
+    uiModel.gaussianSplattingEnabled.subscribe(
+        (enabled) => (state.renderingParameters.enabledExtensions.KHR_gaussian_splatting = enabled)
+    );
+    listenForRedraw(uiModel.gaussianSplattingEnabled);
+
+    uiModel.floatingPointFramebufferEnabled.subscribe(
+        (enabled) => (state.renderingParameters.floatingPointFramebuffer = enabled)
+    );
+    listenForRedraw(uiModel.floatingPointFramebufferEnabled);
+
     uiModel.iblEnabled.subscribe((iblEnabled) => (state.renderingParameters.useIBL = iblEnabled));
     listenForRedraw(uiModel.iblEnabled);
 
@@ -74670,6 +75863,7 @@ var main = async () => {
         canvas.height = Math.floor(canvas.clientHeight * devicePixelRatio);
         redraw |= !state.animationTimer.paused && state.animationIndices.length > 0;
         redraw |= past.width != canvas.width || past.height != canvas.height;
+        redraw |= state.needsRedraw;
 
         // Refit view if canvas changes significantly
         if (

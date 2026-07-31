@@ -460,6 +460,8 @@
                                 <b-switch v-model="skinning" v-on:input="skinningChanged.next($event.target.checked)">Skinning</b-switch>
                                 <br>
                                 <b-switch v-model="morphing" v-on:input="morphingChanged.next($event.target.checked)">Morphing</b-switch>
+                                <br>
+                                <b-switch v-model="floatingPointFramebuffer" :disabled="!supportsFloatingPointFramebuffer" v-on:input="floatingPointFramebufferChanged.next($event.target.checked)">Floating-Point Framebuffer</b-switch>
                                 <b-field label="Current Camera Values" class="subtitle">
                                     <button v-on:click="cameraExport.next($event.target.value)" type="button" class="button is-rounded"><i
                                             class="fa fa-download downloadIcon"></i>Download as .gltf</button>
@@ -504,6 +506,9 @@
                                     </b-switch>
                                     <b-switch class="smallerLabel" v-model="dispersionEnabled" v-on:input="dispersionChanged.next($event.target.checked)">
                                         Dispersion
+                                    </b-switch>
+                                    <b-switch class="smallerLabel" v-model="gaussianSplattingEnabled" v-on:input="gaussianSplattingChanged.next($event.target.checked)">
+                                        Gaussian Splatting
                                     </b-switch>
                                 </b-field>
                                 <b-field label="Statistics" class="subtitle">
