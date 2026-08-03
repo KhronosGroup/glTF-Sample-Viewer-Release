@@ -4536,7 +4536,6 @@ class Receive extends BehaveEngineNode {
                 const typeIndex = (_b = (_a = Object.entries(customEventDesc.values).find(([key, _]) => key === ceKey)) === null || _a === void 0 ? void 0 : _a[1]) === null || _b === void 0 ? void 0 : _b.type;
                 const typeName = this.getType(Number(typeIndex));
                 const rawVal = ce[ceKey];
-                console.log(`[Receive: ${customEventDesc.id}] Parsing type`, typeName, rawVal);
                 const val = this.parseType(typeName, [rawVal]);
                 this.outValues[ceKey] = {
                     value: val,
@@ -11013,10 +11012,8 @@ class BasicBehaveEngine {
                 currentHoverNodeIndex = this.getParentNodeIndex(currentHoverNodeIndex);
             }
         }
-        const lastHoverNodeRef = lastHoverNodeIndex !== undefined ? `/nodes/${lastHoverNodeIndex}` : undefined;
-        const newHoverNodeRef = nodeIndex !== undefined ? `/nodes/${nodeIndex}` : undefined;
-        this.alertOnHoverOut(lastHoverNodeRef, controllerIndex, lastHoverNodeIndex, firstCommonHoverNodeIndex);
-        this.alertOnHoverIn(newHoverNodeRef, controllerIndex, nodeIndex, firstCommonHoverNodeIndex);
+        this.alertOnHoverOut(nodeIndex, controllerIndex, lastHoverNodeIndex, firstCommonHoverNodeIndex);
+        this.alertOnHoverIn(nodeIndex, controllerIndex, nodeIndex, firstCommonHoverNodeIndex);
         this.lastHoveredNodeIndices.set(controllerIndex, nodeIndex);
     }
     alertOnHoverIn(selectedNodeRef, controllerIndex, currentHoverNodeIndex, firstCommonHoverNodeIndex) {
@@ -12228,6 +12225,15 @@ class SampleViewerDecorator extends ADecorator {
 
         const animationCount = this.world.gltf.animations.length;
         this.registerJsonPointer(
+            `/animations/${animationCount}`,
+            (path) => {
+                return [path];
+            },
+            (_path, _value) => {},
+            "ref",
+            true
+        );
+        this.registerJsonPointer(
             `/animations/${animationCount}/extensions/KHR_interactivity/isPlaying`,
             (path) => {
                 const pathParts = path.split("/");
@@ -12358,6 +12364,7 @@ class SampleViewerDecorator extends ADecorator {
     }
 
     registerJsonPointer(jsonPtr, getterCallback, setterCallback, typeName, readOnly) {
+        console.log("Registering JSON pointer:", jsonPtr, "Type:", typeName, "ReadOnly:", readOnly);
         this.behaveEngine.registerJsonPointer(
             jsonPtr,
             getterCallback,
