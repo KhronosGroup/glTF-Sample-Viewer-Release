@@ -1,6 +1,6 @@
 /**
  * Bundle of gltf-sample-viewer-example
- * Generated: 2026-08-05
+ * Generated: 2026-08-07
  * Version: 1.0.0
  * License: Apache-2.0
  * Dependencies:
@@ -1091,7 +1091,7 @@
 
 /**
  * Bundle of @khronosgroup/gltf-viewer
- * Generated: 2026-08-05
+ * Generated: 2026-08-07
  * Version: 1.1.0
  * License: Apache-2.0
  * Dependencies:
@@ -82176,7 +82176,7 @@ class gltfPrimitive extends GltfObject {
         ) {
             console.info("Generating tangents using the MikkTSpace algorithm.");
             console.time("Tangent generation");
-            const tangentHash = `${this.attributes.POSITION}_${this.attributes.NORMAL}_${this.attributes.TEXCOORD_0}`;
+            const tangentHash = `${this.indices}_${this.attributes.POSITION}_${this.attributes.NORMAL}_${this.attributes.TEXCOORD_0}`;
             this.unweld(gltf);
             this.generateTangents(gltf, tangentHash);
             console.timeEnd("Tangent generation");
