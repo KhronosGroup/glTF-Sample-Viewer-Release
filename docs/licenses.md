@@ -230,7 +230,7 @@ Apache License
    See the License for the specific language governing permissions and
    limitations under the License.
 
-## lucide-react - 1.61.0 (ISC)
+## lucide-react - 1.67.0 (ISC)
 
 ISC License
 
