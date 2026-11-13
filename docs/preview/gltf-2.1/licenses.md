@@ -230,7 +230,7 @@ Apache License
    See the License for the specific language governing permissions and
    limitations under the License.
 
-## lucide-react - 1.71.0 (ISC)
+## lucide-react - 1.67.0 (ISC)
 
 ISC License
 
@@ -405,7 +405,7 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
-## zustand - 5.1.0 (MIT)
+## zustand - 5.0.16 (MIT)
 
 MIT License
 
